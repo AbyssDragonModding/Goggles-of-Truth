@@ -21,7 +21,7 @@ from . import scrubtext
 from . import storyskip
 from .door import patch_open_door
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 BOMB_LIFT_PARAM = "Component/LiftableParam/Item_Bomb.game__component__LiftableParam.bgyml"
 BOMB_PACKS = ["Pack/Actor/Item_Bomb.pack.zs", "Pack/Actor/Npc_Hylia_ImperialSoldier_Bomb.pack.zs",
               "Pack/Actor/Obj_BombFlower_A_01.pack.zs", "Pack/Actor/Obj_BombFlower_A_04.pack.zs",

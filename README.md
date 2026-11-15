@@ -1,5 +1,5 @@
 # OoT Remake Randomizer
-## Current Version: 0.5.0 (PUBLIC BETA RELEASE)
+## Current Version: 0.5.1 (PUBLIC BETA RELEASE)
 An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time*. It shuffles chests,
 songs, dungeon rewards, NPC rewards, shop items, Gold Skulltulas and more, and checks that every seed can be
 beaten. The settings follow the classic [OoT Randomizer](https://ootrandomizer.com), adjusted to what the
@@ -16,6 +16,20 @@ and `exefs`) and writes only the files it changes into a new mod folder. Share s
 >
 > Your test reports are what makes it better; see [Testing and reporting problems](#testing-and-reporting-problems).
 
+
+> **Get automatic updates: clone the repository instead of downloading the ZIP.** Install
+> [git](https://git-scm.com/downloads), open a terminal (Windows: right-click inside the folder you want it in
+> and choose *Open in Terminal*), and run:
+>
+> ```bash
+> git clone https://github.com/AbyssDragonModding/OOTNS2-Rando
+> ```
+>
+> Then run the setup in the new `OOTNS2-Rando` folder as usual ([Setup](#setup)). From then on, every time you open
+> the randomizer it checks GitHub, pulls the newest version, installs any new packages and restarts itself,
+> and the log lists what changed. A ZIP download doesn't update itself; you have to download each new version
+> by hand. Already have the ZIP? Clone into a new folder and copy your `user_settings.toml` over. More in
+> [Updating to a new version](#updating-to-a-new-version).
 
 [Disclamer] Yes claude was used with the production of this. It accelerates development a ton. Most settings are manually tested in game manually
 =======

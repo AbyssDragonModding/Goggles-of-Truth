@@ -4,7 +4,7 @@ All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new s
 minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
 different version.
 
-## 0.5.0 - 2026-11-13
+## 0.5.1 - 2026-11-15
 
 ### Added
 - **Automatic updates for a git clone.** When the randomizer opens, it checks GitHub for a newer version
@@ -14,8 +14,23 @@ different version.
   commits of your own, or no internet, it skips the update and the log says why. A ZIP download (no `.git`
   folder) is never touched. Turn it off with `auto_update = false` in the new `[app]` section of
   `user_settings.toml`, or with `OOTR_NO_UPDATE=1`. New file `rando/updater.py`. Tested with local test clones
-  (pull and restart, up to date, changed files, own commits, unreachable remote, turned off), but not yet
-  against GitHub from the window itself.
+  (pull and restart, up to date, changed files, own commits, unreachable remote, turned off) and in the
+  window from a test clone, but not yet against GitHub itself.
+
+### Fixed
+- **Skip Kaepora Gaebora missed his Lost Woods talk after Saria's Song** (seed 3LETP69LQZ): going back into the
+  Lost Woods after learning the song, Kaepora still stopped you. That talk (`Dm_LostWood_0010`) now counts as
+  already seen too. It's talk only (no item or quest step) and starts the same way as his Lost Woods bridge
+  talk, which the setting already skips. Not yet tested in-game.
+- **An ocarina at a starting check couldn't be played** (Skip Child Zelda, seed 3LETP69LQZ). The Ocarina of Time
+  at HC Malon Egg was in the menu from the start, but it couldn't be played, and Link held no ocarina in Saria's
+  song scene. The save only marked it as owned. The game's own ocarina scenes also record which ocarina Link
+  holds, so a starting ocarina is now given by the same action, right after Navi wakes Link (no item window).
+  Make a new save. Confirmed in-game: the ocarina is in the menu, plays, and shows in Saria's scene.
+
+## 0.5.0 - 2026-11-13
+
+### Added
 - **Your settings are saved in `user_settings.toml`**, next to `ootr_remake.pyw`, instead of `.ootr_remake.json`
   in your user folder. The window loads it when it opens and saves it on every change (before, only when you
   pressed Generate Mod), with the game and output folders. Delete it to reset everything. It's a readable
@@ -101,15 +116,6 @@ different version.
   Castle's first-visit scene.
 
 ### Fixed
-- **Skip Kaepora Gaebora missed his Lost Woods talk after Saria's Song** (seed 3LETP69LQZ): going back into the
-  Lost Woods after learning the song, Kaepora still stopped you. That talk (`Dm_LostWood_0010`) now counts as
-  already seen too. It's talk only (no item or quest step) and starts the same way as his Lost Woods bridge
-  talk, which the setting already skips. Not yet tested in-game.
-- **An ocarina at a starting check couldn't be played** (Skip Child Zelda, seed 3LETP69LQZ). The Ocarina of Time
-  at HC Malon Egg was in the menu from the start, but it couldn't be played, and Link held no ocarina in Saria's
-  song scene. The save only marked it as owned. The game's own ocarina scenes also record which ocarina Link
-  holds, so a starting ocarina is now given by the same action, right after Navi wakes Link (no item window).
-  Make a new save. Confirmed in-game: the ocarina is in the menu, plays, and shows in Saria's scene.
 - **Skip Epona Race** (experimental) didn't work: Epona never came to Epona's Song (test seed 10). Owning a horse
   isn't a save flag: the end of Ingo's race registers the ranch's Epona as your horse
   (`EventCopyAndRegisterOwnedHorse`), and the song only calls a registered horse. The old version also rewrote
