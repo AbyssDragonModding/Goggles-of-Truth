@@ -830,8 +830,21 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
     bridge_ok = bool(plan.st["shuffle_ocarinas"]) and patch_ocarina_bridge(world, emit, progress, read)
     start_items = [world.actor_for(placed.get(lid, plan.fixed.get(lid)), "event")
                    for lid in sorted(plan.start_locs) if placed.get(lid, plan.fixed.get(lid))]
+    # ocarinas need the game's own pouch action (it records which ocarina Link holds): added in the opening
+    # (faststart.give_at_start) instead of as save-data defaults
+    start_by_event = [a for a in start_items if a in faststart.START_BY_EVENT]
+    start_items = [a for a in start_items if a not in faststart.START_BY_EVENT]
     gd_ok = gamedata.apply(world, plan.st, read, emit, progress, ocarina_bridge_patched=bridge_ok,
                            start_items=start_items)
+    if start_by_event:
+        rel = faststart.START_ITEM_FLOW
+        orig, dname = read(rel)            # after Skip Opening Movie's edit of the same flow, if any
+        try:
+            new = faststart.give_at_start(start_by_event)(orig)
+        except (ValueError, KeyError, IndexError) as e:
+            raise GenerationError("Starting ocarina: %s is not as expected in this romfs (%s)" % (rel, e))
+        emit(rel, orig, new, dname)
+        progress("Starting ocarina: %s added when Navi wakes Link" % ", ".join(start_by_event))
 
     if plan.st.get("saria_song_ocarina"):
         if gd_ok:

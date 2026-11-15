@@ -83,7 +83,12 @@ SKIP_ZELDA_ITEMS = ["Pouch_Amiibo"]
 # the quest on to Step02_01 anyway. Left alone: Dm_HrlCastle_0000 (an entrance InitEvent, the same mechanism as the
 # area intros, which didn't skip in testing), Dm_HrlField_0080 (sets DreamWorld_Open), and the optional Lake Hylia
 # and Death Mountain rides (talk only).
+# Dm_LostWood_0010 is his Lost Woods talk after Saria's Song (Dm_SY_BancChangeArrive plays it once
+# HavePlayedEvent.SacredForestMeadow_Field_MelodyGet_Saria is set; talk only), missed until seed 3LETP69LQZ. Its
+# Goron City variant (Dm_LostWood_0000:EnterFromGoronCity) only plays while Dm_LostWood_0000 is unseen, so it's
+# covered by Dm_LostWood_0000.
 KAEPORA_SCENES = ["Dm_LostWood_0000",                      # outside Kokiri Forest (Lost Woods bridge)
+                  "Dm_LostWood_0010",                      # Lost Woods, after Saria's Song
                   "Dm_HrlField_0010", "Dm_HrlField_0030", "Dm_HrlField_0040",   # Hyrule Field (0040: near Gerudo Valley)
                   "Dm_ZoraRiver_0000", "Dm_ZoraRiver_0005"]
 # Owning an item: IsGet.<actor> plus, for pouch items, the count in PouchData.<actor> (a one-Int struct). Songs only

@@ -82,6 +82,60 @@ def opening_without_movie(data):
     return _check_readback(document, evfl.write(document), "OpeningEvent")
 
 
+# --- Start items given by the game's own pouch action -------------------------------------------------------
+# Most start items (Skip Child Zelda) are save-data defaults: IsGet.<item> and the PouchData count. That isn't
+# enough for an ocarina: the pouch action the game's own scenes use (PouchSystemActor
+# EventTriggerAddOrRemovePouchContent in Dm_Kokiri_0155 and Dm_MelodyGet_Time) also records which ocarina Link
+# holds (PouchActorInfo OcarinaTypeValue: Fairy 1, Time 2). With only the flags, the ocarina was in the menu but
+# couldn't be played, and Saria's song scene showed Link with no ocarina (seed 3LETP69LQZ). These items are now
+# added by that same action, silently (IsGetEvent false, as in the scenes), at the end of OpeningEvent:
+# Opening_Introduction (Navi waking Link, which runs once on every new save, skipped or not), just before its
+# autosave.
+START_ITEM_FLOW = OPENING_FLOW
+START_ITEM_ENTRY = "Opening_Introduction"
+START_BY_EVENT = ("Item_Ocarina_Fairy", "Item_Ocarina_Time")
+
+
+def give_at_start(actors):
+    """An edit of OpeningEvent that adds `actors` (one each) to the pouch just before the opening's autosave."""
+    actors = list(actors)
+
+    def edit(data):
+        document = evfl.read(data)
+        fc = document.flowchart
+        if fc is None or fc.name != "OpeningEvent":
+            raise FastStartError("OpeningEvent flowchart not found")
+        if any(e.name.startswith("RandoStartItem") for e in fc.events):
+            raise FastStartError("start items already added")
+        if not any(e.name == START_ITEM_ENTRY for e in fc.entry_points):
+            raise FastStartError("%s entry not found" % START_ITEM_ENTRY)
+        saves = [i for i, e in enumerate(fc.events) if isinstance(e, evfl.ActionEvent)
+                 and fc.actors[e.actor].name == "GameSystemActor"
+                 and fc.actors[e.actor].actions[e.action] == "EventTriggerRequestAutoSave"]
+        if len(saves) != 1:
+            raise FastStartError("expected one autosave in the opening, found %d" % len(saves))
+        save = saves[0]
+        before = [e for e in fc.events if save in _targets(e)]
+        if len(before) != 1 or not isinstance(before[0], evfl.ActionEvent) \
+                or any(save in (e.main_event, *e.sub_flow_events) for e in fc.entry_points):
+            raise FastStartError("the opening's autosave is not reached by one event")
+        base = next(a for a in fc.actors if a.name == "GameSystemActor" and not a.secondary_name)
+        _new_actor(fc, "PouchSystemActor", copy.deepcopy(base.params or {}))
+        pouch = next(i for i, a in enumerate(fc.actors) if a.name == "PouchSystemActor" and not a.secondary_name)
+        if "EventTriggerAddOrRemovePouchContent" not in fc.actors[pouch].actions:
+            fc.actors[pouch].actions.append("EventTriggerAddOrRemovePouchContent")
+        action = fc.actors[pouch].actions.index("EventTriggerAddOrRemovePouchContent")
+        nxt = save
+        for n, actor in reversed(list(enumerate(actors))):
+            fc.events.append(evfl.ActionEvent("RandoStartItem%d" % n, pouch, action, nxt, {
+                "Num": 1, "IsEquipDIrect": False, "IsSetMessageTargetActorName": False, "Actor": actor,
+                "IsGetEvent": False}))
+            nxt = len(fc.events) - 1
+        before[0].next = nxt
+        return _check_readback(document, evfl.write(document), "OpeningEvent (start items)")
+    return edit
+
+
 # --- Skip the Great Deku Tree's arrival talk, Mido kept ----------------------------------------------------
 # With Mido still blocking, the talk's state (Dm_Kokiri_0070 seen, Meet_DekuTree Complete, Get_StoneOfForest
 # GoInside, the mouth open) is set at the end of Mido's own sword-and-shield clear, after his native steps.

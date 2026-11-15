@@ -196,8 +196,8 @@ SETTINGS = [
      "(Deku Tree, Death Mountain, Zora's Domain, Colossus, Castle Town, Crater, Ice Cavern, Shadow Temple,\n"
      "Training Ground, Kokiri Forest, Goron City, Hyrule Field) still play; use the skip button for those."),
     ("skip_kaepora", "Quality of Life", "Cutscenes", "Skip Kaepora Gaebora", "bool", None, True,
-     "Kaepora Gaebora doesn't stop you to talk when you leave Kokiri Forest, in Hyrule Field or at\n"
-     "Zora's River. The quest menu and the amiibo menu item he unlocks are available anyway. His optional\n"
+     "Kaepora Gaebora doesn't stop you to talk when you leave Kokiri Forest, in the Lost Woods after\n"
+     "Saria's Song, in Hyrule Field or at Zora's River. The quest menu and the amiibo menu item he unlocks are available anyway. His optional\n"
      "rides at Lake Hylia and Death Mountain, and his talk in front of Hyrule Castle, are unchanged."),
     ("skip_opening", "Quality of Life", "Cutscenes", "Skip Opening Movie", "bool", None, True,
      "A new game starts in Link's house without the opening movie (the narrated prologue, the Great Deku\n"
@@ -227,7 +227,7 @@ SETTINGS = [
      "you don't need to meet Zelda first. Works with any Kokiri Forest setting."),
     ("anju_one_cucco", "Quality of Life", "Minigames & NPCs", "Anju Needs Only 1 Cucco", "bool", None, True,
      "Return a single cucco to Anju's pen in Kakariko to finish her minigame and get the reward."),
-    ("big_poe_one", "Quality of Life", "Minigames & NPCs", "Big Poe Buyer Needs Only 1 Big Poe (experimental)", "bool", None, False,
+    ("big_poe_one", "Quality of Life", "Minigames & NPCs", "Poe shop requires only 1 Big Poe (experimental)", "bool", None, False,
      "Sell a single Big Poe to the ghost shop in the adult Market to get his reward (normally ten,\n"
      "1000 points), so your first sale is the last one. Not yet confirmed in-game."),
     # ---- Exclusions

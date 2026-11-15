@@ -37,6 +37,12 @@ def main():
                     "then open the randomizer again.")
         return 1
     try:
+        from rando import updater
+        if updater.check():         # pulled a newer version from GitHub and started it again
+            return 0
+    except Exception:
+        pass                        # an update problem must never keep the randomizer from opening
+    try:
         from rando.gui_glass import run
         run()
     except Exception:

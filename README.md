@@ -81,6 +81,16 @@ The randomizer reads the game from your own dump; it never comes with any game f
    - Don't put it inside your romfs folder.
    - Don't run anything straight from inside the ZIP. Always extract it first.
 
+**Or, if you have [git](https://git-scm.com/downloads): clone it instead, and it keeps itself up to date.**
+
+```bash
+git clone https://github.com/AbyssDragonModding/OOTNS2-Rando
+```
+
+A cloned randomizer checks GitHub each time it opens. If there's a newer version, it pulls it, installs any
+new packages, and opens again on the new version, and the log lists what changed. A ZIP download is never
+changed. See [Updating to a new version](#updating-to-a-new-version).
+
 The extracted folder looks like this. These are the files you'll use:
 
 | File | What it's for |
@@ -145,7 +155,13 @@ to** > **Desktop (create shortcut)**.
 
 ### Updating to a new version
 
-Download and extract the new ZIP the same way. You can delete the old folder, but keep your output folder
+**A git clone updates itself** when you open the randomizer (Step 2). It only uses `git pull --ff-only`, so
+it never overwrites anything: if you changed one of the randomizer's own files, or made commits of your own,
+the update is skipped and the log says why. With no internet the check is skipped after 15 seconds at most.
+To turn it off, set `auto_update = false` under `[app]` in `user_settings.toml` (or set the environment
+variable `OOTR_NO_UPDATE=1`).
+
+**A ZIP download:** download and extract the new ZIP the same way. You can delete the old folder, but keep your output folder
 with your seeds. Then just start the randomizer. The start script installs any new packages automatically,
 and running the setup again is never harmful.
 

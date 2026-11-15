@@ -211,6 +211,14 @@ A new save starts as if Hyrule Castle had already been done as a child:
   entry. Ammo, capacity upgrades, bottles, hearts, magic, rupees and the stones/medallions are kept out. If no
   progression item lands there, they get a grantable minor item, such as a shield, Farore's Wind or the Stone
   of Agony. In the logic, these three checks are reachable from the start, and "met Zelda" is always true.
+- **Ocarinas at a start check.** The flags aren't enough for an ocarina. The game's own ocarina scenes
+  (`Dm_Kokiri_0155`, `Dm_MelodyGet_Time`) give it with `PouchSystemActor.EventTriggerAddOrRemovePouchContent`,
+  which also records which ocarina Link holds (`PouchActorInfo` `OcarinaTypeValue`: Fairy 1, Time 2). Granted
+  through the save flags, the Ocarina of Time was in the menu but couldn't be played, and Link held no ocarina
+  in Saria's song scene (seed 3LETP69LQZ). So a start check's ocarina (`faststart.START_BY_EVENT`) is no longer
+  a save default. `faststart.give_at_start` adds it with that same action, silently (`IsGetEvent` false), in
+  `OpeningEvent:Opening_Introduction` (Navi waking Link, once per new save, skipped or not), just before the
+  flow's autosave. Confirmed in-game (seed 3LETP69LQZ).
 - **Unknowns.** It hasn't been tested whether a new save picks up these Enum and Int defaults like it does
   the plain Bools. It also hasn't been tested whether a later scene could still move the castle quest back.
   If Kaepora, Zelda or the Market intro shows up anyway, please report it.
@@ -518,7 +526,8 @@ is False:
 
 | Scene | Where |
 |---|---|
-| `Dm_LostWood_0000` | Outside Kokiri Forest (the Lost Woods bridge) |
+| `Dm_LostWood_0000` | Outside Kokiri Forest (the Lost Woods bridge). Its Goron City version (`EnterFromGoronCity`) only plays while this one is unseen |
+| `Dm_LostWood_0010` | Lost Woods after Saria's Song (`Dm_SY_BancChangeArrive`, once `HavePlayedEvent.SacredForestMeadow_Field_MelodyGet_Saria` is set). Added after seed 3LETP69LQZ |
 | `Dm_HrlField_0010` | First Hyrule Field talk (`Goto_HyruleCastle:Goto_HyruleCastle_Kaepora_00`) |
 | `Dm_HrlField_0030`, `Dm_HrlField_0040` | Hyrule Field (0040 after visiting Gerudo Valley) |
 | `Dm_ZoraRiver_0000`, `Dm_ZoraRiver_0005` | Zora's River |
@@ -801,6 +810,7 @@ trap chests and the Hall of Fallen Foes are left untouched.
 | `rando/door.py` | Door of Time: Open (from Clawshot) |
 | `rando/storyskip.py` | Skip Story Scenes: quest-flow transitions replaced by the scene's flags and item |
 | `rando/usersettings.py` | `user_settings.toml` (next to `ootr_remake.pyw`): the window's settings and folders, loaded when it opens and saved on every change. Read with `tomllib`, written by hand with every setting's allowed values as comments; invalid values fall back to the default. Takes over `~/.ootr_remake.json` once |
+| `rando/updater.py` | Update check at launch, called from `ootr_remake.pyw` before the window is imported. Only in a git clone with an upstream branch: `git fetch` (15 s timeout, `GIT_TERMINAL_PROMPT=0`, no console window), then `git pull --ff-only` when behind and the tree has no tracked changes and no local commits. Runs `pip install -r requirements.txt` when that file changed. Restarts with `sys.executable` and `OOTR_JUST_UPDATED=1` (so the new process doesn't check again), and passes the log text in `OOTR_UPDATE_MSG`, which `gui_glass` writes to the log. Off with `[app] auto_update = false` (`usersettings.load_app`; `save` keeps the `[app]` section) or `OOTR_NO_UPDATE` |
 | `rando/gui_glass.py` | The Raven GUI (`ootr_remake.pyw` starts it); its layout is `rando/ui/main.xml`, Raven's XML format, with the settings cards made from `rando/settings.py` when the window opens |
 
 How each location type is patched:

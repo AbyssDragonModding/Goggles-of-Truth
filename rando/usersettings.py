@@ -18,6 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PATH = os.path.join(ROOT, "user_settings.toml")
 OLD_JSON = os.path.join(os.path.expanduser("~"), ".ootr_remake.json")
 PATH_KEYS = (("game", "romfs"), ("output", "out"))      # TOML key, the window's own key
+APP_DEFAULTS = {"auto_update": True}                     # [app]: options for the program itself, not the seed
 
 HEADER = """\
 # OoT Remake Randomizer: your settings.
@@ -102,9 +103,28 @@ def load(path=PATH):
     return st, paths, ["user_settings.toml: " + w for w in warnings]
 
 
-def dumps(st, paths):
+def load_app(path=PATH):
+    """The [app] options (rando/updater.py reads auto_update), defaults for anything missing or invalid."""
+    app = dict(APP_DEFAULTS)
+    try:
+        with open(path, "rb") as fh:
+            raw = tomllib.load(fh).get("app") or {}
+    except (OSError, tomllib.TOMLDecodeError):
+        return app
+    for key, default in APP_DEFAULTS.items():
+        if isinstance(raw.get(key), type(default)):
+            app[key] = raw[key]
+    return app
+
+
+def dumps(st, paths, app=None):
     st = S.normalize(st)
-    out = [HEADER, "[paths]",
+    app = dict(APP_DEFAULTS, **(app or {}))
+    out = [HEADER, "[app]",
+           "# Check GitHub for a newer version when the randomizer opens, pull it and restart (only in a git",
+           "# clone; a downloaded zip is never changed): true or false. Default: true",
+           "auto_update = %s" % _toml_value(app["auto_update"]),
+           "", "[paths]",
            "# Your game (.nup file or extracted romfs folder) and the folder the mod is written to.",
            "# Backslashes are written as \\\\ (or use single quotes: game = 'D:\\Games\\game.nup')."]
     for tkey, key in PATH_KEYS:
@@ -134,7 +154,7 @@ def save(st, paths, path=PATH):
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(dumps(st, paths))
+            fh.write(dumps(st, paths, load_app(path)))      # keep [app] as it is in the file
         os.replace(tmp, path)
         return None
     except OSError as e:

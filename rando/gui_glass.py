@@ -17,7 +17,7 @@ import zlib
 import raven as r
 
 from . import settings as S
-from . import gamecheck, gamefiles, usersettings
+from . import gamecheck, gamefiles, updater, usersettings
 from .generator import VERSION, generate
 
 ACCENT = (0.36, 0.80, 0.56)          # Kokiri green
@@ -211,6 +211,9 @@ class GlassApp:
         self.write("Ready. Pick your romfs and an output folder, then Generate.")
         for m in self.load_messages:
             self.write(m)
+        update_msg = os.environ.pop(updater.MSG_ENV, None)     # set by updater.check() at launch
+        if update_msg:
+            self.write(update_msg)
         self._verify_game()
 
     def _set_choice(self, key, opts, combo):
