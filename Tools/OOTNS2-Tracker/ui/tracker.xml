@@ -14,7 +14,7 @@
                 <MenuItem Text="Save" Shortcut="Ctrl+S" OnClicked="file_save"/>
                 <MenuItem Text="Save As..." Shortcut="Ctrl+Shift+S" OnClicked="file_save_as"/>
                 <MenuItem Separator="true"/>
-                <MenuItem Text="Link romfs folder / re-extract icons..." OnClicked="file_relink"/>
+                <MenuItem Text="Link game (.nup or romfs) / re-extract icons..." OnClicked="file_relink"/>
                 <MenuItem Separator="true"/>
                 <MenuItem Text="Exit" OnClicked="file_exit"/>
             </Menu>

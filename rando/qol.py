@@ -1,4 +1,5 @@
 """Quality-of-life patches that are not tied to item placement."""
+import copy
 import os
 import struct
 
@@ -56,7 +57,7 @@ SARIA_AINBS = ["Logic/SacredForestMeadow_Child_Prefab_3265.logic.module.ainb",
 
 def patch_saria_song(world, emit, progress, read, old_flag, new_flag):
     for rel in SARIA_AINBS:
-        if not os.path.exists(os.path.join(world.romfs, *rel.split("/"))):
+        if not world.files.exists(rel):
             progress("warning: %s not found; Saria's Song still needs Zelda" % rel)
             continue
         orig = read(rel)[0]
@@ -78,7 +79,7 @@ GS_DEATH = "System/CombinationDataTableData/Enemy_Skulltula_Gold_game__death__De
 
 
 def patch_gs_death(world, emit, progress, read):
-    if not os.path.exists(os.path.join(world.romfs, *GS_DEATH.split("/"))):
+    if not world.files.exists(GS_DEATH):
         progress("warning: Gold Skulltula death settings not found; shuffled Skulltulas may respawn")
         return
     orig = read(GS_DEATH)[0]
@@ -117,7 +118,7 @@ def _ainb_node_name(data, i):
 def patch_dodongo_bag_bombs(world, emit, progress, read):
     from .gamedata import mm3
     rel = DODONGO_AINB
-    if not os.path.exists(os.path.join(world.romfs, *rel.split("/"))):
+    if not world.files.exists(rel):
         progress("warning: Dodongo's Cavern boulder logic not found; bag bombs still can't open it")
         return False
     data = bytearray(read(rel)[0])
@@ -156,7 +157,7 @@ TAUGHT_SONGS = {"Item_Melody_ZeldaLullaby", "Item_Melody_EponaSong", "Item_Melod
 def patch_song_teaching(world, emit, progress, read):
     n = 0
     for rel in (SONG_TEACH_FLOW, SONG_TEACH_FLOW.replace(".bfevfl.zs", ".110.bfevfl.zs")):
-        if not os.path.exists(os.path.join(world.romfs, *rel.split("/"))):
+        if not world.files.exists(rel):
             continue
         data, dname = read(rel)
         ev = F.EvflFile(data)
@@ -245,7 +246,7 @@ OCARINA_BRIDGE_ALWAYS_PLAYED = "Dm_Kokiri_0045"
 
 
 def patch_ocarina_bridge(world, emit, progress, read):
-    if not os.path.exists(os.path.join(world.romfs, *OCARINA_BRIDGE_AINB.split("/"))):
+    if not world.files.exists(OCARINA_BRIDGE_AINB):
         return False
     orig = read(OCARINA_BRIDGE_AINB)[0]
     new, n = _ainb_repoint_string_const(orig, "EventName", OCARINA_BRIDGE_EVENT, OCARINA_BRIDGE_ALWAYS_PLAYED)
@@ -291,8 +292,7 @@ def patch_egg_hatch_guard(world, emit, progress, read):
 
 
 def patch_anju(world, emit, progress, read, cuccos=1):
-    src = os.path.join(world.romfs, *ANJU_AINB.split("/"))
-    if not os.path.exists(src):
+    if not world.files.exists(ANJU_AINB):
         progress("warning: Anju minigame logic not found; skipped")
         return
     orig = read(ANJU_AINB)[0]
@@ -305,7 +305,7 @@ def patch_anju(world, emit, progress, read, cuccos=1):
     emit(ANJU_AINB, orig, bytes(new), None, compressed=False)
 
     for rel in (ANJU_FLOW, ANJU_FLOW.replace(".bfevfl.zs", ".110.bfevfl.zs")):
-        if not os.path.exists(os.path.join(world.romfs, *rel.split("/"))):
+        if not world.files.exists(rel):
             continue
         data, dname = read(rel)
         ev = F.EvflFile(data)
@@ -322,64 +322,175 @@ def patch_anju(world, emit, progress, read, cuccos=1):
             emit(rel, data, ev.data(), dname)
 
 
-# --- Small Chests Only: big chests become small ones, with the small chest's short opening ------------------
-# Obj_TBox_A_02 (big) and A_03 (Boss Key) are built on A_01 (their packs carry Obj_TBox_A_01's ActorParam), so
-# the stage actor's Gyaml can simply change. Which opening plays is the chest's GetEventName blackboard string:
-# Dm_SY_TreasureboxSmall for A_01, Dm_SY_Treasurebox (the long one) for A_02. About 30 big chests override it
-# per placement (Dynamic.GetEventName, a row of RSDB/EventSetting) with a script that ends in a jump to
-# Dm_SY_Treasurebox, so in 0.4.0 they kept the long opening. Pointing those jumps at Dm_SY_TreasureboxSmall
-# (0.4.1) left the chests unopenable. Now:
-#  - scripts that only add a Navi line or a camera move before the big opening are dropped from the chest, so it
-#    opens like any small chest (the same as the randomized Kokiri Sword chest, see generator.ITEM_GET_EVENTS);
-#  - chests whose script runs story events stay vanilla big chests.
-SMALL_CHEST = {"Obj_TBox_A_02": "Obj_TBox_A_01", "Obj_TBox_A_03": "Obj_TBox_A_01",
-               "Obj_TBox_A_02_NoBake": "Obj_TBox_A_01_NoBake", "Obj_TBox_A_03_NoBake": "Obj_TBox_A_01_NoBake"}
-# Story scripts: quest steps, cutscenes, Ruto, a minigame's state.
-BIG_CHEST_STORY_EVENTS = {
-    "SageOfSpirit_NaboorIsTakenAway",           # Nabooru is taken (Spirit quest Step07, Dm_DesertColossus_0030)
-    "SageOfWater_MelodyGet_Water",              # Sheik teaches the Serenade (Water quest Step04/05)
-    "InsideJabuJabuBelly_TreasureBoxWithRuto09", "InsideJabuJabuBelly_TreasureBoxWithRuto12",   # Ruto
-    "MiniGame_DampeRace_OpenGoalTBox",          # Dampe race goal chest state
-    "InsideGanonCastle_Get_Gauntlet_Gold",      # Dm_InsideGanonCastle_0006
-    "SubEvent_GetIceArrow_OpenTBox",            # completes the Ice Arrow side quest
-    "Get_StoneOfForest_GetSword",               # Kokiri Sword scene (dropped already when that chest is randomized)
-}
+# --- Dungeon items in small chests -------------------------------------------------------------------------
+# Only the big chest's opening credits a dungeon's map, compass or boss key. Dm_SY_Treasurebox's entry
+# Success_AddContent asks EventQueryTreasureBoxIsDungeonCommonItemInside (by the item's actor name) what the chest
+# holds: 0 map, 1 compass, 2 boss key, 3 small key, 4 anything else. For 0-2 it shows the item's get text
+# (GetPouchContent:DisplayGetByActorName), runs EventGetDungeonMap / Compass / BossKey (boss key: also the boss key
+# display and a 50-frame wait) and opens the pick-up window. Dm_SY_TreasureboxSmall's own item step (ItemDisplay /
+# ItemDisplayNoSpace) only adds to the pouch: a boss key from a small chest left the boss door shut, a map or
+# compass left the pause map blank (reported by the Clawshot randomizer, confirmed in the flows).
+#
+# 0.5.0 first pointed the small chest's item step at the big chest's Success_AddContent. That skipped the small
+# chest's own item display and called into another flow file, and small chests could no longer be opened (test
+# seeds 3 and 4). Now the same question and steps are added inside the small chest's flow, in front of its own
+# "can it go in the pouch" check (EventQueryCanAddToPorch): maps, compasses and boss keys take the new steps;
+# small keys and every other item go on exactly as before. Nothing calls into another flow file.
+SMALL_TBOX_FLOW = "Event/EventFlow/Dm_SY_TreasureboxSmall.bfevfl.zs"
+SMALL_TBOX_ENTRIES = ("ItemDisplay", "ItemDisplayNoSpace")
+BIG_TBOX, BIG_TBOX_ENTRY = "Dm_SY_Treasurebox", "Success_AddContent"
+DUNGEON_ITEM_QUERY = "EventQueryTreasureBoxIsDungeonCommonItemInside"
+DUNGEON_ITEM_ACTIONS = {0: "EventGetDungeonMap", 1: "EventGetDungeonCompass", 2: "EventGetDungeonBossKey"}
 
 
-def patch_small_chests(world, emit, progress, read):
-    swapped = dropped = kept = 0
-    banc = os.path.join(world.romfs, "Banc")
-    keys = [k.encode() for k in SMALL_CHEST]
-    for dp, _, fns in sorted(os.walk(banc)):
-        for fn in sorted(fns):
-            if not fn.endswith(".bcett.byml.zs"):
+class SmallChestError(ValueError):
+    pass
+
+
+def _flow_targets(e, evfl):
+    if isinstance(e, (evfl.SwitchEvent, evfl.SubFlowSwitchEvent)):
+        return [t for _, t in e.cases]
+    if isinstance(e, evfl.ForkEvent):
+        return [*e.forks, e.join]
+    if isinstance(e, (evfl.ActionEvent, evfl.JoinEvent, evfl.SubFlowEvent)):
+        return [e.next]
+    return []
+
+
+def _reach(fc, start, evfl):
+    """Event indices reachable from `start` inside one entry (sub flow calls are not followed)."""
+    seen, stack = set(), [start]
+    while stack:
+        i = stack.pop()
+        if i in seen or not isinstance(i, int) or i >= len(fc.events):
+            continue
+        seen.add(i)
+        stack.extend(_flow_targets(fc.events[i], evfl))
+    return seen
+
+
+def _big_chest_steps(big, evfl):
+    """(question params, get-text call, {case: [(actor, action, params)]}) from the big chest's Success_AddContent."""
+    entry = big.entry_point(BIG_TBOX_ENTRY)
+    q1 = big.events[entry.main_event]
+    if not isinstance(q1, evfl.SwitchEvent) or big.actors[q1.actor].queries[q1.query] != DUNGEON_ITEM_QUERY:
+        raise SmallChestError("the big chest's item step does not start with %s" % DUNGEON_ITEM_QUERY)
+    text = big.events[dict(q1.cases)[0]]
+    q2 = big.events[text.next] if isinstance(text, evfl.SubFlowEvent) else None
+    if not isinstance(q2, evfl.SwitchEvent) or big.actors[q2.actor].queries[q2.query] != DUNGEON_ITEM_QUERY:
+        raise SmallChestError("the big chest's dungeon item steps are not as expected")
+    chains = {}
+    for case, action in DUNGEON_ITEM_ACTIONS.items():
+        steps, i = [], dict(q2.cases)[case]
+        while isinstance(i, int) and i < len(big.events):
+            e = big.events[i]
+            if not isinstance(e, evfl.ActionEvent):
+                raise SmallChestError("unexpected step %s after the %s" % (e.name, action))
+            a = big.actors[e.actor]
+            steps.append((a.name, a.actions[e.action], copy.deepcopy(e.params)))
+            i = e.next
+        if steps[0][1] != action or steps[-1][1] != "EventTriggerRequestOpenPickUpWindow":
+            raise SmallChestError("the %s steps are not as expected" % action)
+        chains[case] = steps
+    return copy.deepcopy(q1.params), text, chains
+
+
+def small_chest_dungeon_items(data, big_data):
+    """Dm_SY_TreasureboxSmall (decompressed) with the dungeon item steps added in front of its pouch check."""
+    from . import evfl
+    doc = evfl.read(data)
+    fc = doc.flowchart
+    if any(e.name.startswith("RandoDungeonItem") for e in fc.events):
+        raise SmallChestError("small chest flow already changed")
+    q_params, text, chains = _big_chest_steps(evfl.read(big_data).flowchart, evfl)
+
+    def actor(name):
+        idx = next((i for i, a in enumerate(fc.actors) if a.name == name and not a.secondary_name), None)
+        if idx is None:
+            raise SmallChestError("actor %s not in the small chest flow" % name)
+        return idx
+
+    def action(name, act):
+        a = fc.actors[actor(name)]
+        if act not in a.actions:
+            a.actions.append(act)
+        return actor(name), a.actions.index(act)
+
+    starter = actor("TreasureBox_EventStarter")
+    if DUNGEON_ITEM_QUERY not in fc.actors[starter].queries:
+        fc.actors[starter].queries.append(DUNGEON_ITEM_QUERY)
+    query = fc.actors[starter].queries.index(DUNGEON_ITEM_QUERY)
+
+    # the pouch checks the item steps reach
+    checks = set()
+    for name in SMALL_TBOX_ENTRIES:
+        for i in _reach(fc, fc.entry_point(name).main_event, evfl):
+            e = fc.events[i]
+            if isinstance(e, evfl.SwitchEvent) and fc.actors[e.actor].queries[e.query] == "EventQueryCanAddToPorch":
+                checks.add(i)
+    if not checks:
+        raise SmallChestError("the small chest's pouch check was not found")
+
+    added = []
+    for n, check in enumerate(sorted(checks)):
+        def add(e):
+            fc.events.append(e)
+            added.append(len(fc.events) - 1)
+            return len(fc.events) - 1
+        q1 = add(evfl.SwitchEvent("RandoDungeonItem%d_Is" % n, starter, query, [], copy.deepcopy(q_params)))
+        say = add(evfl.SubFlowEvent("RandoDungeonItem%d_Text" % n, text.flowchart, text.entry_point, evfl.NONE,
+                                    copy.deepcopy(text.params)))
+        q2 = add(evfl.SwitchEvent("RandoDungeonItem%d_Which" % n, starter, query, [], copy.deepcopy(q_params)))
+        firsts = {}
+        for case, steps in chains.items():
+            idx = []
+            for k, (a_name, act, params) in enumerate(steps):
+                a, ai = action(a_name, act)
+                idx.append(add(evfl.ActionEvent("RandoDungeonItem%d_%d_%d" % (n, case, k), a, ai, evfl.NONE,
+                                                copy.deepcopy(params))))
+            for i, j in zip(idx, idx[1:]):
+                fc.events[i].next = j
+            firsts[case] = idx[0]
+        fc.events[q1].cases = [(0, say), (1, say), (2, say), (3, check), (4, check)]
+        fc.events[say].next = q2
+        fc.events[q2].cases = [(0, firsts[0]), (1, firsts[1]), (2, firsts[2]), (3, check), (4, check)]
+        # everything that led to the pouch check now asks the question first
+        for i, e in enumerate(fc.events):
+            if i in added:
                 continue
-            rel = os.path.relpath(os.path.join(dp, fn), world.romfs).replace(os.sep, "/")
-            orig, dname = read(rel)
-            if not any(k in orig for k in keys):
-                continue
-            root = F.byml_load(orig)
-            hit = 0
-            for a in root.get("Actors", []):
-                small = SMALL_CHEST.get(a.get("Gyaml"))
-                if not small or not world.actor_exists(small):
-                    continue
-                dyn = a.get("Dynamic") or {}
-                script = dyn.get("GetEventName")
-                if script in BIG_CHEST_STORY_EVENTS:
-                    kept += 1
-                    continue
-                if script:
-                    del dyn["GetEventName"]
-                    dropped += 1
-                a["Gyaml"] = small
-                hit += 1
-            if hit:
-                swapped += hit
-                emit(rel, orig, F.byml_dump(root), dname)
-    progress("Small chests: %d big chest placements now small (%d Navi/camera scripts dropped); "
-             "%d story chests kept big" % (swapped, dropped, kept))
-    return swapped, dropped, kept
+            if isinstance(e, (evfl.SwitchEvent, evfl.SubFlowSwitchEvent)):
+                e.cases = [(v, q1 if t == check else t) for v, t in e.cases]
+            elif isinstance(e, evfl.ForkEvent):
+                e.forks = [q1 if t == check else t for t in e.forks]
+                if e.join == check:
+                    raise SmallChestError("a join leads to the pouch check")
+            elif isinstance(e, (evfl.ActionEvent, evfl.JoinEvent, evfl.SubFlowEvent)) and e.next == check:
+                e.next = q1
+        for ep in fc.entry_points:
+            if ep.main_event == check:
+                ep.main_event = q1
+    # an entry point lists the sub flow calls it reaches; a missing one hung the game (Clawshot round 13)
+    calls = {i for i in added if isinstance(fc.events[i], evfl.SubFlowEvent)}
+    for ep in fc.entry_points:
+        for i in sorted(_reach(fc, ep.main_event, evfl) & calls):
+            if i not in ep.sub_flow_events:
+                ep.sub_flow_events.append(i)
+    out = evfl.write(doc)
+    if evfl.read(out) != doc:
+        raise SmallChestError("the small chest flow does not read back")
+    return out, len(checks)
+
+
+def patch_small_chest_dungeon_items(world, emit, progress, read):
+    orig, dname = read(SMALL_TBOX_FLOW)
+    try:
+        data, n = small_chest_dungeon_items(orig, read("Event/EventFlow/%s.bfevfl.zs" % BIG_TBOX)[0])
+    except (SmallChestError, KeyError, IndexError, ValueError) as e:
+        progress("warning: dungeon items in small chests stay uncredited (%s)" % e)
+        return 0
+    emit(SMALL_TBOX_FLOW, orig, data, dname)
+    progress("Small chests: maps, compasses and boss keys now count for their dungeon (%d item steps)" % n)
+    return n
 
 
 # --- Skip Child Zelda: the Kokiri stay where they are before the Hyrule Castle trip ---------------------------
@@ -393,9 +504,9 @@ CASTLE_DONE_EXP = "Goto_HyruleCastle_IsCompleted_Exp"
 
 
 def patch_kokiri_schedules(world, emit, progress, read):
-    folder = os.path.join(world.romfs, *KOKIRI_SCHEDULES.split("/"))
+    names = world.files.listdir(KOKIRI_SCHEDULES)
     n = 0
-    for fn in sorted(os.listdir(folder)):
+    for fn in sorted(names):
         if not (fn.startswith("Npc_Kokiri_") and "_Child." in fn):
             continue
         rel = KOKIRI_SCHEDULES + "/" + fn
@@ -407,7 +518,7 @@ def patch_kokiri_schedules(world, emit, progress, read):
             root["ConditionalSchedule"] = keep
             emit(rel, orig, F.byml_dump(root), None, compressed=False)
             n += 1
-    if not any(fn.startswith("Npc_Kokiri_Mido_Child") for fn in os.listdir(folder)):
+    if not any(fn.startswith("Npc_Kokiri_Mido_Child") for fn in names):
         progress("warning: Mido's schedule not found; he may leave his post with Skip Child Zelda")
     progress("Skip Child Zelda: %d Kokiri schedules keep their before-the-castle spots" % n)
     return n

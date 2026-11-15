@@ -23,9 +23,13 @@ from compression import zstd
 class ZsContext:
     """Loads the zstd dictionaries from the romfs and (de)compresses with them."""
 
-    def __init__(self, romfs):
-        self.romfs = romfs
-        raw = open(os.path.join(romfs, "Pack", "ZsDic.pack.zs"), "rb").read()
+    def __init__(self, files):
+        """`files`: a gamefiles.GameFiles (romfs folder or .nup), or a romfs folder path."""
+        if isinstance(files, str):
+            from .gamefiles import FolderFiles
+            files = FolderFiles(files)
+        self.files = files
+        raw = files.read("Pack/ZsDic.pack.zs")
         files = sarc_files(zstd.decompress(raw))
         self.dicts = {}       # name -> ZstdDict
         self.by_id = {}       # dict id -> name
@@ -52,8 +56,7 @@ class ZsContext:
 
     def read(self, rel_path):
         """Read + decompress a romfs-relative .zs file. Returns (data, dict_name)."""
-        raw = open(os.path.join(self.romfs, rel_path), "rb").read()
-        return self.decompress(raw)
+        return self.decompress(self.files.read(rel_path))
 
 
 # ----------------------------------------------------------------------------- SARC

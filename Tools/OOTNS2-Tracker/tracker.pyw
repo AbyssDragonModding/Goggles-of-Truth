@@ -1,14 +1,15 @@
 """OoT (Switch 2) item tracker, built with Raven (pip install raven-gui).
 
-On first start it asks for the user's own extracted romfs and runs
-extract_item_icons.py on it (colour icons + --grayscale copies) into ./icons.
+On first start it asks for the user's own game (its .nup file, or the extracted
+romfs) and runs extract_item_icons.py on it (colour icons + --grayscale copies)
+into ./icons.
 No game file is shipped with the tracker: the icons only ever come from the
 user's game.
 
 Left click a cell: next tier (or +1). Right click: previous tier (or -1);
 the first tier goes back to the grayscale "not acquired" icon, and right
 clicking that does nothing. Shift steps counters by 5.
-File menu: New, Open, Save, Save As (JSON), and re-linking the romfs.
+File menu: New, Open, Save, Save As (JSON), and re-linking the game (.nup or romfs).
 """
 import ctypes
 import json
@@ -289,7 +290,7 @@ class Tracker:
 # ---------------------------------------------------------------- setup window
 
 class Setup:
-    """Asks for the romfs folder, then extracts the icons on a worker thread."""
+    """Asks for the game's .nup or romfs folder, then extracts the icons on a worker thread."""
 
     def __init__(self, app, cancel_allowed):
         self.app = app
@@ -308,6 +309,7 @@ class Setup:
             if ICON_DIR.exists():
                 self.say(f"{len(missing)} icons are missing: extract them again.")
         r.Raction_bind("setup_browse", lambda s, a, u: self.browse())
+        r.Raction_bind("setup_browse_nup", lambda s, a, u: self.browse_nup())
         r.Raction_bind("setup_extract", lambda s, a, u: self.start())
         r.Raction_bind("setup_cancel", lambda s, a, u: self.cancel())
         r.Rwindow_set_close_callback(self.window, lambda w, u: self.on_close())
@@ -321,21 +323,34 @@ class Setup:
         if path:
             r.Rtext_input_set_text(self.path_input, path)
 
+    def browse_nup(self):
+        desc = r.RFileDialogDesc(parent=self.window, title=b"Select your game's .nup file")
+        filters = (r.RFileFilter * 2)(r.RFileFilter(b"Game package (*.nup)", b"*.nup"),
+                                      r.RFileFilter(b"All files", b"*"))
+        desc.filters, desc.filter_count = filters, 2
+        path = r.Rfile_dialog_open(desc)
+        if path:
+            r.Rtext_input_set_text(self.path_input, path)
+
     def start(self):
         if self.busy:
             return
         typed = (r.Rtext_input_get_text(self.path_input) or "").strip().strip('"')
         if not typed:
-            self.say("Choose your romfs folder first.")
+            self.say("Choose your game's .nup file or romfs folder first.")
             return
         try:
             import extract_item_icons
         except ImportError as e:
             self.say(str(e))
             return
-        romfs = extract_item_icons.find_romfs(typed)
+        try:
+            romfs = extract_item_icons.find_romfs(typed)
+        except ValueError as e:
+            self.say(str(e))
+            return
         if romfs is None:
-            self.say("That folder has no UI\\Tex\\Icon inside: pick the romfs folder of your OoT (Switch 2) dump.")
+            self.say("No item icons found there: pick your OoT (Switch 2) .nup file, or the romfs folder of your dump.")
             return
         self.busy = True
         r.Rwidget_set_enabled(self.go, r.R_FALSE)
@@ -347,6 +362,8 @@ class Setup:
                 error = None if not missing_icons() else f"Extraction finished but icons are missing: {missing_icons()[:5]}"
             except Exception as e:  # report anything to the window instead of dying on a worker thread
                 count, error = 0, f"Extraction failed: {e}"
+            finally:
+                romfs.close()              # release the .nup
             r.Rtask_post(lambda u: self.finished(romfs, count, error))
 
         r.Rtask_run_async(work)
@@ -357,7 +374,7 @@ class Setup:
         if error:
             self.say(error)
             return
-        self.app.settings["romfs"] = str(romfs)
+        self.app.settings["romfs"] = str(romfs.path)
         save_settings(self.app.settings)
         self.app.setup_done(count)
 
@@ -409,7 +426,7 @@ class App:
         if self.tracker:
             self.tracker.drop_textures()  # pick up the freshly extracted files
             self.tracker.refresh_all()
-            self.tracker.set_status(f"Extracted {count} icons from your romfs")
+            self.tracker.set_status(f"Extracted {count} icons from your game files")
         else:
             self.open_tracker()
 

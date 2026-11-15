@@ -3,7 +3,6 @@
 Install the Python bindings first:   pip install raven-gui
 Started by ootr_remake.pyw.
 """
-import json
 import math
 import os
 import queue
@@ -18,10 +17,9 @@ import zlib
 import raven as r
 
 from . import settings as S
-from . import gamecheck
+from . import gamecheck, gamefiles, usersettings
 from .generator import VERSION, generate
 
-CONFIG = os.path.join(os.path.expanduser("~"), ".ootr_remake.json")
 ACCENT = (0.36, 0.80, 0.56)          # Kokiri green
 GOLD = (0.96, 0.80, 0.38)            # Triforce gold for headings
 MUTED = (0.78, 0.82, 0.86, 0.85)
@@ -56,78 +54,70 @@ def _wallpaper_png(w=640, h=420):
             + chunk(b"IDAT", zlib.compress(bytes(rows), 6)) + chunk(b"IEND", b""))
 
 
-# --------------------------------------------------------------------------- small layout helpers
-def vbox(spacing=8):
-    w = r.Rwidget_create(r.R_WIDGET_VBOX)
-    r.Rpanel_set_spacing(w, spacing)
-    return w
+# --------------------------------------------------------------------------- XML layout
+UI_XML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "main.xml")
+GOLD_HEX, MUTED_HEX = "#F5CC61", "#C7D1DBD9"
 
 
-def hbox(spacing=8):
-    w = r.Rwidget_create(r.R_WIDGET_HBOX)
-    r.Rpanel_set_spacing(w, spacing)
-    return w
+def _attr(text):
+    """A value for an XML attribute: escaped, line breaks kept."""
+    return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("\n", "&#10;"))
 
 
-def add(parent, child, fill=None, pad=None):
-    r.Rwidget_add_child(parent, child)
-    if fill is not None:
-        r.Rslot_set_fill(child, fill)
-    else:
-        r.Rslot_set_auto(child)
-    if pad:
-        r.Rslot_set_padding(child, *pad)
-    return child
+def _card(title, body, top=0, bottom=0):
+    return ('<Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" '
+            'Slot.Padding="6,%d,6,%d"><VBox Spacing="10"><Label Text="%s" TextSize="16" Color="%s"/>%s</VBox></Border>'
+            % (top, bottom, _attr(title), GOLD_HEX, body))
 
 
-def label(text, size=None, color=None, wrap=False):
-    w = r.Rlabel_create(text)
-    if size:
-        r.Rlabel_set_text_size(w, size)
-    if color:
-        r.Rlabel_set_color(w, *(color if len(color) == 4 else color + (1.0,)))
-    if wrap:
-        r.Rlabel_set_wrap(w, 1)
-    return w
+def settings_xml(tab):
+    """The cards of one settings tab, from rando/settings.py: one card per group, a switch per on/off setting,
+    a label and a drop-down per choice. Each control is named set_<key> and fires the action set.<key>."""
+    groups = []
+    for key, t, group, text, typ, opts, default, tip in S.SETTINGS:
+        if t != tab or typ == "list":
+            continue
+        if not groups or groups[-1][0] != group:
+            groups.append((group, []))
+        if typ == "bool":
+            groups[-1][1].append('<Checkbox Name="set_%s" Style="Switch" Text="%s" Tooltip="%s" OnChanged="set.%s"/>'
+                                 % (key, _attr(text), _attr(tip), key))
+        else:
+            items = "|".join(label.replace("|", "/") for _, label in opts)
+            groups[-1][1].append(
+                '<HBox Spacing="12"><Label Text="%s" TextSize="14" Tooltip="%s" Slot.Fill="1" Slot.VAlign="Center"/>'
+                '<ComboBox Name="set_%s" Items="%s" Tooltip="%s" OnChanged="set.%s" Slot.Fill="0.9"/></HBox>'
+                % (_attr(text), _attr(tip), key, _attr(items), _attr(tip), key))
+    return "".join(_card(g, "".join(rows), top=10 if i == 0 and tab != "ROM Options" else 0)
+                   for i, (g, rows) in enumerate(groups))
 
 
-def card(title=None, material=r.R_MATERIAL_FROSTED_GLASS):
-    """A rounded glass panel; returns (border, inner vbox)."""
-    b = r.Rwidget_create(r.R_WIDGET_BORDER)
-    r.Rborder_set_material(b, material)
-    r.Rborder_set_corner_radius(b, 16, 16, 16, 16)
-    r.Rborder_set_padding(b, 18, 14, 18, 16)
-    r.Rborder_set_shadow(b, 18, 0, 4)
-    inner = vbox(10)
-    r.Rwidget_add_child(b, inner)
-    if title:
-        add(inner, label(title, 16, GOLD))
-    return b, inner
+def unsupported_xml():
+    return "".join('<Label Text="%s" TextSize="14"/><Label Text="%s" TextSize="13" Color="%s" Wrap="true" '
+                   'Slot.Padding="20,0,0,6"/>' % (_attr("\u2022  " + name), _attr(why), MUTED_HEX)
+                   for name, why in S.UNSUPPORTED)
 
 
-def text_input(placeholder="", text=""):
-    w = r.Rwidget_create(r.R_WIDGET_TEXT_INPUT)
-    if placeholder:
-        r.Rtext_input_set_placeholder(w, placeholder)
-    if text:
-        r.Rtext_input_set_text(w, text)
-    return w
+def window_xml():
+    """rando/ui/main.xml with its generated parts filled in."""
+    with open(UI_XML, encoding="utf-8") as fh:
+        text = fh.read()
+    for tab in {s[1] for s in S.SETTINGS}:
+        text = text.replace("<!--@@settings %s@@-->" % tab, settings_xml(tab))
+    text = text.replace("@@preset_items@@", _attr("|".join(PRESET_ITEMS)))
+    tip = "Sets every gameplay setting for a seed difficulty (Excluded Locations and Create Spoiler Log are kept).\n" \
+          "Only options confirmed in-game are used. Change anything afterwards and the preset shows Custom.\n\n" + \
+          "\n\n".join("%s: %s" % (n, S.PRESET_TIPS[n]) for n in S.PRESETS)
+    text = text.replace("@@preset_tip@@", _attr(tip))
+    return text.replace("<!--@@unsupported@@-->", unsupported_xml())
 
 
-def button(text, cb, primary=False, flat=False):
-    w = r.Rbutton_create(text)
-    if primary:
-        r.Rbutton_set_style(w, r.R_BUTTON_PRIMARY)
-    elif flat:
-        r.Rbutton_set_style(w, r.R_BUTTON_FLAT)
-    r.Rbutton_set_clicked_callback(w, lambda b, ud: cb())
-    return w
+PRESET_ITEMS = ["Custom"] + list(S.PRESETS)
 
 
 # --------------------------------------------------------------------------- app
 class GlassApp:
-    TABS = ["ROM Options", "Main Rules", "Dungeon Items", "Other", "Exclusions", "Not Supported"]
-
     def __init__(self):
         if not r.Rinit(r.R_BACKEND_VULKAN):
             raise RuntimeError("Raven could not start (a Vulkan driver is required).")
@@ -139,11 +129,12 @@ class GlassApp:
         if tex != r.R_INVALID_ID:
             r.Rtheme_set_wallpaper(tex)
 
-        cfg = self._load_config()
-        self.st = S.normalize(cfg.get("settings", {}))
+        st, paths, self.load_messages = usersettings.load()
+        self.st = S.normalize(st)
         self.excluded = set(self.st["excluded_locations"])
-        self.paths = {"romfs": cfg.get("romfs", ""), "exefs": cfg.get("exefs", ""), "out": cfg.get("out", ""),
-                      "name": "", "seed": ""}
+        self.paths = {"romfs": paths["romfs"], "out": paths["out"], "name": "", "seed": ""}
+        self._syncing = False        # True while the preset drop-down is set from code
+        self._loaded = False         # nothing is saved until the window is filled in
         self.game = None             # last gamecheck.GameCheck result
         self.queue = queue.Queue()
         self.busy = False
@@ -156,175 +147,103 @@ class GlassApp:
         self.controls = {}           # setting key -> widget
         self._phase = 0.0
 
-        self.window = r.Rwindow_create("OoT Remake Randomizer", 1000, 800, r.R_WINDOW_DEFAULT)
-        self._build()
-        r.Rwindow_set_content(self.window, self.root)
+        self.window = r.Rwindow_create_from_xml(window_xml())
+        if self.window == r.R_INVALID_ID:
+            err = r.Rerror_get_last()
+            raise RuntimeError("The window layout (rando/ui/main.xml) could not be loaded: %s" % (err[1] or err[0]))
+        self._bind()
         r.Rwindow_show(self.window)
         self._timer = r.Rtimer_create(0.1, r.R_TRUE, self._poll)
 
     # ------------------------------------------------------------------ build
-    def _build(self):
-        self.root = vbox(14)
-        head = add(self.root, hbox(12), pad=(24, 18, 24, 0))
-        titles = add(head, vbox(2), fill=1.0)
-        add(titles, label("Ocarina of Time Randomizer", 28))
-        add(titles, label("Switch 2 remake edition  ·  v%s  ·  your romfs, your mod" % VERSION, 13, MUTED))
-        folder_btn = add(head, button("  Open Folder  ", self.open_output))
-        r.Rslot_set_valign(folder_btn, r.R_VALIGN_CENTER)
-        r.Rwidget_set_tooltip(folder_btn, "Open the output folder, where your generated seeds are")
-        self.gen_btn = add(head, button("  Generate Mod  ", self.generate, primary=True))
-        r.Rslot_set_valign(self.gen_btn, r.R_VALIGN_CENTER)
+    def _w(self, name):
+        w = r.Rwidget_find(self.window, name)
+        if w == r.R_INVALID_ID:
+            raise RuntimeError("rando/ui/main.xml has no widget named %s" % name)
+        return w
 
-        tabs = add(self.root, r.Rwidget_create(r.R_WIDGET_TAB_VIEW), fill=1.0, pad=(18, 0, 18, 0))
-        self.tabs = tabs
-        pages = {}
-        for t in self.TABS:
-            if t == "Exclusions":
-                page = vbox(12)
-            else:
-                scroll = r.Rwidget_create(r.R_WIDGET_SCROLL_BOX)
-                r.Rscroll_box_set_orientation(scroll, r.R_VERTICAL)
-                page = vbox(14)
-                r.Rwidget_add_child(scroll, page)
-                r.Rtab_view_add_tab(tabs, t, scroll)
-                pages[t] = page
-                continue
-            r.Rtab_view_add_tab(tabs, t, page)
-            pages[t] = page
-        self._build_rom(pages["ROM Options"])
-        self._build_settings(pages)
-        self._build_exclusions(pages["Exclusions"])
-        self._build_unsupported(pages["Not Supported"])
-        self._build_footer()
-        self._verify_game()
+    def _bind(self):
+        """Find the named widgets of the XML layout, fill them in and bind its actions."""
+        for name in ("romfs_in", "out_in", "name_in", "seed_in", "hash_lab", "game_lab", "filter_in",
+                     "excl_count", "excl_list", "sstr_in", "progress", "log", "preset_in", "preset_lab"):
+            setattr(self, name, self._w(name))
+        self.gen_btn = self._w("generate")
+        r.Rlabel_set_text(self._w("subtitle"), "Switch 2 remake edition  \u00b7  v%s  \u00b7  your game, your mod" % VERSION)
+        for key in ("romfs", "out"):
+            r.Rtext_input_set_text(getattr(self, key + "_in"), self.paths[key])
 
-    def _row(self, parent, text, control, tip=None, control_fill=1.0):
-        row = add(parent, hbox(12))
-        lab = add(row, label(text, 14), fill=1.0)
-        r.Rslot_set_valign(lab, r.R_VALIGN_CENTER)
-        add(row, control, fill=control_fill)
-        if tip:
-            r.Rwidget_set_tooltip(lab, tip)
-            r.Rwidget_set_tooltip(control, tip)
-        return row
+        actions = {
+            "rando.open_folder": self.open_output, "rando.generate": self.generate, "rando.scan": self.scan,
+            "rando.random_seed": self._random_seed, "rando.clear_excluded": self._clear_excluded,
+            "rando.import_string": self._import_string, "rando.copy_string": self._copy_string,
+            "rando.reset": lambda: self._apply_settings(S.normalize({})),
+        }
+        for name, fn in actions.items():
+            r.Raction_bind(name, lambda sender, action, ud, f=fn: f())
+        r.Raction_bind("rando.browse.nup", lambda sender, action, ud: self._browse_nup())
+        for key, title in (("romfs", "Select the extracted romfs folder"),
+                           ("out", "Select the output folder")):
+            r.Raction_bind("rando.browse." + key,
+                           lambda sender, action, ud, k=key, t=title: self._browse(k, getattr(self, k + "_in"), t))
+        for key in ("romfs", "out", "name", "seed"):
+            r.Raction_bind("rando.path." + key, lambda sender, action, ud, k=key:
+                           self._path_changed(k, r.Rtext_input_get_text(sender) or ""))
+        r.Raction_bind("rando.preset", lambda sender, action, ud: self._preset_chosen(r.Rcombo_box_get_selected(sender)))
+        r.Raction_bind("rando.filter", lambda sender, action, ud: self._apply_filter(r.Rtext_input_get_text(sender)))
+        r.Raction_bind("rando.toggle_excluded",
+                       lambda sender, action, ud: self._toggle_excluded(r.Rlist_view_get_selected(sender)))
 
-    def _build_rom(self, page):
-        b, c = card("Game files")
-        add(page, b, pad=(6, 10, 6, 0))
-        self.romfs_in = text_input("Extracted romfs folder (contains Banc, Event, Pack, RSDB, System...)", self.paths["romfs"])
-        self.exefs_in = text_input("blank = the exefs folder next to the romfs folder", self.paths["exefs"])
-        self.out_in = text_input("Folder the mod package is written to", self.paths["out"])
-        for key, ti, title, text in (("romfs", self.romfs_in, "Select the extracted romfs folder", "romfs folder"),
-                                     ("exefs", self.exefs_in, "Select the extracted exefs folder", "exefs folder"),
-                                     ("out", self.out_in, "Select the output folder", "Output folder")):
-            row = add(c, hbox(10))
-            r.Rslot_set_valign(add(row, label(text, 14), fill=0.35), r.R_VALIGN_CENTER)
-            add(row, ti, fill=1.0)
-            add(row, button("Browse", lambda k=key, t=ti, tt=title: self._browse(k, t, tt)))
-            r.Rtext_input_set_changed_callback(ti, lambda w, text, ud, k=key: self._path_changed(k, text))
-            if key == "romfs":
-                self.hash_lab = add(c, label("exefs/main SHA-256: -", 12, MUTED), pad=(0, 0, 0, 2))
-                r.Rlabel_set_selectable(self.hash_lab, 1)
-                r.Rwidget_set_tooltip(self.hash_lab, "Hash of your game's executable, used to identify the game "
-                                                     "version. Select it to copy it into a bug report.")
-            if key == "exefs":
-                self.game_lab = add(c, label("Checking game version...", 13, MUTED, wrap=True), pad=(0, 0, 0, 4))
-                r.Rwidget_set_tooltip(self.game_lab, "The randomizer only runs on game versions it is known to work "
-                                                     "with. It checks the SHA-256 hash of exefs/main.")
-        add(c, button("Scan romfs  —  check the folder and load the location list", self.scan, flat=True))
-
-        b, c = card("Seed")
-        add(page, b, pad=(6, 0, 6, 0))
-        self.name_in = text_input("blank = OoTR_Remake_<seed>")
-        self.seed_in = text_input("blank = random")
-        row = add(c, hbox(10))
-        r.Rslot_set_valign(add(row, label("Mod folder name", 14), fill=0.35), r.R_VALIGN_CENTER)
-        add(row, self.name_in, fill=1.0)
-        row = add(c, hbox(10))
-        r.Rslot_set_valign(add(row, label("Seed", 14), fill=0.35), r.R_VALIGN_CENTER)
-        add(row, self.seed_in, fill=1.0)
-        add(row, button("Random", self._random_seed))
-        r.Rtext_input_set_changed_callback(self.name_in, lambda w, t, ud: self.paths.__setitem__("name", t))
-        r.Rtext_input_set_changed_callback(self.seed_in, lambda w, t, ud: self.paths.__setitem__("seed", t))
-
-        b, c = card("How it works")
-        add(page, b, pad=(6, 0, 6, 10))
-        add(c, label("The generator reads what it needs from your own romfs, changes the item placements and writes "
-                     "only the changed files into <output>/<mod name>/romfs. Install that folder as a layered mod "
-                     "(emulator: .../mods/contents/<title id>/<mod name>/romfs, console: atmosphere/contents). "
-                     "Nothing from the game is bundled with this program — share settings strings, not mod folders.",
-                     13, MUTED, wrap=True))
-
-    def _build_settings(self, pages):
-        groups = {}
         for key, tab, group, text, typ, opts, default, tip in S.SETTINGS:
             if typ == "list":
                 continue
-            if (tab, group) not in groups:
-                b, c = card(group)
-                add(pages[tab], b, pad=(6, 10 if not any(g[0] == tab for g in groups) else 0, 6, 0))
-                groups[(tab, group)] = c
-            c = groups[(tab, group)]
-            if typ == "bool":
-                w = r.Rcheckbox_create(text)
-                r.Rcheckbox_set_style(w, r.R_CHECKBOX_SWITCH)
-                r.Rcheckbox_set_checked(w, 1 if self.st[key] else 0)
-                r.Rcheckbox_set_changed_callback(w, lambda cb, checked, ud, k=key: self._set(k, bool(checked)))
-                add(c, w)
-                r.Rwidget_set_tooltip(w, tip)
-            else:
-                w = r.Rwidget_create(r.R_WIDGET_COMBO_BOX)
-                for _v, t in opts:
-                    r.Rcombo_box_add_item(w, t)
-                idx = next((i for i, o in enumerate(opts) if o[0] == self.st[key]), 0)
-                r.Rcombo_box_set_selected(w, idx)
-                r.Rcombo_box_set_changed_callback(
-                    w, lambda cb, i, ud, k=key, o=opts: self._set(k, o[i][0]) if 0 <= i < len(o) else None)
-                self._row(c, text, w, tip, control_fill=0.9)
+            w = self._w("set_" + key)
             self.controls[key] = w
-
-    def _build_exclusions(self, page):
-        b, c = card("Excluded locations")
-        add(page, b, fill=1.0, pad=(6, 10, 6, 10))
-        add(c, label("Excluded locations never hold progression or dungeon items (only rupees, ammo, hearts). Double-click a location to toggle it. "
-                     "Scan the romfs on the ROM Options tab to fill this list.", 13, MUTED, wrap=True))
-        row = add(c, hbox(10))
-        self.filter_in = add(row, text_input("Filter locations..."), fill=1.0)
-        r.Rtext_input_set_changed_callback(self.filter_in, lambda w, t, ud: self._apply_filter(t))
-        self.excl_count = add(row, label("", 13, MUTED))
-        r.Rslot_set_valign(self.excl_count, r.R_VALIGN_CENTER)
-        add(row, button("Clear all", self._clear_excluded, flat=True))
-        self.excl_list = add(c, r.Rwidget_create(r.R_WIDGET_LIST_VIEW), fill=1.0)
-        r.Rlist_view_set_activated_callback(self.excl_list, lambda lv, i, ud: self._toggle_excluded(i))
+            if typ == "bool":
+                r.Rcheckbox_set_checked(w, 1 if self.st[key] else 0)
+                r.Raction_bind("set." + key, lambda sender, action, ud, k=key:
+                               self._set(k, bool(r.Rcheckbox_is_checked(sender))))
+            else:
+                r.Rcombo_box_set_selected(w, next((i for i, o in enumerate(opts) if o[0] == self.st[key]), 0))
+                r.Raction_bind("set." + key, lambda sender, action, ud, k=key, o=opts: self._set_choice(k, o, sender))
         self._update_excl_count()
-
-    def _build_unsupported(self, page):
-        b, c = card("Classic options not available for the remake yet")
-        add(page, b, pad=(6, 10, 6, 10))
-        for name, why in S.UNSUPPORTED:
-            add(c, label("•  " + name, 14))
-            add(c, label(why, 13, MUTED, wrap=True), pad=(20, 0, 0, 6))
-
-    def _build_footer(self):
-        b, c = card(None, r.R_MATERIAL_TINTED_GLASS)
-        add(self.root, b, pad=(18, 0, 18, 18))
-        row = add(c, hbox(10))
-        r.Rslot_set_valign(add(row, label("Settings string", 14), fill=0.25), r.R_VALIGN_CENTER)
-        self.sstr_in = add(row, text_input(), fill=1.0)
-        add(row, button("Import", self._import_string))
-        add(row, button("Copy", self._copy_string))
-        add(row, button("Reset", lambda: self._apply_settings(S.normalize({})), flat=True))
-        self.progress = add(c, r.Rwidget_create(r.R_WIDGET_PROGRESSBAR))
-        r.Rprogress_bar_set_value(self.progress, 0.0)
-        self.log = add(c, r.Rwidget_create(r.R_WIDGET_LIST_VIEW), fill=1.0)
-        r.Rslot_set_max_size(self.log, 130)
+        self._loaded = True
         self._refresh_string()
         self.write("Ready. Pick your romfs and an output folder, then Generate.")
+        for m in self.load_messages:
+            self.write(m)
+        self._verify_game()
+
+    def _set_choice(self, key, opts, combo):
+        i = r.Rcombo_box_get_selected(combo)
+        if 0 <= i < len(opts):
+            self._set(key, opts[i][0])
 
     # ------------------------------------------------------------------ settings
     def _set(self, key, value):
         self.st[key] = value
         self._refresh_string()
+
+    def _preset_chosen(self, index):
+        if self._syncing or not 0 < index < len(PRESET_ITEMS):
+            return                                   # "Custom", or set from code
+        name = PRESET_ITEMS[index]
+        st = dict(self.st)
+        st["excluded_locations"] = sorted(self.excluded)
+        self._apply_settings(S.apply_preset(st, name))
+        self.write("Preset %s applied." % name)
+
+    def _settings_changed(self):
+        """After any change: show which preset matches and save user_settings.toml."""
+        if not self._loaded:
+            return
+        preset = S.matching_preset(self.current_settings())
+        self._syncing = True
+        try:
+            r.Rcombo_box_set_selected(self.preset_in, PRESET_ITEMS.index(preset or "Custom"))
+        finally:
+            self._syncing = False
+        r.Rlabel_set_text(self.preset_lab, "Saved to user_settings.toml" if self._save() is None
+                          else "Couldn't save user_settings.toml")
 
     def current_settings(self):
         st = dict(self.st)
@@ -345,7 +264,10 @@ class GlassApp:
         self._refresh_string()
 
     def _refresh_string(self):
-        r.Rtext_input_set_text(self.sstr_in, S.to_string(self.current_settings())) if hasattr(self, "sstr_in") else None
+        """Every settings change ends here: the settings string, the preset and the saved file follow it."""
+        if hasattr(self, "sstr_in"):
+            r.Rtext_input_set_text(self.sstr_in, S.to_string(self.current_settings()))
+        self._settings_changed()
 
     def _import_string(self):
         try:
@@ -401,27 +323,48 @@ class GlassApp:
         cur = self.paths.get(key) or ""
         if os.path.isdir(cur):
             desc.directory = cur.encode("utf-8")
-        path = r.Rfile_dialog_select_folder(desc)
+        path = gamefiles.clean_path(r.Rfile_dialog_select_folder(desc))
+        if path and key == "romfs":
+            path = gamefiles.find_romfs(path) or path     # e.g. romfs/Banc chosen, or the game folder
         if path:
             r.Rtext_input_set_text(ti, path)
             self._path_changed(key, path)
 
+    def _browse_nup(self):
+        desc = r.RFileDialogDesc()
+        desc.parent = self.window
+        desc.title = b"Select your game's .nup file"
+        cur = (self.paths.get("romfs") or "").strip()
+        folder = cur if os.path.isdir(cur) else os.path.dirname(cur)
+        if folder and os.path.isdir(folder):
+            desc.directory = folder.encode("utf-8")
+        filters = (r.RFileFilter * 2)(r.RFileFilter(b"Game package (*.nup)", b"*.nup"),
+                                      r.RFileFilter(b"All files", b"*"))
+        desc.filters = filters
+        desc.filter_count = 2
+        path = r.Rfile_dialog_open(desc)
+        if path:
+            path = path.decode("utf-8") if isinstance(path, bytes) else path
+            r.Rtext_input_set_text(self.romfs_in, path)
+            self._path_changed("romfs", path)
+
     def _path_changed(self, key, text):
         self.paths[key] = text
-        if key in ("romfs", "exefs"):
+        if key == "romfs":
             self._verify_game()
+        if key in ("romfs", "out") and self._loaded:
+            self._save()
 
     def _verify_game(self):
-        """Hash exefs/main and show the result under the exefs row (green = supported)."""
-        romfs = (r.Rtext_input_get_text(self.romfs_in) or "").strip()
-        exefs = (r.Rtext_input_get_text(self.exefs_in) or "").strip()
+        """Hash exefs/main (in the .nup, or next to the romfs folder) and show the result (green = supported)."""
+        romfs = gamefiles.clean_path(r.Rtext_input_get_text(self.romfs_in))
         try:
-            self.game = gamecheck.check(exefs, romfs)
+            self.game = gamecheck.check(None, romfs)
         except OSError as e:
             self.game = gamecheck.GameCheck(False, "missing", "Couldn't read the exefs: %s" % e)
         g = self.game
         if g.ok:
-            where = "" if exefs else "  (found next to the romfs folder)"
+            where = "  (from the .nup)" if gamefiles.is_nup(romfs) else "  (exefs found next to the romfs folder)"
             text, color = g.message + where, OK_GREEN
         elif g.status == "missing":
             text, color = g.message, MUTED
@@ -462,19 +405,20 @@ class GlassApp:
         self.paths["seed"] = s
 
     def _check_paths(self, need_out=True):
-        romfs = (r.Rtext_input_get_text(self.romfs_in) or "").strip()
+        romfs = gamefiles.clean_path(r.Rtext_input_get_text(self.romfs_in))
         out = (r.Rtext_input_get_text(self.out_in) or "").strip()
-        if not romfs or not os.path.isfile(os.path.join(romfs, "Pack", "ZsDic.pack.zs")) \
-                or not os.path.isdir(os.path.join(romfs, "Banc")):
-            r.Rmessage_box(self.window, "romfs", "That folder does not look like the game's extracted romfs\n"
-                                                 "(expected Pack/ZsDic.pack.zs and a Banc folder).", r.R_MESSAGE_OK)
+        nup = gamefiles.is_nup(romfs)
+        if not nup and not (romfs and os.path.isdir(romfs) and gamefiles.find_romfs(romfs)):
+            r.Rmessage_box(self.window, "Game", "Choose your game's .nup file or its extracted romfs folder.\n"
+                                                "(A romfs folder holds Pack/ZsDic.pack.zs and a Banc folder.)",
+                           r.R_MESSAGE_OK)
             return None
         if need_out:
             if not out:
                 r.Rmessage_box(self.window, "Output", "Choose an output folder.", r.R_MESSAGE_OK)
                 return None
-            ar, ao = os.path.abspath(romfs), os.path.abspath(out)
-            if os.path.splitdrive(ar)[0].lower() == os.path.splitdrive(ao)[0].lower() and \
+            ar, ao = os.path.abspath(gamefiles.find_romfs(romfs) if not nup else romfs), os.path.abspath(out)
+            if not nup and os.path.splitdrive(ar)[0].lower() == os.path.splitdrive(ao)[0].lower() and \
                     os.path.commonpath([ar, ao]) == ar:
                 r.Rmessage_box(self.window, "Output", "The output folder must not be inside the romfs folder.",
                                r.R_MESSAGE_OK)
@@ -489,6 +433,11 @@ class GlassApp:
     def _ensure_world(self, romfs):
         from .world import World
         if self.world is None or self.world_path != romfs:
+            if self.world is not None:
+                self.world.files.close()          # release the previous .nup
+                self.world = None
+            if gamefiles.is_nup(romfs):
+                self.queue.put(("log", "Reading the game from %s" % romfs))
             self.world = World(romfs, progress=lambda m: self.queue.put(("log", m)))
             self.world_path = romfs
             self.queue.put(("locations", sorted(l.name for l in self.world.locations)))
@@ -503,7 +452,8 @@ class GlassApp:
         st = self.current_settings()
         seed = (r.Rtext_input_get_text(self.seed_in) or "").strip() or None
         name = (r.Rtext_input_get_text(self.name_in) or "").strip() or None
-        self._save_config(st, romfs, out)
+        self.paths.update(romfs=romfs, out=out)
+        self._save()
 
         def job():
             self._ensure_world(romfs)
@@ -567,20 +517,14 @@ class GlassApp:
             n -= 1
         r.Rlist_view_scroll_to_item(self.log, n - 1)
 
-    # ------------------------------------------------------------------ config (shared with the classic GUI)
-    def _load_config(self):
-        try:
-            with open(CONFIG, encoding="utf-8") as fh:
-                return json.load(fh)
-        except Exception:
-            return {}
-
-    def _save_config(self, st, romfs, out):
-        try:
-            with open(CONFIG, "w", encoding="utf-8") as fh:
-                json.dump({"romfs": romfs, "exefs": self.paths.get("exefs", ""), "out": out, "settings": st}, fh, indent=1)
-        except Exception:
-            pass
+    # ------------------------------------------------------------------ user_settings.toml
+    def _save(self):
+        """Write user_settings.toml (rando/usersettings.py). Returns an error text or None."""
+        err = usersettings.save(self.current_settings(), self.paths)
+        if err and not getattr(self, "_save_warned", False):
+            self._save_warned = True
+            self.write("Couldn't save user_settings.toml: %s" % err)
+        return err
 
     def run(self):
         while r.Rwait_frame(-1.0):

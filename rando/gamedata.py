@@ -46,12 +46,17 @@ ZORA_OPEN = ["HavePlayedEvent.Dm_Zora_0010",                       # King Zora r
 # Get_StoneOfWater_IsAfter_Step06_Exp, and showing him the letter (Get_StoneOfWater:StoneOfWater_ShowLetter)
 # moves the quest to Step07 before Dm_Zora_0010 plays.
 ZORA_OPEN_QUEST = ("Get_StoneOfWater_IsAfter_Step06_Exp", "Step07")
-DOOR_OPEN = "Market_Child_TimeTempleDoor_Opened"
+DOOR_OPEN = "Market_Child_TimeTempleDoor_Opened"   # not set: the door follows its quest (rando/door.py)
+# Door of Time: Open (rando/door.py) opens the door from quest step Ready on. A new save starts the quest at NotReady
+# (it moves on later in the story), so the door stayed shut for a player who went straight to the Temple of Time
+# (0.5.0 test seed 5). The quest starts at Ready instead; Skip Child Zelda starts it further on (Step02).
+DOOR_QUEST = ("Step_DoorOfTime", "Ready")
 # The Kakariko gate soldier sets this when shown Zelda's Letter (Npc_Hylia_Soldier_003 flow); the gate shutter
 # (Obj_Kakariko_SwitchShutter_A_01) is grouped with it in KakarikoVillage_Child_Static's PlgGdTable.
 DMT_GATE_OPEN = "Npc_Hylia_Soldier_003_GateOpen"
-EPONA_DONE_EXP = "Get_Epona_IsCompleted_Exp"
-EPONA_SONG_OWNED = "IsGet.Item_Melody_EponaSong"
+# Skip Epona Race used to rewrite Get_Epona_IsCompleted_Exp to "owns Epona's Song". That flag is also the ranch
+# Epona's presence condition (gone once it's true), and owning a horse is engine state, not a flag; so the song
+# found Epona nowhere (0.5.0 test seed 10). It's now a flow edit (faststart.epona_without_race).
 
 # Skip Child Zelda: quest progress is an Enum per challenge (found through a computed flag that reads it).
 # Goto_HyruleCastle Complete = Zelda met (the courtyard flow sets it, then DoorOfTime Step01); Impa's send-off
@@ -83,6 +88,17 @@ KAEPORA_SCENES = ["Dm_LostWood_0000",                      # outside Kokiri Fore
                   "Dm_ZoraRiver_0000", "Dm_ZoraRiver_0005"]
 # Owning an item: IsGet.<actor> plus, for pouch items, the count in PouchData.<actor> (a one-Int struct). Songs only
 # have the IsGet flag.
+# Skip Saria's Opening Scene (from Clawshot, data/fast_start.toml "saria"): Saria waking Link at his door and
+# walking him out (Dm_Kokiri_0045, Dm_Kokiri_0050) and her greeting Navi (Dm_Kokiri_0060) count as seen; the door
+# flag and her talk flag they set are on; the area banner's visit flag is on, so the pause map still works.
+SARIA_INTRO = ["HavePlayedEvent.Dm_Kokiri_0045", "HavePlayedEvent.Dm_Kokiri_0050", "HavePlayedEvent.Dm_Kokiri_0060",
+               "KokiriForest_LinkHouseDoor_Open", "HaveTalked.Npc_Kokiri_Saria_Child", "IsVisitLocation.KokiriForest"]
+# Skip the Great Deku Tree's Talk (Clawshot "deku_tree"): the state its arrival talk (Dm_Kokiri_0070, _0075)
+# leaves. Only as new-save values when Mido is already gone (Open Forest); with Mido kept, his clear sets it
+# (faststart.complete_deku_meeting).
+DEKU_TREE_TALK_FLAGS = ["HavePlayedEvent.Dm_Kokiri_0070", "KokiriForest_Meet_DekuTree_OpenDekuTreeMouth"]
+DEKU_TREE_TALK_STEPS = [("Step_Meet_DekuTree", "Complete"), ("Step_Get_StoneOfForest", "GoInside")]
+
 POUCH_STRUCT = "PouchData"
 
 # Dungeon map / compass ownership: DungeonInfo.<dungeon>.IsGetMap / .IsGetCompass (plain Bools)
@@ -188,6 +204,20 @@ class GameDataPatcher:
             self.changed += 1
         return True
 
+    def set_enum(self, name, value):
+        """Start Enum `name` (a challenge's Step_<name>) at `value`."""
+        row = self._get(name, "Enum")
+        if row is None:
+            return False
+        if value not in row.get("RawValues", []):
+            self.progress("warning: %s has no value %s; skipped" % (name, value))
+            return False
+        new = type(row["DefaultValue"])(mm3(value))
+        if row["DefaultValue"] != new:
+            row["DefaultValue"] = new
+            self.changed += 1
+        return True
+
     def pouch_count_row(self, actor):
         """The Int holding how many of `actor` the player has (PouchData.<actor>), or None."""
         hit = self.index.get(mm3(POUCH_STRUCT))
@@ -214,6 +244,24 @@ class GameDataPatcher:
             self.emit(self.rel, self.orig, F.byml_dump(self.root, version=self.ver, big_endian=self.big), self.dname)
 
 
+def isget_exists(world, actor):
+    """Does the save data have an IsGet.<actor> flag (set the first time the item is owned)?"""
+    cache = world.__dict__.setdefault("_isget_exists", {})
+    if actor not in cache:
+        if "_gd_probe" not in world.__dict__:
+            world._gd_probe = GameDataPatcher(world, world.zs.read, lambda *a, **k: None, lambda *a: None)
+        cache[actor] = mm3("IsGet." + actor) in world._gd_probe.index
+    return cache[actor]
+
+
+def bool_exists(world, name):
+    """Is `name` a plain Bool save flag?"""
+    if "_gd_probe" not in world.__dict__:
+        world._gd_probe = GameDataPatcher(world, world.zs.read, lambda *a, **k: None, lambda *a: None)
+    hit = world._gd_probe.index.get(mm3(name))
+    return hit is not None and hit[0] == "Bool"
+
+
 def pouch_entry_exists(world, actor):
     """Can a new save own `actor` through its IsGet flag and a PouchData count (see GameDataPatcher.grant_item)?"""
     cache = world.__dict__.setdefault("_pouch_grantable", {})
@@ -238,13 +286,11 @@ def planned_changes(st, ocarina_bridge_patched=True):
             out.append(("bool", f, True, "open_zora", "King Zora has already read Ruto's letter and moved aside"))
         out.append(("quest", ZORA_OPEN_QUEST[0], ZORA_OPEN_QUEST[1], "open_zora",
                     "Zora quest starts at %s (letter shown, King Zora moved)" % ZORA_OPEN_QUEST[1]))
-    if st["open_door"] == "open":
-        out.append(("bool", DOOR_OPEN, True, "open_door", "Door of Time starts open"))
+    if st["open_door"] == "open" and not st["skip_child_zelda"]:
+        out.append(("enum", DOOR_QUEST[0], DOOR_QUEST[1], "open_door",
+                    "Door of Time quest starts at %s, the step the open door follows" % DOOR_QUEST[1]))
     if st["open_dmt"]:
         out.append(("bool", DMT_GATE_OPEN, True, "open_dmt", "Kakariko's Death Mountain gate starts open"))
-    if st["skip_epona_race"]:
-        out.append(("exp", EPONA_DONE_EXP, EPONA_SONG_OWNED, "skip_epona_race",
-                    "Adult Epona exists once you own Epona's Song (no Ingo race)"))
     if st["skip_area_intros"]:
         for ev in AREA_INTROS:
             out.append(("bool", "HavePlayedEvent." + ev, True, "skip_area_intros", "Intro %s counts as already seen" % ev))
@@ -286,6 +332,14 @@ def planned_changes(st, ocarina_bridge_patched=True):
                "shuffle_ocarinas" if st["shuffle_ocarinas"] else "skip_child_zelda")
         out.append(("bool", "HyruleField_ChangeENV", True, key,
                     "Hyrule Field uses its normal day/night lighting instead of the fixed first-visit sun"))
+    if st.get("skip_saria_intro"):
+        for f in SARIA_INTRO:
+            out.append(("bool", f, True, "skip_saria_intro", "Saria's wake-up scene state: %s" % f))
+    if st.get("skip_deku_talk") and st["open_forest"] == "open":
+        for f in DEKU_TREE_TALK_FLAGS:
+            out.append(("bool", f, True, "skip_deku_talk", "Great Deku Tree talk state: %s" % f))
+        for name, value in DEKU_TREE_TALK_STEPS:
+            out.append(("enum", name, value, "skip_deku_talk", "%s starts at %s" % (name, value)))
     if st["saria_song_ocarina"]:
         out.append(("new_exp", SARIA_GATE_NEW, OCARINA_FLAGS, "saria_song_ocarina",
                     "True when you own the Fairy Ocarina or Ocarina of Time (replaces the met-Zelda check)"))
@@ -304,6 +358,8 @@ def apply(world, st, read, emit, progress, ocarina_bridge_patched=True, start_it
             gd.set_bool(flag, value)
         elif kind == "quest":
             gd.set_quest_step(flag, value)
+        elif kind == "enum":
+            gd.set_enum(flag, value)
         elif kind == "item":
             gd.grant_item(flag)
         elif kind == "exp":

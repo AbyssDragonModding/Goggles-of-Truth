@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Main window of the randomizer, in Raven's XML layout (https://github.com/oscar-soirey/Raven).
+  rando/gui_glass.py loads this file, fills in the parts marked <!-@@ ... @@-> from rando/settings.py
+  (the settings cards and the Not Supported list), creates the window from it, then finds the widgets by Name
+  and binds the actions (OnClicked / OnChanged / OnActivated) to Python.
+
+  Look: Kokiri-green accent, Triforce-gold card titles, frosted glass cards over a generated night sky.
+-->
+<Window Title="OoT Remake Randomizer" Width="1000" Height="800" MinWidth="760" MinHeight="560">
+  <VBox Spacing="14">
+
+    <!-- Header: title, Open Folder, Generate Mod -->
+    <HBox Spacing="12" Slot.Auto="true" Slot.Padding="24,18,24,0">
+      <VBox Spacing="2" Slot.Fill="1">
+        <Label Text="Ocarina of Time Randomizer" TextSize="28"/>
+        <Label Name="subtitle" Text="Switch 2 remake edition" TextSize="13" Color="#C7D1DBD9"/>
+      </VBox>
+      <Button Name="open_folder" Text="  Open Folder  " OnClicked="rando.open_folder" Slot.Auto="true" Slot.VAlign="Center"
+              Tooltip="Open the output folder, where your generated seeds are"/>
+      <Button Name="generate" Text="  Generate Mod  " Style="Primary" OnClicked="rando.generate" Slot.Auto="true"
+              Slot.VAlign="Center"/>
+    </HBox>
+
+    <TabView Name="tabs" Slot.Fill="1" Slot.Padding="18,0,18,0">
+
+      <!-- ROM Options -->
+      <ScrollBox Orientation="Vertical" Slot.Title="ROM Options">
+        <VBox Spacing="14">
+          <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+            <VBox Spacing="10">
+              <Label Text="Game files" TextSize="16" Color="#F5CC61"/>
+              <HBox Spacing="10">
+                <Label Text="Game (.nup or romfs)" TextSize="14" Slot.Fill="0.35" Slot.VAlign="Center"
+                       Tooltip="Your game as a .nup package, or its extracted romfs folder. Either is only read, never changed."/>
+                <TextInput Name="romfs_in" Placeholder="Game .nup file, or the extracted romfs folder (contains Banc, Event, Pack, RSDB...)"
+                           OnChanged="rando.path.romfs" Slot.Fill="1"/>
+                <Button Text="Browse .nup" OnClicked="rando.browse.nup" Slot.Auto="true"
+                        Tooltip="Choose your game's .nup file. Its own exefs is used for the version check."/>
+                <Button Text="Browse folder" OnClicked="rando.browse.romfs" Slot.Auto="true"
+                        Tooltip="Choose the extracted romfs folder (or the game folder that holds romfs and exefs)."/>
+              </HBox>
+              <Label Name="hash_lab" Text="exefs/main SHA-256: -" TextSize="12" Color="#C7D1DBD9" Selectable="true"
+                     Tooltip="Hash of your game's executable, used to identify the game version. Select it to copy it into a bug report."/>
+              <Label Name="game_lab" Text="Checking game version..." TextSize="13" Color="#C7D1DBD9" Wrap="true"
+                     Tooltip="The randomizer only runs on game versions it is known to work with. It checks the SHA-256 hash of exefs/main: the one inside the .nup, or the exefs folder next to the romfs folder."/>
+              <HBox Spacing="10">
+                <Label Text="Output folder" TextSize="14" Slot.Fill="0.35" Slot.VAlign="Center"/>
+                <TextInput Name="out_in" Placeholder="Folder the mod package is written to" OnChanged="rando.path.out" Slot.Fill="1"/>
+                <Button Text="Browse" OnClicked="rando.browse.out" Slot.Auto="true"/>
+              </HBox>
+              <Button Text="Scan game  —  check the game files and load the location list" Style="Flat" OnClicked="rando.scan"/>
+            </VBox>
+          </Border>
+
+          <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+            <VBox Spacing="10">
+              <Label Text="Seed" TextSize="16" Color="#F5CC61"/>
+              <HBox Spacing="10">
+                <Label Text="Mod folder name" TextSize="14" Slot.Fill="0.35" Slot.VAlign="Center"/>
+                <TextInput Name="name_in" Placeholder="blank = OoTR_Remake_&lt;seed&gt;" OnChanged="rando.path.name" Slot.Fill="1"/>
+              </HBox>
+              <HBox Spacing="10">
+                <Label Text="Seed" TextSize="14" Slot.Fill="0.35" Slot.VAlign="Center"/>
+                <TextInput Name="seed_in" Placeholder="blank = random" OnChanged="rando.path.seed" Slot.Fill="1"/>
+                <Button Text="Random" OnClicked="rando.random_seed" Slot.Auto="true"/>
+              </HBox>
+            </VBox>
+          </Border>
+
+          <!--@@settings ROM Options@@-->
+
+          <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,10">
+            <VBox Spacing="10">
+              <Label Text="How it works" TextSize="16" Color="#F5CC61"/>
+              <Label TextSize="13" Color="#C7D1DBD9" Wrap="true"
+                     Text="The generator reads what it needs from your own game (.nup or romfs), changes the item placements and writes only the changed files into &lt;output&gt;/&lt;mod name&gt;/romfs. Install that folder as a layered mod (emulator: .../mods/contents/&lt;title id&gt;/&lt;mod name&gt;/romfs, console: atmosphere/contents). Nothing from the game is bundled with this program — share settings strings, not mod folders."/>
+            </VBox>
+          </Border>
+        </VBox>
+      </ScrollBox>
+
+      <ScrollBox Orientation="Vertical" Slot.Title="World"><VBox Spacing="14"><!--@@settings World@@--></VBox></ScrollBox>
+      <ScrollBox Orientation="Vertical" Slot.Title="Items"><VBox Spacing="14"><!--@@settings Items@@--></VBox></ScrollBox>
+      <ScrollBox Orientation="Vertical" Slot.Title="Dungeon Items"><VBox Spacing="14"><!--@@settings Dungeon Items@@--></VBox></ScrollBox>
+      <ScrollBox Orientation="Vertical" Slot.Title="Hints"><VBox Spacing="14"><!--@@settings Hints@@--></VBox></ScrollBox>
+      <ScrollBox Orientation="Vertical" Slot.Title="Quality of Life"><VBox Spacing="14"><!--@@settings Quality of Life@@--></VBox></ScrollBox>
+
+      <!-- Exclusions -->
+      <VBox Spacing="12" Slot.Title="Exclusions">
+        <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Fill="1" Slot.Padding="6,10,6,10">
+          <VBox Spacing="10">
+            <Label Text="Excluded locations" TextSize="16" Color="#F5CC61"/>
+            <Label TextSize="13" Color="#C7D1DBD9" Wrap="true"
+                   Text="Excluded locations never hold progression or dungeon items (only rupees, ammo, hearts). Double-click a location to toggle it. Scan the game on the ROM Options tab to fill this list."/>
+            <HBox Spacing="10">
+              <TextInput Name="filter_in" Placeholder="Filter locations..." OnChanged="rando.filter" Slot.Fill="1"/>
+              <Label Name="excl_count" Text="0 excluded" TextSize="13" Color="#C7D1DBD9" Slot.Auto="true" Slot.VAlign="Center"/>
+              <Button Text="Clear all" Style="Flat" OnClicked="rando.clear_excluded" Slot.Auto="true"/>
+            </HBox>
+            <ListView Name="excl_list" OnActivated="rando.toggle_excluded" Slot.Fill="1"/>
+          </VBox>
+        </Border>
+      </VBox>
+
+      <!-- Not Supported -->
+      <ScrollBox Orientation="Vertical" Slot.Title="Not Supported">
+        <VBox Spacing="14">
+          <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,10">
+            <VBox Spacing="10">
+              <Label Text="Classic options not available for the remake yet" TextSize="16" Color="#F5CC61"/>
+              <!--@@unsupported@@-->
+            </VBox>
+          </Border>
+        </VBox>
+      </ScrollBox>
+    </TabView>
+
+    <!-- Footer: settings string, progress, log -->
+    <Border Material="TintedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="18,0,18,18">
+      <VBox Spacing="10">
+        <HBox Spacing="10">
+          <Label Text="Seed preset" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center" Tooltip="@@preset_tip@@"/>
+          <ComboBox Name="preset_in" Items="@@preset_items@@" OnChanged="rando.preset" Tooltip="@@preset_tip@@" Slot.Fill="0.5"/>
+          <Label Name="preset_lab" Text="" TextSize="12" Color="#C7D1DBD9" Slot.Fill="1" Slot.VAlign="Center"
+                 Tooltip="Your settings are saved to user_settings.toml next to ootr_remake.pyw. Delete that file (or press Reset) to go back to the defaults."/>
+        </HBox>
+        <HBox Spacing="10">
+          <Label Text="Settings string" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center"/>
+          <TextInput Name="sstr_in" Slot.Fill="1"/>
+          <Button Text="Import" OnClicked="rando.import_string" Slot.Auto="true"/>
+          <Button Text="Copy" OnClicked="rando.copy_string" Slot.Auto="true"/>
+          <Button Text="Reset" Style="Flat" OnClicked="rando.reset" Slot.Auto="true"
+                  Tooltip="Every setting back to its default (your game and output folders are kept)."/>
+        </HBox>
+        <ProgressBar Name="progress" Value="0"/>
+        <ListView Name="log" Slot.Fill="1" Slot.MaxSize="130"/>
+      </VBox>
+    </Border>
+  </VBox>
+</Window>

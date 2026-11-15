@@ -1,12 +1,12 @@
 # OoT Remake Randomizer
-## Current Version: 0.4.4 (PUBLIC BETA RELEASE)
+## Current Version: 0.5.0 (PUBLIC BETA RELEASE)
 An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time*. It shuffles chests,
 songs, dungeon rewards, NPC rewards, shop items, Gold Skulltulas and more, and checks that every seed can be
 beaten. The settings follow the classic [OoT Randomizer](https://ootrandomizer.com), adjusted to what the
 remake allows.
 
-**No game files are included.** The randomizer reads your own extracted game files (the `romfs` and `exefs`) and writes
-only the files it changes into a new mod folder. Share seeds and settings strings, never mod folders.
+**No game files are included.** The randomizer reads your own game files (a `.nup` package, or the extracted `romfs`
+and `exefs`) and writes only the files it changes into a new mod folder. Share seeds and settings strings, never mod folders.
 
 ><span style="display: flex; justify-content: center; color: red;">[WARNING]</span>
 > **This randomizer is extremely early in development.** Expect bugs and broken logic: items that don't
@@ -38,11 +38,12 @@ only the files it changes into a new mod folder. Share seeds and settings string
 
 - A PC with a graphics driver that supports **Vulkan** (any recent NVIDIA, AMD or Intel driver).
 - **Python 3.14 or newer.** The setup script installs it for you (see [Setup](#setup)).
-- **Your own extracted romfs and exefs** of the game. The romfs is the folder that contains `Banc`, `Event`,
+- **Your own game files**: either the game's **`.nup` file** (nothing to extract), or the
+  **extracted romfs and exefs**. The romfs is the folder that contains `Banc`, `Event`,
   `Pack`, `RSDB`, `System` and so on; the exefs contains `main` and `main.npdm`. Most Switch emulators can
   extract both: right-click the game in the game list and choose the *Extract RomFS* / *Dump RomFS* and
-  *Extract ExeFS* / *Dump ExeFS* options. Keeping them side by side (`<game>/romfs` and `<game>/exefs`) lets
-  the randomizer find the exefs by itself.
+  *Extract ExeFS* / *Dump ExeFS* options. Keep them side by side (`<game>/romfs` and `<game>/exefs`): the
+  randomizer finds the exefs next to the romfs.
 - **A supported game version.** See [Supported game versions](#supported-game-versions).
 
 ## Setup
@@ -57,6 +58,11 @@ else for you.
 ### Step 1: Get your game files ready
 
 The randomizer reads the game from your own dump; it never comes with any game files.
+
+**If you have the game as a `.nup` file**, you're done: you'll choose that file in the randomizer with
+**Browse .nup** (see [Making a seed](#making-a-seed)). It is only read, never changed, and its own exefs is used for the version check.
+
+**Otherwise, extract the romfs and exefs:**
 
 1. In your Switch emulator, right-click the game in the game list.
 2. Choose **Extract RomFS** (some emulators call it **Dump RomFS**) and save it to a folder.
@@ -173,15 +179,18 @@ two commands should work with Python 3.14 from python.org.
 
 ## Making a seed
 
-1. **ROM Options** tab: choose your **romfs folder** and an **output folder** for the finished mod. The output
-   folder can't be inside the romfs.
-   - Leave **exefs folder** empty if your exefs is next to the romfs; otherwise choose it.
+1. **ROM Options** tab: choose your game and an **output folder** for the finished mod.
+   - **Browse .nup** picks your game's `.nup` file; its own exefs is used.
+   - **Browse folder** picks the extracted romfs folder (or the game folder holding `romfs` and `exefs`). The
+     exefs must be next to the romfs (`<game>/romfs` and `<game>/exefs`). The output folder can't be inside the
+     romfs.
    - The line under it turns **green** when your game version is supported. If it's red, the randomizer won't
      generate; see [Supported game versions](#supported-game-versions).
-2. Optional: click **Scan romfs** to check the folder. This also fills the **Exclusions** tab, where you can
+2. Optional: click **Scan game** to check the game files. This also fills the **Exclusions** tab, where you can
    double-click a location so it never holds an important item.
-3. Pick your settings on the **Main Rules**, **Dungeon Items** and **Other** tabs. Hover over any option to see
-   what it does.
+3. Pick your settings on the **World**, **Items**, **Dungeon Items**, **Hints** and **Quality of Life** tabs. Hover over any option to see
+   what it does. Or start from a **Seed preset** (bottom of the window): **Beginner**, **Standard** or **Expert**
+   (see [Seed presets](#seed-presets)), then change what you like.
 4. Click **Generate Mod**. Click **Open Folder** (next to it) to open your output folder. Each seed
    gets its own folder there:
 
@@ -194,12 +203,22 @@ two commands should work with Python 3.14 from python.org.
     checklist.xlsx    <- test checklist with Pass/Partial/Fail dropdowns and colours
 ```
 
-The spoiler and checklist files are only written when **Create Spoiler Log** (Other tab) is on, because they
+The spoiler and checklist files are only written when **Create Spoiler Log** (ROM Options tab) is on, because they
 show every item's location.
 
 **Sharing a seed:** the same **version + seed + settings string** always makes exactly the same mod. Copy the
 settings string from the GUI (or `settings.txt`) and send it with the seed, so others can make the seed
-themselves from their own romfs. Your last folders and settings are remembered between runs.
+themselves from their own game files.
+
+**Your settings are saved** in `user_settings.toml`, next to `ootr_remake.pyw`, every time you change something,
+and loaded when the window opens. The game and output folders are saved there too.
+- **To reset everything**, close the randomizer and delete `user_settings.toml`. To reset only the settings and
+  keep your folders, press **Reset** next to the settings string.
+- **To change settings by hand**, close the randomizer and open the file in any text editor. Every setting is
+  listed with its allowed values and its default. A value that isn't allowed is ignored (the default is used)
+  and the window's log says so. The file is rewritten when the window opens, so edits made while it's open are lost.
+- Versions before 0.5.0 kept this in `.ootr_remake.json` in your user folder. It is read once if
+  `user_settings.toml` doesn't exist yet and is left alone; you can delete it.
 
 ## Installing the seed in your emulator
 
@@ -300,11 +319,41 @@ The GUI explains every option when you hover over it. In short:
 
 | Tab | What you can change |
 |---|---|
-| **Main Rules** | Logic (glitchless or none); open Kokiri Forest, Zora's Fountain, the Door of Time and Death Mountain; skip child Zelda; skip Epona's race (experimental); Saria's Song with just an ocarina; what gets shuffled: songs, Spiritual Stones and Medallions (in boss rewards or anywhere), Kokiri Sword, Weird Egg, ocarinas, freestanding items, freestanding rupees, boss Heart Containers, NPC and minigame rewards, Great Fairies, Skulltula House rewards, Gold Skulltula tokens (Tokensanity) and shop items (Shopsanity) |
+| **ROM Options** | Game folders, output folder, mod name, seed and whether to write the spoiler log |
+| **World** | Logic (glitchless or none); open Kokiri Forest, the Door of Time, Zora's Fountain and Death Mountain; skip child Zelda; skip Epona's race (experimental, not working yet) |
+| **Items** | Quest items: songs, Spiritual Stones and Medallions (in boss rewards or anywhere), ocarinas, Kokiri Sword, Weird Egg. Shuffled locations: freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards (Zelda's Letter, Light Arrows, Biggoron), Great Fairies, Skulltula House rewards, Gold Skulltula tokens (Tokensanity), shop items (items shuffled per shop) and Business Scrubs. Item pool size and whether ammo chests need their bag |
 | **Dungeon Items** | Maps & Compasses (vanilla, own dungeon, removed or start with), small keys and boss keys |
-| **Other** | Item pool size; quality of life (skippable cutscenes, no area intros (experimental), bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Anju needs 1 cucco, ammo chests need their bag, small chests only, Big Poe buyer needs 1 Big Poe, skip Kaepora Gaebora); spoiler log |
+| **Hints** | Gossip Stone hints (none, balanced, strong or useless; strong and useless experimental) and whether stones need the Mask of Truth |
+| **Quality of Life** | Cutscenes (skip the opening movie, Saria's wake-up scene and the Great Deku Tree's talk, chests without cutscene; skip story scenes such as Rauru and the sages (experimental, needs additional testing; only Rauru and Saria's ocarina tested); all skippable, no area intros (experimental), skip Kaepora Gaebora); gameplay (bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina); minigames (Anju needs 1 cucco, Big Poe buyer needs 1 Big Poe (experimental)) |
 | **Exclusions** | Locations that only ever hold minor items |
 | **Not Supported** | Classic randomizer options the remake's data can't support yet, and why |
+
+### Seed presets
+
+The **Seed preset** drop-down (bottom of the window) sets every gameplay setting at once. Excluded Locations and
+Create Spoiler Log are kept. Presets only use options confirmed in-game, so nothing experimental is switched on.
+Change any setting afterwards and the drop-down shows **Custom**; it shows a preset's name again whenever your
+settings match it.
+
+| | Beginner | Standard | Expert |
+|---|---|---|---|
+| Kokiri Forest / Door of Time | Open / Open | Open / Open | Closed / Closed |
+| Zora's Fountain / Death Mountain | Open / Open | Closed / Closed | Closed / Closed |
+| Skip Child Zelda | On | On | Off |
+| Songs | Song Locations | Song Locations | Anywhere |
+| Spiritual Stones / Medallions | Vanilla | Vanilla | Anywhere |
+| Ocarinas, Weird Egg, freestanding rupees | Not shuffled | Not shuffled | Shuffled |
+| Kokiri Sword | In its chest | Shuffled | Shuffled |
+| Business Scrubs | Off | On (game's price) | On (random price) |
+| Tokensanity | Off | Dungeons Only | All Tokens |
+| Items Shuffled Per Shop | Off | Off | 4 items, random prices |
+| Maps & Compasses | Start With | Start With | Vanilla |
+| Hints | Balanced, no Mask of Truth needed | Balanced | Balanced |
+| Bombs without the Goron Bracelet | On | On | Off |
+
+All three: glitchless logic with every location reachable, the balanced item pool, freestanding items, boss
+Heart Containers, character gifts, quest rewards, Great Fairies and the Skulltula House shuffled, vanilla keys,
+refills need their item, and every confirmed cutscene skip and Quality of Life option on.
 
 Labels in the randomizer show how far each setting has been tested in-game:
 - **(experimental):** works in offline checks but hasn't been tried in-game yet.
@@ -325,22 +374,22 @@ yet.
 |---|---|---|
 | Logic Rules | Glitchless | 0.4.3 |
 | Guarantee Reachable Locations | All | 0.4.3 |
-| Kokiri Forest | Open, Closed | 0.2.1, 0.4.3 |
+| Kokiri Forest | Open, Closed | 0.2.1, 0.4.3, 0.5.0 |
 | Open Death Mountain | Off, On | 0.3.1, 0.4.0, 0.4.3 |
 | Skip Child Zelda | On | 0.4.3, 0.4.4 |
 | Saria's Song With Just an Ocarina | On | 0.2.1, 0.4.3 |
-| Shuffle Songs | Song Locations | 0.3.1, 0.4.3 |
+| Shuffle Songs | Song Locations, Anywhere | 0.3.1, 0.4.3, 0.5.0 |
 | Shuffle Spiritual Stones/Medallions | Anywhere | 0.4.3 |
-| Shuffle Kokiri Sword (experimental) | Off | 0.2.1, 0.4.3 |
+| Shuffle Kokiri Sword | Off, On | 0.2.1, 0.4.3, 0.5.0 |
 | Shuffle Freestanding Items | On | 0.2.1, 0.4.3 |
 | Shuffle Weird Egg | Off, On | 0.3.1, 0.4.3 |
 | Shuffle Ocarinas | On | 0.4.3 |
 | Shuffle Freestanding Rupees | On, Off | 0.2.1, 0.3.1, 0.4.3 |
 | Shuffle Boss Heart Containers | On | 0.3.1, 0.4.3 |
-| Shuffle NPC & Minigame Rewards | On | 0.4.2, 0.4.3 |
+| Shuffle NPC & Minigame Rewards (now Character Gifts and Minigames) | On | 0.4.2, 0.4.3 |
 | Shuffle Great Fairy Rewards | On | 0.4.3 |
 | Shuffle Skulltula House Rewards | On | 0.4.3 |
-| Tokensanity | All Tokens, Dungeons Only, Overworld Only | 0.2.1, 0.3.1, 0.4.0, 0.4.3 |
+| Tokensanity | All Tokens, Dungeons Only, Overworld Only | 0.2.1, 0.3.1, 0.4.0, 0.4.3, 0.5.0 |
 | Maps & Compasses | Start With | 0.4.3 |
 | Small Keys | Vanilla | 0.4.3 |
 | Boss Keys | Vanilla | 0.4.3 |
@@ -351,16 +400,35 @@ yet.
 | Anju Needs Only 1 Cucco | On | 0.2.1, 0.4.3 |
 | Skip Kaepora Gaebora | On | 0.4.3 |
 | Bombs Usable Without Goron Bracelet | On | 0.2.1, 0.4.3 |
-| Small Chests Only | On | 0.4.3 |
+| Hint Distribution | Balanced, Strong | 0.5.0 |
+| Gossip Stones | No Mask of Truth | 0.5.0 |
+| Skip Opening Movie | On | 0.5.0 |
+| Skip Saria's Wake-Up Scene | On | 0.5.0 |
+| Skip the Great Deku Tree's Talk | On (Kokiri Forest Closed) | 0.5.0 |
+| Chests Without Cutscene | On (big chests) | 0.5.0 |
+| Zora's Fountain | Open | 0.5.0 |
+| Business Scrubs | On (with the item named in the scrub's line) | 0.5.0 |
+| Items Shuffled Per Shop | 2 and 4 per shop, random prices | 0.5.0 |
+| Door of Time | Open | 0.5.0 |
 
-Shuffle Kokiri Sword and Skip Area Intro Cutscenes were only tested with the setting off, so they stay
-*experimental*.
+Skip Area Intro Cutscenes was only tested with the setting off, so it stays *experimental*. Shuffle Kokiri
+Sword works both ways in 0.5.0: shuffled, the chest gives its random item; not shuffled, the chest still plays
+the Kokiri Sword scene even with Chests Without Cutscene (its story scene is kept), which is fine. Items
+Shuffled Per Shop (0.5.0 test seed 5): a bought shelf disappears and stays gone. Chests Without Cutscene
+(test seed 5): big chests skip their animation and small chests open normally. Zora's Fountain Open (0.5.0): King Zora stays moved through
+every load from Zora's Fountain and Lake Hylia, and Ruto's Jabu-Jabu reward is given; the quest log stays
+empty, which doesn't matter. Hint Distribution, Gossip Stones, Songs Anywhere (the harp shows on the ground,
+in big chests, on Gold Skulltulas and on shelves) and Business Scrubs passed in 0.5.0. Character Gifts and Minigames replaced Shuffle NPC & Minigame Rewards in 0.5.0 (OotrR's gift list, two new
+Deku Theater checks), so it needs further testing. Tokensanity in 0.5.0: Gold Skulltula drops float and are collected by touch, and a Skulltula
+whose drop you didn't collect comes back when the area reloads (issue #2). Small Chests Only (working in
+0.4.3) was removed in 0.5.0: Chests Without Cutscene does what it was for, for big chests only (small chests
+keep their own short opening).
 
 **Partly working**
 
 | Setting | Value tested | Version | Notes |
 |---|---|---|---|
-| Zora's Fountain (Open needs further testing) | Open | 0.4.3 | King Zora starts moved aside, but after leaving Jabu-Jabu's Belly and coming back he sits in front of the door again, which is a softlock (fix in 0.4.4, needs confirmation). In 0.3.1 he hadn't moved at all (fixed in 0.4.0). |
+| Tokensanity | All Tokens | 0.5.0 | Items float and work. Junk drops: in test seed 4 a token-based rupee stayed after it was collected and its Skulltula came back; in test seed 5 the game's own rupee (and a Business Scrub Seed) fell instead of floating; in test seed 6 a token-based copy of its chest form floated but stayed after it was collected. Next test: consumables drop as the game's own pickup (they fall, as in test seed 5), shields float. |
 
 **Not working**
 
@@ -368,6 +436,7 @@ Shuffle Kokiri Sword and Skip Area Intro Cutscenes were only tested with the set
 |---|---|---|
 | Load Saves at Dungeon Entrance | 0.2.1 | Never moved the restart point. Removed in 0.3.0. |
 | Skip Area Intro Cutscenes (experimental) | 0.2.0 | The intros still play. Off by default. |
+| Skip Epona Race (experimental, not working) | 0.5.0 | Test seeds 10 to 12: Epona never came to Epona's Song. Off by default. |
 
 How each setting is implemented, and what the remake makes impossible (keysanity, scrubsanity and others), is
 described in [docs/TECHNICAL.md](docs/TECHNICAL.md).
@@ -382,8 +451,8 @@ upgrades and counters (Gold Skulltulas, Pieces of Heart, keys) as a grid you cli
 - **Left click** steps an item up a tier or adds 1, **right click** steps it back down. **Shift + click**
   on a counter steps by 5.
 - **File** menu: New, Open, Save and Save As (JSON). The last save reopens when you start it.
-- **No game files are included.** On first start it asks for the romfs folder you extracted from your own
-  game and takes the item icons from it. The icons stay on your PC (`icons/` is never committed).
+- **No game files are included.** On first start it asks for your game's `.nup` file or the romfs folder you
+  extracted from it, and takes the item icons from it. The icons stay on your PC (`icons/` is never committed).
 
 It needs Python 3.14 or newer and a Vulkan-capable graphics driver. To run it:
 
@@ -399,7 +468,8 @@ More in [Tools/OOTNS2-Tracker/README.md](Tools/OOTNS2-Tracker/README.md).
 
 The randomizer edits the game's data files, and their layout can change with a game update. To avoid making a
 broken mod, it only runs on game versions it has been checked against. It computes the SHA-256 hash of
-`exefs/main` and compares it with a list of known versions (`rando/gamecheck.py`).
+`exefs/main` and compares it with a list of known versions (`rando/gamecheck.py`). With a `.nup`, the
+`exefs/main` inside the package is used.
 
 | Game version | SHA-256 of `exefs/main` |
 |---|---|
@@ -439,4 +509,7 @@ in `settings.txt` and at the top of the checklist.
 
 - Settings and logic modelled on the classic [OoT Randomizer](https://ootrandomizer.com).
 - GUI built with [Raven](https://github.com/oscar-soirey/Raven) (Apache-2.0).
+- Event flow writer, start-of-game skips, Gossip Stone hints and the Gerudo card / small chest findings from [Clawshot](https://github.com/hiKareeem/Clawshot) by Kareem (MIT).
+- Chests without cutscene, token-based Gold Skulltula drops, items shuffled per shop, Business Scrubs and the character gift list from [OotrR](https://github.com/Mozencaz/OotrR) by Mozencaz (MIT).
+- Details and license notices: [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md).
 - This is a fan project. It isn't affiliated with or endorsed by Nintendo. Use your own copy of the game.

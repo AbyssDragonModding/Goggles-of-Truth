@@ -4,6 +4,218 @@ All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new s
 minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
 different version.
 
+## 0.5.0 - 2026-11-13
+
+### Added
+- **Your settings are saved in `user_settings.toml`**, next to `ootr_remake.pyw`, instead of `.ootr_remake.json`
+  in your user folder. The window loads it when it opens and saves it on every change (before, only when you
+  pressed Generate Mod), with the game and output folders. Delete it to reset everything. It's a readable
+  TOML file that lists every setting with its allowed values and default, so it can be edited by hand while the
+  window is closed. An invalid or unknown value is ignored, the default is used, and the log says so. An
+  existing `.ootr_remake.json` is read once and left alone. `user_settings.toml` is in `.gitignore`.
+- **Seed presets: Beginner, Standard and Expert** (the Seed preset drop-down next to the settings string). A
+  preset sets every gameplay setting; Excluded Locations and Create Spoiler Log are kept. Presets use only
+  options confirmed in-game. The drop-down shows Custom once you change something, and the preset's name
+  whenever your settings match one. The README has a table of what each preset sets. Not yet tried in the
+  window by hand: an automated test applied each preset through the window's own code and checked the
+  controls, the drop-down and the saved file.
+- **Read the game from a .nup file.** The game field (ROM Options) takes your game's `.nup` package as well as the
+  extracted romfs folder: **Browse .nup** picks the file, **Browse folder** the romfs. The randomizer reads every
+  file it needs straight from the package (the newest base or update inside it), checks each one against the
+  SHA-256 stored in the package, and never changes the `.nup`. The game version check uses the package's own
+  `exefs/main`, so no exefs folder is needed. Choosing the game folder that holds `romfs` and `exefs` also works
+  now. The separate exefs folder field is gone: with a romfs folder, the exefs is found next to it
+  (`<game>/romfs` and `<game>/exefs`), and the line under the game field turns green when the version is supported. A path from the folder dialog
+  is cleaned up first (quotes, `file://` form, trailing separator), and choosing a folder inside the romfs (such
+  as `romfs/Banc`) or the game folder finds the romfs and its exefs; when the exefs is missing, the message names
+  the folder it looked in. The `.nup` reader is a55uka/nup (MIT), as Clawshot ships it.
+- **The item tracker reads a .nup too** (`Tools/OOTNS2-Tracker`): its setup window has **Browse .nup...** next
+  to **Browse folder...**, and the icons are extracted straight from the package. `extract_item_icons.py
+  --romfs` also takes a `.nup`. The tracker has its own copy of the reader (`nup/`), so it still runs on its
+  own.
+- **Items Shuffled Per Shop** replaces Shopsanity (experimental; from OotrR). Every shop takes part: Kokiri,
+  Goron and Zora, the Market's bazaar, potion shop and Bombchu shop, and Kakariko's bazaar and potion shop. Choose
+  1 to 4 shelves per shop, or 1 to 4 at random. Each shuffled shelf is bought once, at the **Shop Prices**
+  setting's price: 10 rupees, random from 10 to 99, or random from 10 to 200 (rounded to 5; above 99 needs the
+  Adult's Wallet in the logic). One
+  shelf of every purchase you need (shields, tunics, Blue Fire, bugs, fish, fairies) stays on sale. A shuffled
+  shelf is now a new actor at that spot instead of an edited shelf type, which is what lets the bazaars and
+  potion shops take part.
+- **Business Scrubs** (experimental; from OotrR): the four scrubs that sell one thing once (the Lost Woods stick
+  and nut upgrades, the Hyrule Field and Death Mountain Crater Pieces of Heart) sell random items. The price is
+  its own setting, **Business Scrub Prices**: 10 rupees, the game's price (40 / 100), random from 10 to 99 or
+  random from 10 to 200 (above 99 needs the Adult's Wallet in the logic). Each scrub's sale line names the item
+  it really sells ("Ohhh, Silver Scale! Shimmery glimmery! It's 10 rupees."), in English in every language, like
+  the hints. Settings strings from before keep their scrub price.
+- **Character Gifts and Minigames** replaces Shuffle NPC & Minigame Rewards (needs further testing; from OotrR):
+  every gift is now patched at the exact events OotrR lists instead of by matching the vanilla item. New checks:
+  the Deku Theater's Skull Mask and Mask of Truth rewards (Deku Stick and Nut upgrades). Settings strings that
+  have the old setting keep their value.
+- **Shuffle Quest Rewards** (on by default, as before): Zelda's Letter, the Light Arrows and Biggoron's reward,
+  which OotrR keeps apart from the gifts.
+- **Gossip Stone hints** (new Hints tab, off by default). Hint Distribution: No Hints, Balanced,
+  Strong or Useless (Strong and Useless experimental), using Clawshot's hint system (which follows OoT Randomizer's): areas on the Way of the
+  Hero, areas that are a waste of time, where some major items are, and what some locations hold. A hint that
+  names a location only goes on a stone you can read without that location's item, and unreadable stones get
+  the joke lines. All 40 stones are written in every language (in English, with the names highlighted), and
+  the hints are listed in the spoiler log.
+- **Gossip Stones: Mask of Truth Required / No Mask of Truth** (Hints tab). Required is the original game:
+  stones speak only to child Link wearing the Mask of Truth, and hints never name something you need to get
+  the mask. No Mask of Truth lets every stone speak to anyone, at any age.
+- **Skip Opening Movie** (Quality of Life): a new game starts in Link's house without the
+  prologue movie; the game still waits for Kokiri Forest to load. From Clawshot.
+- **Skip Saria's Wake-Up Scene** (Quality of Life): Saria doesn't wait at the door, walk Link
+  out or greet Navi; the door is open and the pause map works. From Clawshot.
+- **Skip the Great Deku Tree's Talk** (Quality of Life): his speech doesn't play and his mouth
+  is open. With Mido still blocking, this happens when Mido steps aside. From Clawshot.
+- **Chests Without Cutscene** (Quality of Life): big chests open without the camera move and Link's
+  opening animation; Link still holds the item up. From OotrR. Small chests keep their own short opening:
+  with the quick version they could not be opened at all (0.5.0 test seed 3).
+- **Skip Story Scenes** (Quality of Life, experimental, needs additional testing, on by default): the story scenes that come with quest
+  progress don't play, and their item is given straight away. Temple of Time: the door opening, Ganondorf,
+  pulling the Master Sword and Rauru's talk in the Chamber of Sages (his Light Medallion check). Adult Temple of
+  Time: Sheik's first talk, the sages' talks, Zelda's reveal and the Light Arrows. After a boss: each sage's
+  awakening and medallion, and the Deku Tree, Darunia and Ruto handing over the Spiritual Stones. Leaving
+  Kokiri Forest: Saria's goodbye on the bridge (the Fairy Ocarina is given at once). These scenes are played by
+  the quest flows (`DoorOfTime`, `AllSage`, `Goto_HyruleCastle`, `Dm_SY_BancChange_EscapeDungeon`), so the skip is
+  made there: each scene counts as seen (its `HavePlayedEvent` flag, which the quests read) and its item (the
+  randomized one) is handed over with the call the scene itself used. The game's event table
+  (`GameAnalyzedEventInfo`) lists, for each event, the other flows it calls; an event that calls one it doesn't
+  list stops. Each changed event's row now lists `GetPouchContent` (without it, test seed 7 stayed on a white
+  screen in the Chamber of Sages after the Master Sword, and in test seed 8 the Master Sword couldn't be pulled and
+  Saria's bridge event gave no ocarina). Most of these scenes start on a faded screen and fade it in themselves,
+  often from white (the Chamber of Sages is entered with a white fade); a skipped scene now fades in with its
+  own colour, and an item scene fades in before its window (test seed 9: the Light Medallion was given behind a
+  white screen, so no window showed). Rauru's talk is a talking scene, which the skip button doesn't skip. Song
+  lessons, boss intros and the ending still play. Tested in-game so far: Rauru's Light Medallion and Saria's
+  Fairy Ocarina (the tooltip says so). Known to still play: leaving the Temple of Time as adult and Ganon's
+  Castle's first-visit scene.
+
+### Fixed
+- **Skip Epona Race** (experimental) didn't work: Epona never came to Epona's Song (test seed 10). Owning a horse
+  isn't a save flag: the end of Ingo's race registers the ranch's Epona as your horse
+  (`EventCopyAndRegisterOwnedHorse`), and the song only calls a registered horse. The old version also rewrote
+  `Get_Epona_IsCompleted_Exp`, which is the ranch Epona's presence condition, so owning the song made her vanish.
+  Now, as adult, playing Epona's Song once inside the Lon Lon Ranch fence (where the song normally calls the
+  ranch horses over) does what the race's end does: Epona becomes your horse, Ingo's Epona quest is complete,
+  and she comes to you. After that the song calls her anywhere you can ride. Not while riding a rented horse or
+  during a race. Test seed 11 (this version's first build): an Epona appeared on Link whenever the ocarina came
+  out, at any age, outside the ranch. Taking out the ocarina starts the song's flow, and Epona was named there
+  as an actor the event creates when she's missing (`EventMemberCreateMethod` 0). She now uses 3, like the
+  game's own flows that name Epona where she may be absent: used if she's in the scene, never created. Not yet
+  tested in-game.
+- **Tokensanity tooltip**: says that rupees and other refills dropped by Gold Skulltulas fall to the ground (the
+  game's own pickup), while shields and real items float.
+- **Small chests could not be opened** (0.5.0 test seeds 3 and 4). The map / compass / boss key fix for small
+  chests sent the small chest's item step into the big chest's flow file, skipping the small chest's own item
+  display. It now adds the big chest's question ("is this the dungeon's map, compass or boss key?") and its
+  steps inside the small chest's own flow; small keys and every other item go through the small chest's steps
+  as before. Chests Without Cutscene changes big chests only.
+- **A bought shop shelf could be bought again** (Items Shuffled Per Shop, test seed 4), even after reloading:
+  OotrR's `NoRespawn` setting only acts when a pickup is collected. A shuffled shelf is now hidden once you own
+  its item (its `IsGet` save flag), so shelves only sell items that exist once in the seed (songs, equipment,
+  key items) or keep their normal goods. Shelves that only appear later in the story (the Kokiri shop's full
+  stock) aren't used.
+- **Junk dropped by a Gold Skulltula** (Tokensanity, test seeds 4 to 6). A token-based rupee stayed on the
+  ground after it was collected and its Skulltula came back; the game's own rupee (as OotrR drops it) fell
+  instead of floating; and a token-based copy of its chest form (`TBox_Rupee_Green`, the ammo bundles, ...)
+  floated but still wasn't removed when collected (test seed 6). Consumables (rupees, ammo, hearts, magic, the
+  Business Scrub Seed) now drop as the game's own pickup, which falls to the ground but is collected and stays
+  gone; shields float like the other items. Only the bigger Bombchu bundles have neither and stay off
+  Skulltulas. The fill keeps enough other spots free for them, and if a seed runs short it moves an item that
+  unlocks nothing (a Piece of Heart, ...) onto a Skulltula to make room; with more such junk than other spots, the
+  last Skulltulas keep their own token instead.
+- **Door of Time: Open left the door shut** (test seeds 4 and 5): the save flag it set isn't what the door
+  follows. It now uses Clawshot's Open mode (the door's logic module and the Master Sword pedestal no longer
+  wait for the Door of Time quest past step Ready) and starts that quest at Ready on a new save; it started at
+  NotReady, which only moves on later in the story, so the door stayed shut for a player who went straight to
+  the Temple of Time. Test seed 6: the door is open, so its *experimental* tag is removed.
+- **Songs showed a green rupee in chests** (Songs Anywhere, 0.5.0 test seed 3). Only songs lying in the world
+  had the harp model; in a chest, from a character, a scrub or a shelf, and on a Gold Skulltula, the song's own
+  item actor still used its placeholder rupee model. The song items themselves now use Sheik's harp model, so a
+  song looks like a harp wherever it is found.
+- **Gold Skulltula drops** ([issue #2](https://github.com/AbyssDragonModding/OOTNS2-Rando/issues/2)). With
+  Tokensanity, a Skulltula on a vine dropped its item where Link couldn't collect it, a dropped rupee fell
+  instead of floating, and the Skulltula counted as killed (and never came back) even when its drop was
+  lost. Every Gold Skulltula drop is now built on the token's own pickup, as OotrR does: it floats where the
+  Skulltula died like a token, is collected by touching it, and the token's logic marks the Skulltula as
+  killed only when the drop is collected. Pieces of Heart and Ruto's Letter can be Skulltula drops again.
+  Confirmed in-game: drops float and are collected by touch, and a Skulltula whose drop you
+  didn't collect comes back when the area reloads.
+- **Own Dungeon boss keys, maps and compasses only go in chests.** A boss key could land on the boss's own
+  Heart Container, behind the door it opens, so the seed couldn't be finished. On a Gold Skulltula or a
+  freestanding spot they only went into the pouch without counting for the dungeon (only a chest's opening
+  credits them). Small keys are unchanged. Found in a 0.5.0 test seed's spoiler.
+- **The Gerudo Membership Card is no longer shuffled** (reported by Kareem from the Clawshot randomizer,
+  confirmed in the game files). The guards, the wasteland gate, the Training Ground and horseback archery
+  check the Spirit quest step that only the captain's scene after the carpenter rescue sets. The card itself
+  only stops the guards from jailing you in the sneak areas. With Shuffle NPC & Minigame Rewards on, a card
+  found elsewhere left the guards hostile while the logic expected the fortress to be open. The captain now
+  always gives the card. The adult trade items were already never shuffled (they share the Cucco's slot and
+  would hide it); the tooltip and the Not Supported tab now say so.
+- **Boss keys, maps and compasses in small chests didn't count** (reported by Kareem from the Clawshot
+  randomizer, confirmed in the game files). Only the big chest's opening credits the dungeon; the small
+  chest's opening just put the item in the pouch. With Own Dungeon, a map, compass or boss key could land in
+  a small chest, and the boss door stayed shut (the seed couldn't be finished) or the pause map stayed blank.
+  Small Chests Only (removed below) did the same to the Boss Key chests. The small chest now gives its item
+  through the big chest's item step, which credits the dungeon whatever the chest holds. Applied with Maps &
+  Compasses: Own Dungeon or Boss Keys: Own Dungeon. Not yet tested in-game.
+
+### Removed
+- **Small Chests Only.** Replaced by Chests without cutscenes: Only for large chests, skips their camera and opening animation. Small chests are still vanilla.
+
+### Changed
+- **The randomizer window is now defined in XML** (`rando/ui/main.xml`), Raven's (the randomizers GUI Framework) layout format, instead of
+  being built widget by widget in Python. The settings cards are still made from `rando/settings.py`, so
+  adding a setting doesn't need an XML change. It looks and works the same.
+- **Reorganized the settings tabs.** Main Rules and Other are replaced by tabs grouped by what they change:
+  - **World**: Logic, Open Areas (Kokiri Forest, Door of Time, Zora's Fountain, Death Mountain) and Story
+    Skips (Skip Child Zelda, Skip Epona Race).
+  - **Items**: Quest Items (songs, stones/medallions, ocarinas, Kokiri Sword, Weird Egg), Shuffled Locations
+    (freestanding items and rupees, Heart Containers, NPCs, Great Fairies, Skulltula House, Tokensanity,
+    Shopsanity) and Item Pool (with Refills Need Their Item).
+  - **Quality of Life**: Cutscenes (with Skip Kaepora Gaebora), Gameplay (with Saria's Song With Just an
+    Ocarina and Small Chests Only) and Minigames & NPCs.
+  - **Create Spoiler Log** moved to the ROM Options tab, next to the seed.
+  No setting changed what it does, and settings strings from earlier versions still import.
+- **Labels from test seed 12**: Skip Epona Race is now *(experimental, not working)*: Epona still doesn't come
+  to Epona's Song, and its tooltip says so and says to leave it off. Big Poe Buyer Needs Only 1 Big Poe stays
+  *(experimental)* (no Big Poe sold yet; the tooltip says it's not confirmed). Skip Story Scenes is
+  *(experimental, needs additional testing)*.
+- **Tooltips of confirmed settings** describe what they do in the game: Door of Time Open (walk in and pull
+  the Master Sword without the stones, an ocarina or the Song of Time), Zora's Fountain Open (King Zora stays
+  aside, Ruto's reward is still given, the quest log entry stays empty), Shuffle Songs Anywhere (no longer
+  "untested"; songs show as a harp on the ground, in chests, on Gold Skulltulas and on shelves), Shuffle Kokiri
+  Sword (off keeps the sword scene, also with Chests Without Cutscene), Items Shuffled Per Shop (a bought shelf
+  stays gone after reloading) and Chests Without Cutscene (a story chest keeps its scene).
+
+### Checked
+- **Test seed 12:** no Epona appears when the ocarina comes out any more, but Skip Epona Race still doesn't
+  work (Epona never came to the song).
+- **Tested in-game (0.5.0 test seed):** Gold Skulltula drops (Tokensanity), Gossip Stones with No Mask
+  of Truth and Balanced hints, Skip Opening Movie, Skip Saria's Wake-Up Scene, Skip the Great Deku Tree's
+  Talk (with Kokiri Forest Closed), Chests Without Cutscene and Kokiri Forest: Closed all work, so their
+  *experimental* tags are removed.
+- **Tested in-game (test seeds 3 and 4):** Zora's Fountain: Open (King Zora stays moved through every load,
+  Ruto's reward is given), Business Scrubs (the line names the item), Hint Distribution (Strong) and Songs
+  Anywhere (the harp on the ground, in big chests, on Gold Skulltulas and on shelves) work, so their tags are
+  removed. Test seed 5: Shuffle Kokiri Sword (also not shuffled; the sword chest keeps its story scene),
+  Items Shuffled Per Shop (a bought shelf is gone for good) and Chests Without Cutscene (big chests quick,
+  small chests normal) work, so their tags are removed. Test seed 6: Door of Time: Open works (tag removed);
+  Gold Skulltula drops float, but collected junk stayed (consumables now fall as the game's own pickup).
+  Test seed 7: Saria's bridge scene still played (now skipped too) and the Master Sword left a white screen in
+  the Chamber of Sages. Test seed 8 (a version that skipped the Chamber of Sages): the Master Sword couldn't be
+  pulled and Saria's skipped goodbye gave no ocarina. All three were the event table above. Test seed 9:
+  Saria's goodbye is skipped and the Fairy Ocarina window shows; the first Master Sword pull skips to the
+  Light Medallion, but its window didn't show (the fade colour above). Test seed 10: the Light Medallion window
+  shows (Rauru's skip works); Gold Skulltula drops work again (rupees fall, items float); Skip Epona Race
+  didn't (fixed above); the Big Poe buyer wasn't reached yet.
+- **Your game files are never changed.** The generator only reads the romfs and writes every patched file
+  as a copy in the mod folder. I generated a seed with 18 settings on (262 mod files: 190 patched copies
+  of game files, 72 new files). Afterwards all 186,587 romfs files had the same size and modified time,
+  and none were added or removed. The generator itself now refuses an output folder inside the romfs, as
+  the randomizer window already did.
+
 ## 0.4.5 - 2026-11-12
 
 ### Fixed

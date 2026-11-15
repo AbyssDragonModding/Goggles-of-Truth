@@ -1,11 +1,12 @@
-<!-- First start (and File > Link romfs folder): where the user's own romfs is. -->
-<Window Title="OoT Tracker - Link your romfs" Width="580" Height="250" MinWidth="460" MinHeight="230" Theme="Dark">
+<!-- First start (and File > Link romfs folder): where the user's own game is (.nup or romfs). -->
+<Window Title="OoT Tracker - Link your game" Width="640" Height="260" MinWidth="500" MinHeight="240" Theme="Dark">
     <VBox Spacing="12" Slot.Padding="20">
-        <Label Text="The tracker uses the item icons from your own copy of the game. Select the romfs folder you extracted from your Ocarina of Time (Switch 2) dump; the icons are extracted once, into the tracker's icons folder."
+        <Label Text="The tracker uses the item icons from your own copy of the game. Select your Ocarina of Time (Switch 2) .nup file, or the romfs folder you extracted from your dump; the icons are extracted once, into the tracker's icons folder. The game files are only read."
                Wrap="true"/>
         <HBox Spacing="8">
-            <TextInput Name="romfs_path" Placeholder="...\romfs" Slot.Fill="1" OnCommitted="setup_extract"/>
-            <Button Text="Browse..." OnClicked="setup_browse"/>
+            <TextInput Name="romfs_path" Placeholder="...\game.nup  or  ...\romfs" Slot.Fill="1" OnCommitted="setup_extract"/>
+            <Button Text="Browse .nup..." OnClicked="setup_browse_nup"/>
+            <Button Text="Browse folder..." OnClicked="setup_browse"/>
         </HBox>
         <Label Name="setup_status" Text="" Wrap="true" Color="#E8C872"/>
         <Spacer Slot.Fill="1"/>

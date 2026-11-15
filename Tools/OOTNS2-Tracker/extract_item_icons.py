@@ -1,5 +1,8 @@
 """Extract the item icons from OoT (Switch 2) romfs as PNGs, for building a tracker.
 
+The game files can be an extracted romfs folder (or the game folder holding it) or the game's .nup package,
+read directly without extracting it (newest base/update package inside; reader in nup/, a55uka/nup, MIT).
+
 Reads every ``UI/Tex/Icon/*.bntx.zs`` (zstd-compressed BNTX, one ASTC 4x4
 texture each, already the largest size the game ships), un-swizzles the
 block-linear data, decodes it and saves ``<IconName>.png``.
@@ -14,8 +17,10 @@ Requirements: Python 3.14+ (stdlib zstd), then
 
 Usage:
     python extract_item_icons.py --romfs PATH [--out DIR] [--shadows] [--grayscale] [--no-extras]
+(PATH: the romfs folder, the game folder holding it, or the game's .nup file)
 """
 import argparse
+import hashlib
 import re
 import struct
 import sys
@@ -117,9 +122,10 @@ def grayscale(img):
     return Image.merge("RGBA", (lum, lum, lum, img.getchannel("A")))
 
 
-def export(path, dest, name_filter=None, gray_dest=None):
+def export(data, dest, name_filter=None, gray_dest=None):
+    """Save the textures of one .bntx.zs file (its bytes) as PNGs."""
     n = 0
-    for name, img in read_textures(zstd.decompress(path.read_bytes()), name_filter):
+    for name, img in read_textures(zstd.decompress(data), name_filter):
         img.save(dest / f"{name}.png")
         n += 1
         if gray_dest:
@@ -131,48 +137,157 @@ def export(path, dest, name_filter=None, gray_dest=None):
 COMMON_BNTX = "UI/Layout2Archive/Common.Product.100.Nin_Ounce_NVN2.bntx.zs"
 
 
-def find_romfs(path):
-    """The romfs folder for a path that is the romfs itself or a folder holding it; None if not found."""
+# ---------------------------------------------------------------- game files: folder or .nup
+
+class FolderRomfs:
+    """An extracted romfs folder."""
+
+    def __init__(self, path):
+        self.path = self.label = Path(path)
+
+    def files(self, folder):
+        """Names of the .bntx.zs files in a romfs folder (sorted), or None when the folder is missing."""
+        d = self.path / folder
+        return sorted(f.name for f in d.glob("*.bntx.zs")) if d.is_dir() else None
+
+    def exists(self, rel):
+        return (self.path / rel).is_file()
+
+    def read(self, rel):
+        return (self.path / rel).read_bytes()
+
+    def close(self):
+        pass
+
+
+class NupRomfs:
+    """The romfs of the newest base/update package in a .nup, read in place (each file checked against its
+    SHA-256 in the package)."""
+
+    def __init__(self, path):
+        from nup import format as NF
+        from nup.read import NupReader
+        self.path = self.label = Path(path)
+        self.reader = NupReader(str(path))
+        try:
+            pkgs = [p for p in self.reader.packages if p.kind in (NF.KIND_BASE, NF.KIND_UPDATE)]
+            if not pkgs or len({p.title_id & ~0xFFF for p in pkgs}) != 1:
+                raise ValueError("the .nup must hold one game's base or update package")
+            newest = max(p.version for p in pkgs)
+            pkgs = [p for p in pkgs if p.version == newest]
+            if len(pkgs) != 1 or pkgs[0].romfs_dir == NF.NO_DIR:
+                raise ValueError("the .nup's newest package has no romfs")
+            self.dirs, self.index = {}, {}
+            r, stack, seen = self.reader, [(pkgs[0].romfs_dir, "")], set()
+            while stack:
+                d, prefix = stack.pop()
+                if d in seen:
+                    raise ValueError("the .nup's folder tree is damaged")
+                seen.add(d)
+                _, first, count = r.dirs[d]
+                names = self.dirs[prefix.rstrip("/")] = []
+                for child in r.children[first:first + count]:
+                    is_dir = child < r.dir_count
+                    entry = child if is_dir else child - r.dir_count
+                    name = (r.dirs if is_dir else r.files)[entry][0].decode("utf-8")
+                    if is_dir:
+                        stack.append((entry, prefix + name + "/"))
+                    else:
+                        names.append(name)
+                        self.index[prefix + name] = entry
+        except BaseException:
+            self.reader.close()
+            raise
+
+    def files(self, folder):
+        names = self.dirs.get(folder.strip("/"))
+        return None if names is None else sorted(n for n in names if n.endswith(".bntx.zs"))
+
+    def exists(self, rel):
+        return rel in self.index
+
+    def read(self, rel):
+        i = self.index[rel]
+        data = self.reader.read_file(i)
+        if hashlib.sha256(data).digest() != self.reader.file_info(i)[2]:
+            raise ValueError(f"romfs/{rel} in {self.path} is damaged (SHA-256 mismatch)")
+        return data
+
+    def close(self):
+        self.reader.close()
+
+
+def is_nup(path):
     path = Path(path)
+    try:
+        with open(path, "rb") as fh:
+            return path.is_file() and fh.read(3) == b"NUP"
+    except OSError:
+        return False
+
+
+def find_romfs(path):
+    """The game files for a path: a .nup file, the romfs folder itself or a folder holding it. Returns a
+    FolderRomfs or NupRomfs, or None if the path holds no icons. A .nup that can't be read raises ValueError."""
+    path = Path(str(path).strip().strip('"'))
+    if path.is_file():
+        if not is_nup(path):
+            return None
+        try:
+            src = NupRomfs(path)
+        except (ValueError, OSError, IndexError, struct.error) as e:
+            raise ValueError(f"{path.name} is not a readable .nup: {e}") from e
+        if src.files(ICON_FOLDER) is None:
+            src.close()
+            return None
+        return src
     for cand in (path, path / "romfs"):
-        if (cand / "UI/Tex/Icon").is_dir():
-            return cand
+        if (cand / ICON_FOLDER).is_dir():
+            return FolderRomfs(cand)
     return None
 
 
+ICON_FOLDER = "UI/Tex/Icon"
+
+
 def extract(romfs, out, shadows=False, grayscale=False, extras=True, log=print):
-    """Extract the icons from `romfs` into `out`. Returns the number of PNGs written.
-    Raises FileNotFoundError when the romfs does not hold the icon files."""
-    romfs, out = Path(romfs), Path(out)
+    """Extract the icons from `romfs` (a FolderRomfs / NupRomfs from find_romfs, or a romfs folder path) into
+    `out`. Returns the number of PNGs written. Raises FileNotFoundError when the icon files are missing."""
+    if isinstance(romfs, (str, Path)):
+        src = find_romfs(romfs)
+        if src is None:
+            raise FileNotFoundError(f"No {ICON_FOLDER} in {romfs}")
+    else:
+        src = romfs
+    out = Path(out)
     gray = out / "grayscale" if grayscale else None
     # (source folder, colour output, grayscale output or None)
-    jobs = [(romfs / "UI/Tex/Icon", out, gray)]
+    jobs = [(ICON_FOLDER, out, gray)]
     if shadows:
-        jobs.append((romfs / "UI/Tex/IconSh", out / "shadows", None))  # already black
+        jobs.append(("UI/Tex/IconSh", out / "shadows", None))  # already black
 
     total = 0
     for folder, dest, gray_dest in jobs:
-        if not folder.is_dir():
-            raise FileNotFoundError(f"Not found: {folder}")
+        files = src.files(folder)
+        if files is None:
+            raise FileNotFoundError(f"Not found: {src.label}/{folder}")
         for d in (dest, gray_dest):
             if d:
                 d.mkdir(parents=True, exist_ok=True)
-        files = sorted(folder.glob("*.bntx.zs"))
         log(f"{folder}  ->  {dest}  ({len(files)} files)")
-        for f in files:
-            total += export(f, dest, gray_dest=gray_dest)
+        for name in files:
+            total += export(src.read(f"{folder}/{name}"), dest, gray_dest=gray_dest)
 
     if extras:
-        common = romfs / COMMON_BNTX
-        if not common.is_file():
-            raise FileNotFoundError(f"Not found: {common}")
+        if not src.exists(COMMON_BNTX):
+            raise FileNotFoundError(f"Not found: {src.label}/{COMMON_BNTX}")
         dest = out / "extras"
         gray_dest = gray / "extras" if gray else None
         for d in (dest, gray_dest):
             if d:
                 d.mkdir(parents=True, exist_ok=True)
-        log(f"{common.name}  ->  {dest}  (filtered)")
-        total += export(common, dest, EXTRA_NAMES, gray_dest)
+        log(f"{COMMON_BNTX.rsplit('/', 1)[1]}  ->  {dest}  (filtered)")
+        total += export(src.read(COMMON_BNTX), dest, EXTRA_NAMES, gray_dest)
 
     log(f"Done: {total} PNGs written to {out}")
     return total
@@ -180,7 +295,7 @@ def extract(romfs, out, shadows=False, grayscale=False, extras=True, log=print):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--romfs", required=True, help="your extracted romfs folder")
+    ap.add_argument("--romfs", required=True, help="your extracted romfs folder, or your game's .nup file")
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent / "icons"),
                     help="output folder (default: %(default)s)")
     ap.add_argument("--shadows", action="store_true", help="also export the *_Sh drop-shadow icons")
@@ -191,7 +306,7 @@ def main():
     args = ap.parse_args()
     try:
         extract(args.romfs, args.out, args.shadows, args.grayscale, args.extras)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         sys.exit(str(e))
 
 

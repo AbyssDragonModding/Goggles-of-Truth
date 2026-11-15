@@ -7,3 +7,7 @@ checklist_sample_*.csv
 OoTR_Remake_*/
 romfs/
 .venv/
+
+# your own settings (rando/usersettings.py)
+user_settings.toml
+user_settings.toml.tmp

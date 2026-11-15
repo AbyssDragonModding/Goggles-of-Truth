@@ -45,21 +45,33 @@ SETTING_TESTS = {
         "reward": ("Bosses give a shuffled Spiritual Stone / Medallion", "Beat a boss; compare with the spoiler"),
         "anywhere": ("Bosses give random items; stones/medallions are found in other checks; the Door of Time "
                      "still opens after the three child dungeons", "Beat a boss; open a check holding a stone or medallion")}[v],
-    "skip_epona_race": lambda v: ("Adult Epona comes when you play Epona's Song, without Ingo's race",
-                                  "As adult with Epona's Song, play it in Hyrule Field") if v else None,
+    "skip_epona_race": lambda v: ("Not working yet (Epona doesn't come). Meant: playing Epona's Song as adult inside "
+                                  "the Lon Lon Ranch fence makes Epona yours, without Ingo's race",
+                                  "As adult with Epona's Song, play it inside the ranch fence, then in Hyrule Field")
+                                 if v else None,
     "saria_song_ocarina": lambda v: ("Saria teaches her song in Sacred Forest Meadow with just an ocarina",
                                      "With an ocarina and before meeting Zelda, walk up to Saria on the stump") if v else
                                     ("Saria's Song needs meeting Zelda first", "Visit Saria before and after Zelda"),
     "shuffle_kokiri_sword": lambda v: (None if v else ("Kokiri Sword is in its normal chest", "Open the Kokiri Sword chest")),
-    "shopsanity": lambda v: (("Some shop shelves sell randomized items (10-99 rupees); names and text match the item",
-                              "Visit the Kokiri, Goron, Zora and Bombchu shops") if v != "off" else None),
+    "shopsanity": lambda v: (("Shop shelves sell randomized items once each, at the listed price (%s per shop)" % v,
+                              "Visit the Kokiri, Goron and Zora shops, the Market and Kakariko shops; buy a shuffled item")
+                             if v != "off" else None),
+    "shuffle_scrubs": lambda v: (("The four one-time Business Scrubs sell randomized items and name them",
+                                  "Buy from the Lost Woods stick and nut scrubs, the Hyrule Field and Crater heart scrubs")
+                                 if v else None),
+    "shuffle_quest": lambda v: (("Zelda's Letter, the Light Arrows and Biggoron give randomized items",
+                                 "Meet Zelda; get the Light Arrows; finish the trade sequence") if v else None),
     "shuffle_ocarinas": lambda v: (("No Saria goodbye / Fairy Ocarina on the forest bridge; ocarinas are found as checks",
                                      "Beat the Deku Tree and cross the forest bridge; check the spoiler for both ocarinas")
                                     if v else None),
     "shuffle_house": lambda v: ("All five Skulltula House rewards (10-50 tokens) are random; the two wallets are in chests "
                                 "(the first gives the Adult's Wallet, the second the Giant's Wallet)",
                                 "Turn in 10 tokens at the Skulltula House; open a chest holding a wallet") if v else None,
-    "tokensanity": lambda v: (("Gold Skulltulas drop randomized items (%s)" % v, "Kill a Gold Skulltula") if v != "off" else None),
+    "tokensanity": lambda v: (("Gold Skulltulas drop randomized items (%s); a drop floats like a token and is collected by "
+                               "touching it; the Skulltula only stays dead once its drop is collected; rupees and refills fall to "
+                               "the ground (the game's own pickup)" % v,
+                               "Kill a Gold Skulltula on a vine and touch its drop while climbing; kill one, leave without "
+                               "the drop, come back") if v != "off" else None),
     "skip_cutscenes": lambda v: ("Every cutscene can be skipped (opening, credits too)", "Press the skip button in the opening") if v else None,
     "skip_area_intros": lambda v: ("First-arrival intros don't play: Kakariko, Graveyard, Hyrule Castle, Lake Hylia, "
                                    "Gerudo Valley/Fortress, Zora's River/Fountain, Ganon's Castle, Lost Woods (after Saria), "
@@ -75,8 +87,21 @@ SETTING_TESTS = {
     "free_bombs": lambda v: ("Bag bombs can be pulled out and thrown without the Goron Bracelet",
                              "Get a Bomb Bag before the bracelet; use a bomb") if v else
                             ("Bombs need the Goron Bracelet (logic gives the bracelet first)", "Check the bracelet is found before bombs are needed"),
-    "small_chests": lambda v: ("Big chests (and Boss Key chests) are small chests and open with the short animation",
-                               "Open a chest that is normally big, e.g. the Deku Tree Slingshot chest") if v else None,
+    "skip_opening": lambda v: ("A new game starts in Link's house; Navi wakes Link", "Start a new save") if v else None,
+    "skip_saria_intro": lambda v: ("Saria isn't at the door; the door is open; the pause map works",
+                                   "Start a new save, walk out of Link's house, open the map") if v else None,
+    "skip_deku_talk": lambda v: ("The Great Deku Tree's speech doesn't play; his mouth is open",
+                                 "Walk up to the Deku Tree (after showing Mido sword + shield unless Kokiri Forest is Open)") if v else None,
+    "skip_story_scenes": lambda v: ("Rauru, the sages' awakenings, Sheik/Zelda in the Temple of Time, the stone scenes "
+                                    "and Saria's bridge goodbye don't play; their items are given straight away",
+                                    "Leave Kokiri Forest (Fairy Ocarina), pull the Master Sword (Rauru's item), beat a "
+                                    "boss (stone / medallion item)") if v else None,
+    "quick_chests": lambda v: ("Chests open without the camera move or Link's opening animation; Link holds the item up",
+                               "Open a big chest and a small chest") if v else None,
+    "hint_distribution": lambda v: (("Gossip Stones give the hints listed in the spoiler (%s)" % v,
+                                     "Talk to a few Gossip Stones and compare with spoiler.txt") if v != "none" else None),
+    "gossip_stones": lambda v: (("Gossip Stones speak without the Mask of Truth, at any age",
+                                 "Talk to a stone as child and as adult without the mask") if v == "no_mask" else None),
 }
 
 

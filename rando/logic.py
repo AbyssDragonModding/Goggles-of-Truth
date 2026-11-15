@@ -320,6 +320,18 @@ SPECIAL = {
     "shop_goron": lambda s: s.dmt_child or s.adult,
     "shop_zora": lambda s: s.zd_child or s.zd_adult,
     "shop_bombchu": lambda s: s.hf_child,
+    "shop_market": lambda s: s.hf_child,          # the Market shops are in the child Market only
+    "shop_kakariko": lambda s: s.adult,           # Kakariko's bazaar and potion shop are in the adult files only
+    # Deku Theater (Lost Woods): showing the Skull Mask / the Mask of Truth. The logic doesn't model the mask
+    # quest; the masks need Zelda's Letter at the Kakariko gate (Happy Mask Shop), the Mask of Truth also the
+    # Skull Kid (Saria's Song) and the Graveyard.
+    "theater_skull": lambda s: s.hf_child and s.has("ZeldaLetter"),
+    "theater_truth": lambda s: s.hf_child and s.has("ZeldaLetter") and song(s, "SariaSong"),
+    # one-time Business Scrubs (their price is added by generator.Plan when it is above the child wallet)
+    "scrub_lw_bridge": lambda s: True,            # Lost Woods, by the bridge to Kokiri Forest
+    "scrub_lw_nuts": lambda s: bombs(s) or s.has("Hammer"),
+    "scrub_hf": lambda s: (s.hf_child or s.adult) and (bombs(s) or s.has("Hammer")),
+    "scrub_dmc": lambda s: s.dmc_child,           # child crater only
     "rutos_letter": lambda s: s.hf_child and scale(s),
 }
 

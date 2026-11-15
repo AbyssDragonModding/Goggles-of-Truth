@@ -7,17 +7,21 @@ import time
 from collections import Counter, defaultdict
 
 from . import formats as F
+from . import faststart
 from . import gamedata
+from . import hints as H
 from . import logic as L
 from . import settings as S
-from .pickups import PickupCloner
-from .qol import (patch_anju, patch_dodongo_bag_bombs, patch_egg_hatch_guard, patch_gs_death,
+from .pickups import PickupCloner, patch_song_models
+from .qol import (patch_anju, patch_dodongo_bag_bombs, patch_egg_hatch_guard, 
                   patch_ocarina_bridge, patch_open_forest_mido, patch_saria_song, patch_song_teaching,
-                  patch_small_chests, patch_kokiri_schedules, patch_big_poe_one, patch_open_zora_arrival)
-from .shops import ShopPatcher
-from .world import World, JUNK
+                  patch_small_chest_dungeon_items, patch_kokiri_schedules, patch_big_poe_one, patch_open_zora_arrival)
+from .world import World, JUNK, EVENT_LOCATIONS
+from . import scrubtext
+from . import storyskip
+from .door import patch_open_door
 
-VERSION = "0.4.5"
+VERSION = "0.5.0"
 BOMB_LIFT_PARAM = "Component/LiftableParam/Item_Bomb.game__component__LiftableParam.bgyml"
 BOMB_PACKS = ["Pack/Actor/Item_Bomb.pack.zs", "Pack/Actor/Npc_Hylia_ImperialSoldier_Bomb.pack.zs",
               "Pack/Actor/Obj_BombFlower_A_01.pack.zs", "Pack/Actor/Obj_BombFlower_A_04.pack.zs",
@@ -25,9 +29,16 @@ BOMB_PACKS = ["Pack/Actor/Item_Bomb.pack.zs", "Pack/Actor/Npc_Hylia_ImperialSold
 BRACELET_GRADE = 3655598229      # LiftableGrade granted by the Goron Bracelet
 DEFAULT_GRADE = 3069107721       # grade of pots, small rocks, Bombchus (no bracelet needed)
 SKIP_SETTING = "Event/EventSetting/EventSettingComponent/SkipSetting/DisableSkip.engine__event__SkipSetting.bgyml"
-SHOP_FORBIDDEN = {"Heart_Piece", "Heart_Container", "Token_Gold", "Bottle", "Bottle_Milk", "Bottle_Letter",
-                  "WeirdEgg", "ZeldaLetter", "BombBag_Medium", "BulletBag_Medium", "Quiver_Medium",
-                  "Wallet_Medium", "Wallet_Large"}
+# Items a shuffled shelf may not sell. Shop_Rando_ shelves are bought once (rando/pickups.py), as in OotrR;
+# the token and the capacity upgrades (handed out as "Bigger, else Biggest" elsewhere) stay off shelves.
+SHOP_FORBIDDEN = {"Token_Gold", "BombBag_Medium", "BulletBag_Medium", "Quiver_Medium", "Wallet_Medium", "Wallet_Large"}
+SHOP_PRICE = 10                 # OotrR: every shuffled shelf costs 10 rupees
+# Shelves whose purchase the game needs: at least one copy of each stays on sale (OotrR keeps one copy of every
+# purchase the logic uses). The Deku Shield and the tunics are sold in one shop only, so they never move.
+SHOP_KEEP_ONE = {"Shop_Weapon_Shield_Deku", "Shop_Weapon_Shield_Hylian", "Shop_Armor_Goron", "Shop_Armor_Zora",
+                 "Shop_Bottle_BlueFire", "Shop_Bottle_Bug", "Shop_Bottle_Fish", "Shop_Bottle_Fairy"}
+# Business Scrubs: "low" 10 rupees, "regular" the game's own price (40 or 100), "random" 10 to 99 (child wallet)
+SCRUB_LOW_PRICE, CHILD_WALLET, ADULT_WALLET = 10, 99, 200
 UPGRADES = {"Wallet_Medium", "Wallet_Large", "BombBag_Medium", "BombBag_Large"}
 REWARDS = {"Stone_Forest", "Stone_Fire", "Stone_Water", "Medal_Forest", "Medal_Fire", "Medal_Water",
            "Medal_Shadow", "Medal_Spirit", "Medal_Light"}
@@ -69,8 +80,41 @@ PROGRESSIVE_UPGRADES = {"BombBag_Medium": ("Item_BombBag_Medium", "Item_BombBag_
 # Giant's Wallet found first could later be "downgraded" by the Adult's Wallet.
 PROGRESSIVE_WALLET = "Wallet_Medium"
 
-# Pickups with their own AI can't be made walk-over (rando/pickups.py), so they would need A in mid-air
-GS_FORBIDDEN = {"Heart_Piece", "Bottle_Letter"}
+# Never shuffled. The Gerudo Membership Card does nothing by itself: the guards, the wasteland gate, the
+# Training Ground and horseback archery check the Spirit quest step (SageOfSpirit_IsAfter_Step03_Exp), which only
+# the captain's scene after the carpenters sets; the card itself only stops the jail in the sneak areas
+# (Logic/GerudoFortress_Common_35d7). A card found anywhere else left the guards hostile.
+ALWAYS_VANILLA = {"Token_Gerudo"}
+
+# Items a Gold Skulltula may not drop. Since 0.5.0 every drop is a token-based pickup (rando/pickups.py), so the
+# Piece of Heart and Ruto's Letter (whose own pickups need A) are allowed again.
+GS_FORBIDDEN = set()
+
+# Junk on a Gold Skulltula. A token-based drop only disappears when collected if its item is owned once (an IsGet
+# flag): a token-based rupee stayed on the ground after it was collected and its Skulltula came back (test seed 4),
+# and so did token-based copies of the chest forms (TBox_Rupee_*, the ammo bundles; test seed 6). Consumables
+# (rupees, ammo, hearts, magic, the Business Scrub Seed) drop as the game's own pickup instead, as in OotrR: it
+# falls to the ground, but is collected and stays gone (test seed 5). Shields are equipment and float like the
+# other items. Junk with neither (the bigger Bombchu bundles) is kept off Skulltulas.
+GS_FLOATING_JUNK = {"Shield_Deku", "Shield_Hylian"}
+NATIVE_DROPS = {"BombBundle_Small": "Obj_Bomb", "DekuStickBundle_Small": "Obj_DekuStick", "DekuNutBundle": "Obj_DekuNut",
+                "DekuSeedBundle": "Obj_DekuSeed", "BombchuBundle_Small": "Obj_Bombchu"}
+
+
+def native_drop(world, item):
+    """The game's own world pickup for consumable `item` (it falls when dropped), or None."""
+    actor = NATIVE_DROPS.get(item)
+    if actor is None:
+        try:
+            actor = world.actor_for(item, "world")
+        except KeyError:
+            return None
+    return actor if actor.startswith("Obj_") and world.actor_exists(actor) else None
+
+
+def gs_refuses(world, item):
+    """Junk a Gold Skulltula can't drop (no floating form, no pickup of its own)."""
+    return item in JUNK and item not in GS_FLOATING_JUNK and not native_drop(world, item)
 
 
 # Chest "get" events that act out the vanilla item. Get_StoneOfForest_GetSword (the Kokiri Sword chest) plays
@@ -106,6 +150,7 @@ class Plan:
         self.world, self.st, self.seed_key = world, st, seed_key
         self.rules = {l.id: L.location_rule(l) for l in world.locations}
         self._choose_shop_slots(seed_key)
+        self._choose_scrub_prices(seed_key)
         self.fixed, self.shuffled = {}, []
         self.forced = {}      # unshuffled locations that still get a different item (patched like placements)
         excluded = set(st["excluded_locations"])
@@ -124,21 +169,70 @@ class Plan:
         self._adjust_pool()
 
     def _choose_shop_slots(self, seed_key):
-        """Shopsanity: pick N shop-exclusive shelves per shop and give each a price."""
+        """Items Shuffled Per Shop (OotrR): N shelves per shop (1 to 4 at random with "random"), 10 rupees each,
+        keeping one copy on sale of every shelf in SHOP_KEEP_ONE."""
         self.shop_chosen, self.shop_prices = set(), {}
-        n = 0 if self.st["shopsanity"] == "off" else int(self.st["shopsanity"])
-        if not n:
+        mode = self.st["shopsanity"]
+        if mode == "off":
             return
         rng = random.Random(hashlib.sha256(("shops|" + seed_key).encode()).digest())
         by_shop = defaultdict(list)
         for loc in self.world.locations:
             if loc.kind == "shop":
                 by_shop[loc.shop].append(loc)
+        copies = Counter(l.vanilla_actor for slots in by_shop.values() for l in slots)
         for shop in sorted(by_shop):
+            wanted = rng.randint(1, 4) if mode == "random" else int(mode)
             slots = sorted(by_shop[shop], key=lambda l: l.id)
-            for loc in rng.sample(slots, min(n, len(slots))):
+            rng.shuffle(slots)
+            for loc in slots:
+                if wanted <= 0:
+                    break
+                if loc.id in getattr(self.world, "shop_conditional", ()):
+                    continue                  # its own story condition (Presence) would clash with sold-out
+                if loc.vanilla_actor in SHOP_KEEP_ONE and copies[loc.vanilla_actor] <= 1:
+                    continue
+                copies[loc.vanilla_actor] -= 1
                 self.shop_chosen.add(loc.id)
-                self.shop_prices[loc.id] = rng.randint(10, 99)   # child wallet holds 99
+                self.shop_prices[loc.id] = self._price(self.st.get("shop_prices", "low"), "shop", seed_key, loc,
+                                                       SHOP_PRICE, step=5)
+                wanted -= 1
+        for lid, price in self.shop_prices.items():
+            self._needs_wallet(lid, price)
+
+    @staticmethod
+    def _price(mode, what, seed_key, loc, low, step=1, regular=None):
+        """A price for `mode`: low, regular (the game's), random (10-99) or random_wallet (10-200)."""
+        if mode == "regular" and regular is not None:
+            return regular
+        if mode in ("random", "random_wallet"):
+            top = CHILD_WALLET if mode == "random" else ADULT_WALLET
+            digest = hashlib.sha256(("%s-price|%s|%s" % (what, seed_key, loc.id)).encode()).digest()
+            n = int.from_bytes(digest[:8], "big")
+            if step > 1:
+                return low + step * (n % ((top - low) // step + 1))
+            return low + n % (top - low + 1)
+        return low
+
+    def _needs_wallet(self, lid, price):
+        """A price above 99 rupees needs the Adult's Wallet (or the Giant's)."""
+        if price > CHILD_WALLET:
+            base = self.rules[lid]
+            self.rules[lid] = lambda s, b=base: b(s) and (s.has("Wallet_Medium") or s.has("Wallet_Large"))
+
+    def _choose_scrub_prices(self, seed_key):
+        """Business Scrubs: each shuffled scrub's price, and the wallet it needs when that is above 99."""
+        self.scrub_prices = {}
+        if not self.st.get("shuffle_scrubs"):
+            return
+        mode = self.st.get("scrub_prices", "low")
+        for loc in self.world.locations:
+            if loc.category != "scrub":
+                continue
+            game = max((pr for _, _, pr in loc.price_refs), default=SCRUB_LOW_PRICE)
+            price = self._price(mode, "scrub", seed_key, loc, SCRUB_LOW_PRICE, regular=game)
+            self.scrub_prices[loc.id] = price
+            self._needs_wallet(loc.id, price)
 
     def _is_shuffled(self, loc):
         st, item = self.st, loc.vanilla
@@ -157,6 +251,8 @@ class Plan:
             return False
         if item == "WeirdEgg" and not st["shuffle_weird_egg"]:
             return False
+        if item in ALWAYS_VANILLA:
+            return False
         if loc.category == "ocarina":
             return st["shuffle_ocarinas"]
         cat = loc.category
@@ -166,6 +262,12 @@ class Plan:
             return st["shuffle_rewards"] != "vanilla"
         if cat == "npc":
             return st["shuffle_npc"]
+        if cat == "quest":
+            return st["shuffle_quest"]
+        if cat == "scrub":
+            return bool(st["shuffle_scrubs"])
+        if cat == "egg":
+            return True                      # Shuffle Weird Egg (checked above)
         if cat == "fairy":
             return st["shuffle_fairies"]
         if cat == "house":
@@ -228,6 +330,24 @@ class Plan:
             self._grantable[item] = ok
         return self._grantable[item]
 
+    def sold_once(self, item):
+        """Can a shelf sell `item` once? A bought shelf is hidden by its item's IsGet flag (write_patches), so the
+        item must exist once in the seed (a second Piece of Heart found elsewhere would hide an unbought shelf)
+        and have that flag."""
+        cache = self.__dict__.setdefault("_sold_once", {})
+        if item not in cache:
+            copies = self.__dict__.get("_copies")
+            if copies is None:
+                copies = self._copies = Counter(self.pool) + Counter(self.fixed.values())
+            try:
+                actor = self.world.actor_for(item, "event")
+                # bottles: filling an empty bottle (milk, fish, ...) may set the same flag and hide an unbought shelf
+                cache[item] = (copies[item] <= 1 and not item.startswith("Bottle") and self.world.actor_exists(actor)
+                               and gamedata.isget_exists(self.world, actor))
+            except KeyError:
+                cache[item] = False
+        return cache[item]
+
     # which shuffled locations may receive `item`
     def allowed(self, loc, item):
         st = self.st
@@ -237,7 +357,7 @@ class Plan:
             return False
         if item == PROGRESSIVE_WALLET and loc.kind != "chest":
             return False
-        if loc.kind == "gs" and item in GS_FORBIDDEN:
+        if loc.kind == "gs" and (item in GS_FORBIDDEN or gs_refuses(self.world, item)):
             return False
         is_reward_loc, is_song_loc = loc.category == "reward", loc.category == "song"
         if st["shuffle_rewards"] != "anywhere":
@@ -255,14 +375,20 @@ class Plan:
             if not L.is_deku_slingshot_chest(loc) and (loc.dungeon or loc.region not in L.FOREST_REGIONS):
                 return False
         if "@" in item:                       # dungeon items stay in their own dungeon
-            return loc.dungeon == item.split("@")[1]
+            if loc.dungeon != item.split("@")[1]:
+                return False
+            # Boss keys, maps and compasses only count for the dungeon when a chest's opening gives them (its
+            # EventGetDungeonBossKey / Map / Compass, rando/qol.py patch_small_chest_dungeon_items); a pickup
+            # only puts them in the pouch. The boss Heart Container is also behind the boss door.
+            if _dungeon_item_type(item) in ("boss_keys", "maps_compasses"):
+                return loc.kind == "chest"
+            return True
         if loc.kind == "shop":                # a shelf needs a pouch actor with its own pack
-            if item in SHOP_FORBIDDEN:        # shelves restock: a stackable item would be infinite
+            if item in JUNK:
+                return True                   # the shelf keeps its normal goods
+            if item in SHOP_FORBIDDEN or item in REWARDS:
                 return False
-            try:
-                return self.world.actor_exists(self.world.actor_for(item, "event"))
-            except KeyError:
-                return False
+            return self.sold_once(item)
         return True
 
 
@@ -389,13 +515,22 @@ class Filler:
         junk_rest.sort(key=lambda i: 0 if i in SHOP_FORBIDDEN else 1)   # restricted junk first
         self.rng.shuffle(empty)
         refills = plan.st.get("refill_needs_item")
+        # some junk can't go on a Gold Skulltula (gs_refuses): keep enough other spots free for it
+        junk_left = sum(1 for i in junk_rest if gs_refuses(plan.world, i))
         for item in junk_rest:
             spot = None
-            if item in PROGRESSIVE_UPGRADES:
+            if gs_refuses(plan.world, item):
+                junk_left -= 1
+            else:
+                free = sum(1 for l in empty if l.id not in self.placed and l.kind != "gs")
+                if free <= junk_left:
+                    spot = next((l for l in empty if l.id not in self.placed and l.kind == "gs"
+                                 and plan.allowed(l, item)), None)
+            if spot is None and item in PROGRESSIVE_UPGRADES:
                 # chests make repeat copies progressive (see write_patches); prefer them
                 spot = next((l for l in empty if l.id not in self.placed and l.kind == "chest"
                              and plan.allowed(l, item)), None)
-            elif refills and refill_container(item):
+            elif spot is None and refills and refill_container(item):
                 # only chests can check for the container; elsewhere the refill becomes a blue rupee
                 spot = next((l for l in empty if l.id not in self.placed and l.kind == "chest"
                              and plan.allowed(l, item)), None)
@@ -403,8 +538,30 @@ class Filler:
                     item = REFILL_FALLBACK
             if spot is None:
                 spot = next((l for l in empty if l.id not in self.placed and plan.allowed(l, item)), None)
+            if spot is None and gs_refuses(plan.world, item):
+                # only Skulltula spots are left: move a placed item that unlocks nothing (a Piece of Heart, ...)
+                # onto one, and put the junk where it was; moving such an item can't change the logic
+                gs_free = [l for l in empty if l.id not in self.placed and l.kind == "gs"]
+                for other_id in sorted(self.placed, key=lambda _: self.rng.random()):
+                    other, moved = self.locs[other_id], self.placed[other_id]
+                    if (other.kind == "gs" or other_id in plan.start_locs or moved in L.PROGRESSION
+                            or moved in JUNK or not plan.allowed(other, item)):
+                        continue
+                    g = next((l for l in gs_free if plan.allowed(l, moved)), None)
+                    if g is not None:
+                        self.placed[g.id] = moved
+                        spot = other
+                        break
+                else:
+                    # more junk than other spots (a scarce item pool, maps in their own dungeon, ...): the Skulltula
+                    # keeps its own token instead; an extra token only makes the Skulltula House easier
+                    g = next((l for l in gs_free if plan.allowed(l, "Token_Gold")), None)
+                    if g is not None:
+                        spot, item = g, "Token_Gold"
             if spot is None:
-                raise GenerationError("no location left for %s" % item)
+                left = Counter(l.kind for l in empty if l.id not in self.placed)
+                raise GenerationError("no location left for %s (empty: %s)" % (
+                    item, ", ".join("%d %s" % (n, k) for k, n in sorted(left.items())) or "none"))
             self.placed[spot.id] = item
 
 
@@ -464,8 +621,22 @@ def generate(romfs, out_dir, settings, seed=None, mod_name=None, progress=print,
     else:
         raise GenerationError("could not place items after 40 attempts: %s" % last_err)
 
+    plan.hints = []
+    if st["hint_distribution"] != "none":
+        progress("Choosing hints...")
+        plan.hints = H.choose(world, plan, filler, seed, world.zs.read, st["hint_distribution"],
+                              mask=st["gossip_stones"] == "mask")
+
     mod_name = mod_name or "OoTR_Remake_%s" % seed
     mod_root = os.path.join(out_dir, mod_name)
+    # The game files are only ever read: every patched file is written to the mod folder. Refuse an output
+    # folder inside a romfs folder (the GUI checks this too), so a mistake can never write into the game files.
+    # A .nup is a single file opened read-only, so there is nothing to protect there.
+    if world.files.kind == "folder":
+        game, mod = os.path.realpath(world.files.romfs), os.path.realpath(mod_root)
+        if os.path.splitdrive(game)[0].lower() == os.path.splitdrive(mod)[0].lower() and \
+                os.path.commonpath([game, mod]).lower() == game.lower():
+            raise GenerationError("The output folder must not be inside the romfs folder.")
     progress("Writing mod files...")
     written = write_patches(world, plan, dict(plan.forced, **filler.placed), os.path.join(mod_root, "romfs"), progress)
     if st["create_spoiler"]:
@@ -494,6 +665,8 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
         needs = refill_container(item) if refills and loc.kind == "chest" else None
         if item == loc.vanilla and not loc.conditional and not needs:
             continue
+        if loc.kind == "shop" and item in JUNK:
+            continue                          # junk on a shelf: the shelf keeps its normal goods
         for rel, h in loc.stage_refs:
             stage_edits[rel].append((h, loc, item))
         for rel, off in loc.event_refs:
@@ -511,7 +684,7 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
             return current[rel][0], current[rel][1]
         if rel.endswith(".zs"):
             return zs.read(rel)
-        return open(os.path.join(world.romfs, *rel.split("/")), "rb").read(), None
+        return world.files.read(rel), None
 
     def emit(rel, orig, new, dict_name, compressed=True):
         if rel not in orig_len:
@@ -553,10 +726,21 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
                     dyn["Drop__DropActor"] = world.actor_for(item, "chest")
                     dyn.pop("Drop__CheckActor", None)
                     dyn.pop("Drop__DropActor_Substitute", None)
+                elif loc.kind == "shop":
+                    # a new shelf actor that sells the item once, at its price (rando/pickups.py, OotrR)
+                    actor = world.actor_for(item, "event")
+                    a["Gyaml"] = pickups.shop_actor(actor, plan.shop_prices[loc.id])
+                    # sold once: the shelf is gone once the item is owned (its IsGet flag; Plan.sold_once)
+                    a["Presence"] = {"FlagName": "IsGet." + actor, "IsCheckLazy": False, "IsNegation": True}
                 elif loc.kind == "gs":
-                    # the Skulltula's own death now sets its save flag (qol.patch_gs_death)
-                    a.setdefault("Dynamic", {})["Drop__DropActor"] = pickups.world_actor(
-                        world.actor_for(item, "world"), auto=True)
+                    # a token-based pickup: floats like a token, is collected by touch, and sets the Skulltula's
+                    # save flag when collected (rando/pickups.py, TOKEN_TEMPLATE). Consumables are the game's own
+                    # pickup, which falls (GS_FLOATING_JUNK above)
+                    drop = None
+                    if item in JUNK and item not in GS_FLOATING_JUNK:
+                        drop = native_drop(world, item)
+                    a.setdefault("Dynamic", {})["Drop__DropActor"] = drop or pickups.token_actor(
+                        world.actor_for(item, "event"))
                 else:
                     # an unchanged vanilla pickup keeps its own actor (and its own A/walk-over behaviour)
                     a["Gyaml"] = pickups.world_actor(world.actor_for(item, "world"), auto=item != loc.vanilla)
@@ -564,33 +748,76 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
             raise GenerationError("%s: expected %d actors, patched %d" % (rel, len(edits), hits))
         emit(rel, orig, F.byml_dump(root), dname)
 
-    if plan.st.get("small_chests"):
-        patch_small_chests(world, emit, progress, read)
+    if plan.st["maps_compasses"] == "own" or plan.st["boss_keys"] == "own":
+        # a map, compass or boss key can end up in a small chest, whose opening didn't credit the dungeon
+        patch_small_chest_dungeon_items(world, emit, progress, read)
 
+    # Business Scrubs: the price of each shuffled scrub's purchase calls
+    for loc in plan.shuffled:
+        price = getattr(plan, "scrub_prices", {}).get(loc.id)
+        if price is not None:
+            for rel, off, _vanilla in loc.price_refs:
+                event_edits[rel].append((off, int(price)))
     for rel, edits in sorted(event_edits.items()):
         orig, dname = read(rel)
         ev = F.EvflFile(orig)
         for off, actor in edits:
-            ev.set_string_param(off, actor)
+            if isinstance(actor, int):
+                ev.set_int_param(off, actor)
+            else:
+                ev.set_string_param(off, actor)
         F.EvflFile(ev.data())          # sanity: must still parse
         emit(rel, orig, ev.data(), dname)
 
-    shops = ShopPatcher(world, emit, progress, read)
-    for loc in plan.shuffled:
-        if loc.kind != "shop":
-            continue
-        item = placed[loc.id]
-        if item == loc.vanilla or item in JUNK:
-            continue                          # junk on a shelf: keep the shelf's normal goods
-        shops.patch_shelf(loc.vanilla_actor, world.actor_for(item, "event"), plan.shop_prices[loc.id])
-    shops.finish()
-    pickups.finish()          # after the shops: both edit RSDB/ActorInfo (read() returns the latest)
+    if getattr(plan, "hints", None):
+        H.write_text(world, plan.hints, read, emit, progress)
+
+    # Business Scrubs: a sale line of its own for each shuffled scrub, naming the item it sells
+    scrub_events = {spec["name"]: [ev for ev, *_ in spec["events"]] for spec in EVENT_LOCATIONS
+                    if spec.get("category") == "scrub"}
+    scrubs = [(scrub_events[loc.name], world.item_name(placed[loc.id])) for loc in plan.shuffled
+              if loc.category == "scrub" and loc.id in placed and loc.name in scrub_events]
+    if scrubs:
+        try:
+            scrubtext.write(world, scrubs, read, emit, progress)
+        except scrubtext.ScrubTextError as e:
+            progress("warning: Business Scrub text not changed (%s); the scrubs still sell their random items" % e)
+
+    # flow edits that add events (rando/faststart.py); after the item edits above, on the latest version
+    flow_edits = []
+    if plan.st.get("gossip_stones") == "no_mask":
+        flow_edits.append(("Gossip Stones: No Mask of Truth", H.GOSSIP_FLOW, H.stones_without_mask))
+    if plan.st.get("skip_opening"):
+        flow_edits.append(("Skip Opening Movie", faststart.OPENING_FLOW, faststart.opening_without_movie))
+    if plan.st.get("skip_deku_talk") and plan.st["open_forest"] != "open":
+        flow_edits.append(("Skip the Great Deku Tree's Talk", faststart.MIDO_FLOW, faststart.complete_deku_meeting))
+    if plan.st.get("quick_chests"):
+        flow_edits.append(("Chests Without Cutscene", faststart.CHEST_FLOW, faststart.quick_chest))
+    if plan.st.get("skip_epona_race"):
+        flow_edits.append(("Skip Epona Race", faststart.EPONA_SONG_FLOW, faststart.epona_without_race))
+    for what, rel, edit in flow_edits:
+        orig, dname = read(rel)
+        try:
+            new = edit(orig)
+        except (ValueError, KeyError, IndexError) as e:
+            raise GenerationError("%s: %s is not as expected in this romfs (%s); turn the setting off" % (what, rel, e))
+        emit(rel, orig, new, dname)
+        progress("%s: %s changed" % (what, rel.rsplit("/", 1)[1]))
+
+    if plan.st.get("skip_story_scenes"):
+        # after the item edits: a skipped scene's item (read from the patched scene) is the randomized one
+        storyskip.patch_story_scenes(world, read, emit, progress, lambda f: gamedata.bool_exists(world, f))
+
+    if plan.st["shuffle_songs"] == "anywhere":
+        n = patch_song_models(world, read, emit, restbl, progress)
+        progress("Songs Anywhere: %d songs show Sheik's harp in chests, gifts and shops" % n)
+    pickups.finish()          # world pickups and shelves: RSDB rows and size-table entries
 
     if plan.st.get("free_bombs"):
         # Bag bombs share one LiftableParam resource path; every pack that carries a copy must agree,
         # otherwise whichever pack loads first decides. Bomb flowers keep their own (bracelet) grade.
         for rel in BOMB_PACKS:
-            if not os.path.exists(os.path.join(world.romfs, *rel.split("/"))):
+            if not world.files.exists(rel):
                 continue
             orig, dname = read(rel)
             r0, r1 = F.sarc_file_ranges(orig)[BOMB_LIFT_PARAM]
@@ -618,9 +845,11 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
         patch_kokiri_schedules(world, emit, progress, read)
     if plan.st["open_zora"] == "open":
         patch_open_zora_arrival(world, emit, progress, read, gamedata.ZORA_OPEN_QUEST[1])
+    if plan.st["open_door"] == "open" and not patch_open_door(world, emit, progress, read):
+        raise GenerationError("Door of Time: Open could not be applied to this romfs; set the Door of Time to Closed")
     if plan.st["shuffle_songs"] != "vanilla":
         patch_song_teaching(world, emit, progress, read)
-    if plan.st["shuffle_weird_egg"] and plan.st["shuffle_npc"]:
+    if plan.st["shuffle_weird_egg"]:
         patch_egg_hatch_guard(world, emit, progress, read)
 
 
@@ -628,9 +857,6 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
         # the logic already counted bag bombs for the entrance, so the seed would not be safe
         raise GenerationError("Dodongo's Cavern boulder logic not recognised in this romfs; "
                               "turn off 'Bag Bombs Open Dodongo's Cavern'")
-
-    if plan.st.get("tokensanity", "off") != "off":
-        patch_gs_death(world, emit, progress, read)
 
     if plan.st.get("anju_one_cucco"):
         patch_anju(world, emit, progress, read)
@@ -640,8 +866,7 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
     if plan.st.get("skip_cutscenes"):
         # One shared component blocks skipping (opening, credits, title demos); switch it off.
         rel = SKIP_SETTING
-        src = os.path.join(world.romfs, *rel.split("/"))
-        if os.path.exists(src):
+        if world.files.exists(rel):
             orig = read(rel)[0]
             root = F.byml_load(orig)
             if root.get("IsDisableSkip"):
@@ -691,6 +916,8 @@ def write_spoiler(world, plan, filler, seed, sstr, mod_root):
                 name = "(normal shop goods)"
             else:
                 name += "  [%d rupees]" % plan.shop_prices[loc.id]
+        elif loc.id in getattr(plan, "scrub_prices", {}):
+            name += "  [%d rupees]" % plan.scrub_prices[loc.id]
         by_region[region].append((loc.name, name))
     lines = ["OoT Remake Randomizer %s" % VERSION, "Seed: %s" % seed, "Settings string: %s" % sstr, "",
              "Settings:"]
@@ -700,6 +927,10 @@ def write_spoiler(world, plan, filler, seed, sstr, mod_root):
     for i, sph in enumerate(playthrough, 1):
         lines.append("  Sphere %d" % i)
         lines += ["    %-55s %s" % x for x in sph]
+    hint_list = getattr(plan, "hints", None) or []
+    if hint_list:
+        lines += ["", "Hints (%s):" % plan.st["hint_distribution"]]
+        lines += ["  %-34s %-9s %s" % (h.label, h.kind, H.text(world, h)) for h in hint_list]
     lines += ["", "Locations:"]
     for region in sorted(by_region):
         lines.append("  %s" % region)
@@ -709,6 +940,7 @@ def write_spoiler(world, plan, filler, seed, sstr, mod_root):
     with open(os.path.join(mod_root, "spoiler.json"), "w", encoding="utf-8") as fh:
         json.dump({"version": VERSION, "seed": seed, "settings_string": sstr, "settings": S.normalize(plan.st),
                    "playthrough": playthrough,
+                   "hints": {h.label: {"kind": h.kind, "text": H.text(world, h)} for h in hint_list},
                    "locations": {locs[l].name: world.item_name(i) for l, i in sorted(contents.items(),
                                                                                       key=lambda x: locs[x[0]].name)}},
                   fh, indent=1, ensure_ascii=False)
