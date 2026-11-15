@@ -10,6 +10,7 @@ from . import formats as F
 from . import faststart
 from . import gamedata
 from . import hints as H
+from . import longshot
 from . import logic as L
 from . import settings as S
 from .pickups import PickupCloner, patch_song_models
@@ -648,6 +649,14 @@ def generate(romfs, out_dir, settings, seed=None, mod_name=None, progress=print,
             progress("note: checklist.xlsx skipped (openpyxl missing; run Setup (Windows).bat or setup_linux.sh)")
     with open(os.path.join(mod_root, "settings.txt"), "w", encoding="utf-8") as fh:
         fh.write("OoTR Remake %s\nSeed: %s\nSettings string: %s\n" % (VERSION, seed, sstr))
+    if longshot.is_mods_folder(out_dir):
+        # Longshot loads every mod in its mods folder; two seeds at once would mix, so switch the others off
+        for old, new in longshot.switch_off_other_seeds(out_dir, mod_name):
+            progress("Longshot: switched off the older seed %s (renamed to %s)" % (old, new))
+        left = longshot.active_seeds(out_dir, mod_name)
+        if left:
+            progress("WARNING: Longshot would load these seeds too, and they couldn't be renamed (close the game "
+                     "first, then put _ in front of their names): %s" % ", ".join(left))
     progress("Done in %.1fs: %d files written to %s" % (time.time() - t0, len(written), mod_root))
     return {"seed": seed, "settings_string": sstr, "mod_root": mod_root, "files": written,
             "placements": filler.placed}

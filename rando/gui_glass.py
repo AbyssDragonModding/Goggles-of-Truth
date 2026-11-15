@@ -17,7 +17,7 @@ import zlib
 import raven as r
 
 from . import settings as S
-from . import gamecheck, gamefiles, updater, usersettings
+from . import gamecheck, gamefiles, longshot, updater, usersettings
 from .generator import VERSION, generate
 
 ACCENT = (0.36, 0.80, 0.56)          # Kokiri green
@@ -181,6 +181,7 @@ class GlassApp:
         for name, fn in actions.items():
             r.Raction_bind(name, lambda sender, action, ud, f=fn: f())
         r.Raction_bind("rando.browse.nup", lambda sender, action, ud: self._browse_nup())
+        r.Raction_bind("rando.longshot", lambda sender, action, ud: self._use_longshot())
         for key, title in (("romfs", "Select the extracted romfs folder"),
                            ("out", "Select the output folder")):
             r.Raction_bind("rando.browse." + key,
@@ -211,6 +212,8 @@ class GlassApp:
         self.write("Ready. Pick your romfs and an output folder, then Generate.")
         for m in self.load_messages:
             self.write(m)
+        if not self.paths["out"].strip():
+            self._use_longshot(quiet=True)     # first start with Longshot installed: use its mods folder
         update_msg = os.environ.pop(updater.MSG_ENV, None)     # set by updater.check() at launch
         if update_msg:
             self.write(update_msg)
@@ -350,6 +353,36 @@ class GlassApp:
             path = path.decode("utf-8") if isinstance(path, bytes) else path
             r.Rtext_input_set_text(self.romfs_in, path)
             self._path_changed("romfs", path)
+
+    def _use_longshot(self, quiet=False):
+        """Point the output folder at the Longshot game's mods folder (rando/longshot.py). With quiet=True
+        (the first start), do nothing and say nothing when Longshot isn't found."""
+        builds = longshot.find_builds()
+        if not builds:
+            if not quiet:
+                r.Rmessage_box(self.window, "Longshot", "No Longshot game was found.\n\nBuild the game with the "
+                               "Longshot launcher first, or choose its mods folder with Browse (the mods folder "
+                               "goes next to longshot.exe in the game folder).", r.R_MESSAGE_OK)
+            return
+        b = builds[0]
+        try:
+            os.makedirs(b.mods, exist_ok=True)
+        except OSError as e:
+            self.write("Longshot: couldn't create %s: %s" % (b.mods, e))
+            return
+        r.Rtext_input_set_text(self.out_in, b.mods)
+        self._path_changed("out", b.mods)
+        self.write("Longshot: seeds go to %s (game %s). Older randomizer seeds there are switched off when "
+                   "you generate a new one." % (b.mods, b.name))
+        if len(builds) > 1:
+            self.write("  Other Longshot games found (choose their mods folder with Browse to use one): "
+                       + "; ".join(x.folder for x in builds[1:]))
+        if not (self.paths.get("romfs") or "").strip():
+            nup = b.nup if b.nup and os.path.isfile(b.nup) else longshot.launcher_nup()
+            if nup:
+                r.Rtext_input_set_text(self.romfs_in, nup)
+                self._path_changed("romfs", nup)
+                self.write("Longshot: game file taken from the Longshot launcher: %s" % nup)
 
     def _path_changed(self, key, text):
         self.paths[key] = text

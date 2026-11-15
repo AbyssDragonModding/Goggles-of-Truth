@@ -48,6 +48,8 @@
                 <Label Text="Output folder" TextSize="14" Slot.Fill="0.35" Slot.VAlign="Center"/>
                 <TextInput Name="out_in" Placeholder="Folder the mod package is written to" OnChanged="rando.path.out" Slot.Fill="1"/>
                 <Button Text="Browse" OnClicked="rando.browse.out" Slot.Auto="true"/>
+                <Button Text="Longshot" OnClicked="rando.longshot" Slot.Auto="true"
+                        Tooltip="Playing with Longshot (the PC version)? Finds your Longshot game and writes the seed straight into its mods folder. Older randomizer seeds there are switched off (renamed with _ in front) so only the new one loads. Fills in the game field from the Longshot launcher too, if it's empty."/>
               </HBox>
               <Button Text="Scan game  —  check the game files and load the location list" Style="Flat" OnClicked="rando.scan"/>
             </VBox>

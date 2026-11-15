@@ -40,6 +40,7 @@ and `exefs`) and writes only the files it changes into a new mod folder. Share s
 - [Setup](#setup)
 - [Making a seed](#making-a-seed)
 - [Installing the seed in your emulator](#installing-the-seed-in-your-emulator)
+  - [Playing with Longshot (PC)](#playing-with-longshot-pc)
 - [Testing and reporting problems](#testing-and-reporting-problems)
 - [Settings](#settings)
 - [Tools](#tools)
@@ -214,6 +215,8 @@ two commands should work with Python 3.14 from python.org.
    - **Browse folder** picks the extracted romfs folder (or the game folder holding `romfs` and `exefs`). The
      exefs must be next to the romfs (`<game>/romfs` and `<game>/exefs`). The output folder can't be inside the
      romfs.
+   - **Playing on PC with [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot)?** Click **Longshot** next
+     to the output folder. See [Playing with Longshot](#playing-with-longshot-pc).
    - The line under it turns **green** when your game version is supported. If it's red, the randomizer won't
      generate; see [Supported game versions](#supported-game-versions).
 2. Optional: click **Scan game** to check the game files. This also fills the **Exclusions** tab, where you can
@@ -259,6 +262,24 @@ and loaded when the window opens. The game and output folders are saved there to
 3. Make sure only one randomizer seed is enabled at a time (most emulators list mods in the game's
    **Properties** > **Add-Ons** page).
 4. **Start a new save file** for every seed. Old saves keep the previous seed's progress flags.
+
+### Playing with Longshot (PC)
+
+[Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) runs the game natively on Windows and Linux. The
+randomizer can write seeds straight into it:
+
+1. Build the game with the Longshot launcher first.
+2. In the randomizer, click **Longshot** next to the output folder (ROM Options tab). It finds the game the
+   launcher made (its default build, in `Games\Longshot\<version>` in your user folder by default) and sets the
+   output folder to that game's `mods` folder. If the game field is empty, it also fills in the `.nup` you gave
+   the launcher. On the first start, with no output folder chosen yet, this happens by itself.
+   - A Longshot game somewhere else: choose its `mods` folder (next to `longshot.exe`) with **Browse**. It's
+     recognized as Longshot all the same.
+3. Generate. Close the game before you do: Longshot reads its mods only when it starts.
+4. Longshot loads every mod in that folder, so the randomizer **switches off the older seeds** there by putting
+   `_` in front of their names (`_OoTR_Remake_<seed>`), which Longshot skips. They aren't deleted: to play one
+   again, remove the `_` (and add it to the newer one). Other mods, like a HUD mod, are left alone.
+5. **Start a new save file** for every seed.
 
 ## Testing and reporting problems
 

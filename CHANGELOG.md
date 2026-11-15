@@ -7,6 +7,16 @@ different version.
 ## 0.5.1 - 2026-11-15
 
 ### Added
+- **Longshot support** (the PC version, https://git.magicbean.dev/MagicBeanDev/Longshot). A **Longshot** button
+  next to the output folder finds the Longshot game (the launcher's default build in its `builds.json`, or a
+  game folder in `Games\Longshot`) and writes seeds to that game's `mods` folder. If the game field is empty, it
+  also fills in the `.nup` the launcher was given. On a first start with no output folder, this is done by
+  itself. Any folder named `mods` next to a Longshot game (its `longshot_version.txt`) counts, so a game
+  elsewhere works with Browse. Longshot loads every mod in its `mods` folder, so after a seed is written there
+  the older randomizer seeds are renamed to `_OoTR_Remake_<seed>`, which Longshot skips; nothing is deleted,
+  and other mods are left alone. If a seed can't be renamed (the game is running), the log warns. New file
+  `rando/longshot.py`. Tested: finding the build on a PC with the launcher, and generating into a test game
+  folder (the older seed was switched off, the other mods left alone). Not yet tried in-game with Longshot.
 - **Automatic updates for a git clone.** When the randomizer opens, it checks GitHub for a newer version
   (`git fetch`, 15 seconds at most). If there is one, it pulls it with `git pull --ff-only`. If
   `requirements.txt` changed, it installs the new packages. Then it starts again on the new version, and the
