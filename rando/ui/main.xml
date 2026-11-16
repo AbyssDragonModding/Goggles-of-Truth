@@ -7,14 +7,14 @@
 
   Look: Kokiri-green accent, Triforce-gold card titles, frosted glass cards over a generated night sky.
 -->
-<Window Title="OoT Remake Randomizer" Width="1000" Height="800" MinWidth="760" MinHeight="560">
+<Window Title="Goggles of Truth Randomizer" Width="1000" Height="800" MinWidth="760" MinHeight="560">
   <VBox Spacing="14">
 
     <!-- Header: title, Open Folder, Generate Mod -->
     <HBox Spacing="12" Slot.Auto="true" Slot.Padding="24,18,24,0">
       <VBox Spacing="2" Slot.Fill="1">
-        <Label Text="Ocarina of Time Randomizer" TextSize="28"/>
-        <Label Name="subtitle" Text="Switch 2 remake edition" TextSize="13" Color="#C7D1DBD9"/>
+        <Label Text="Goggles of Truth Randomizer" TextSize="28"/>
+        <Label Name="subtitle" Text="OOT 2026 edition" TextSize="13" Color="#C7D1DBD9"/>
       </VBox>
       <Button Name="open_folder" Text="  Open Folder  " OnClicked="rando.open_folder" Slot.Auto="true" Slot.VAlign="Center"
               Tooltip="Open the output folder, where your generated seeds are"/>
@@ -60,7 +60,7 @@
               <Label Text="Seed" TextSize="16" Color="#F5CC61"/>
               <HBox Spacing="10">
                 <Label Text="Mod folder name" TextSize="14" Slot.Fill="0.35" Slot.VAlign="Center"/>
-                <TextInput Name="name_in" Placeholder="blank = OoTR_Remake_&lt;seed&gt;" OnChanged="rando.path.name" Slot.Fill="1"/>
+                <TextInput Name="name_in" Placeholder="blank = GogglesOfTruth_&lt;seed&gt;" OnChanged="rando.path.name" Slot.Fill="1"/>
               </HBox>
               <HBox Spacing="10">
                 <Label Text="Seed" TextSize="14" Slot.Fill="0.35" Slot.VAlign="Center"/>
@@ -125,7 +125,7 @@
           <Label Text="Seed preset" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center" Tooltip="@@preset_tip@@"/>
           <ComboBox Name="preset_in" Items="@@preset_items@@" OnChanged="rando.preset" Tooltip="@@preset_tip@@" Slot.Fill="0.5"/>
           <Label Name="preset_lab" Text="" TextSize="12" Color="#C7D1DBD9" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="Your settings are saved to user_settings.toml next to ootr_remake.pyw. Delete that file (or press Reset) to go back to the defaults."/>
+                 Tooltip="Your settings are saved to user_settings.toml next to goggles_of_truth_rando.pyw. Delete that file (or press Reset) to go back to the defaults."/>
         </HBox>
         <HBox Spacing="10">
           <Label Text="Settings string" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center"/>

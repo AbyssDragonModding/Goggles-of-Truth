@@ -4,6 +4,116 @@ All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new s
 minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
 different version.
 
+## 0.6.0 - 2026-11-15
+
+The randomizer is now called **Goggles of Truth** (an OoT26 randomizer mod); the generator is the **Goggles of
+Truth Randomizer**.
+
+### Added
+- **Every seed starts outside, in front of the Kokiri Shop.** After "New Game" the screen stayed black for about
+  30 seconds. The new-game event (`OpeningEvent:Opening_Introduction`) played `Dm_Kokiri_0030`, Navi's flight
+  through the forest to Link's bed and Navi waking him: a 12,544-frame scene, most likely what was loading
+  behind the black screen. It no longer plays. Link and Navi are placed on the ground in front of the shop door, the screen fades in, and
+  the game's own end of the event runs as before (field music, Navi counted as talked to, the autosave, and a
+  starting ocarina if the seed has one). Saria's wake-up scene is part of every seed too: the **Skip Saria's
+  Wake-Up Scene** setting is gone, and Link's door is open from the start. **Skip Opening Movie** still decides
+  whether the opening movie plays before that. Tested in-game: the black screen is much shorter and Link starts
+  by the shop.
+- **Skip Area Intro Cutscenes covers the intros that start a quest step.** These were left playing because their
+  arrival event also moves a quest on (the Deku Tree's `MeetBoss`, the Goron Ruby's trail and city steps, the
+  Zora Sapphire's `Step03`, the Spirit sage's `Step04`, Navi's remark in the crater, Malon's whereabouts at Lon
+  Lon Ranch...). Now the intro scene itself is cut out of that arrival event, the same way Skip Story Scenes
+  does it, so the rest still runs; the area's name banner becomes its visited flag. Covered: inside the Deku
+  Tree, Death Mountain Trail from Kakariko, Goron City from the trail, Death Mountain Crater from Goron City,
+  Zora's Domain from the river, Lon Lon Ranch, Castle Town, Sacred Forest Meadow, Desert Colossus, Ice Cavern,
+  Shadow Temple and Gerudo Training Ground. Dodongo's Cavern's intro is an event of its own, so it is cut down
+  to its visited flag. Still playing: the hookshot-target scene at Lake Hylia that raises the Water Temple's
+  pillar (it's what makes the pillar appear), the Shadow Temple's gate scene inside, and the Crater intro when
+  you come down from the trail. Also skipped since the debug test: the Water Temple's intro inside
+  (`Goto_WaterTemple`, an event of its own, emptied like Dodongo's Cavern) and the first visit inside Ganon's
+  Castle (`Dm_InsideGanonCastle_0003`, played by `Defeat_Ganon`; refused before because of its voice-screen
+  action, which is presentation). Not yet tested in-game.
+- **Gold Skulltulas Day and Night, Any Age** (Quality of Life > Gameplay, off by default).
+  Night-only Gold Skulltulas lose their night-only marker (`Enemy_Skulltula_Gold_Nocturnal`) and are there by
+  day. The 11 overworld Skulltulas placed only for adult Link get a copy, with the same save flag, at the same
+  spot for child Link (Death Mountain Trail, Goron City, Kakariko, Kokiri Forest, Sacred Forest Meadow,
+  Zora's River, Gerudo Valley, Hyrule Field), carrying the same shuffled item; it's one Skulltula, so it
+  counts once. Not copied: Gerudo's Fortress (child can't go there) and three tied to another object (Lake
+  Hylia, Zora's Domain). The logic doesn't count on any of this. Tested in-game: the night-only Skulltulas
+  appear by day and the adult-only ones as child (for example Goron City's middle one). Lon Lon Ranch's
+  night Skulltulas still stayed away by day: every night-only Skulltula is also run by a night-time logic
+  group (`Gimmick_Nighttime_Skulltula_Gold_Appear`, which reads the time of day). Those groups are now
+  removed as well; a killed Skulltula's spider web then stays. Tested: Lon Lon Ranch's appear by day. The two
+  adult-only Skulltulas on Death Mountain Trail are hidden behind a rock that only adult Link can break (the
+  Hammer); child Link's copies are out in the open.
+- **Skip Ganon's Trials** (Quality of Life > Gameplay, experimental, off by default). The six trials inside
+  Ganon's Castle count as done in a new save: each trial's barrier flag
+  (`InsideGanonCastle_Dungeon_BarrierRemove_<trial>`) and its scene's played flag are set, the barrier
+  counter starts at 0 and `InsideGanonCastle_IsAllBarrierClear` is set, so the tower is open. The last
+  barrier's own event also enables the tower's lift (the played flag of its scene, `Dm_InsideGanonCastle_0090`,
+  is set too) and moves the castle quest on to Step04; that step can't be in the save (the rainbow bridge
+  appears from Step01 on), so the event that gives Step03 when you first see the tower barrier now gives
+  Step04 right after. (Debug test 3: the door was open but the lift didn't work.) The logic then
+  needs only the rainbow bridge, the Bow and the Light Arrows to beat Ganon; the trial rooms' own checks still
+  expect the trials' items. Not yet tested in-game.
+- **Longshot updates are followed.** The launcher installs each Longshot version in its own folder
+  (`Games\Longshot\v3.0.0-rc.4`). When the saved output folder is an older version's `mods` folder (by its
+  `longshot_version.txt`: `v3.0.0-rc.3` < `-rc.4` < `v3.0.0`), the window switches to the launcher's current
+  version when it opens, and the log says so. Seeds in the old folder stay there; the new version doesn't load
+  them.
+
+### Fixed
+- **Skip Area Intro Cutscenes** (still experimental). The intros are started by each entrance's
+  `InitEventName` unless its `InitEventFlag` is true, which the setting already gave. But an intro is also where
+  its area gets "visited" (its name banner sets `IsVisitLocation.<area>`, and these areas show the banner only
+  in the intro), so a skipped intro left the area unvisited. Those 12 areas now count as visited from the start.
+  The skipped Lake Hylia intros are also what put Kaepora on the lake for his ride
+  (`Npc_Kaepora_LakeHrl_Appeared_FromValley`), so that's set too. Tested in-game: Kakariko, Hyrule Field,
+  Lake Hylia, Zora's River and Fountain, Gerudo Valley, and the Fire Temple, Spirit Temple and Bottom of the
+  Well entrances no longer play their intros. The pause maps and the Graveyard, Hyrule Castle and Gerudo's
+  Fortress intros still need a check.
+- **Skip Kaepora Gaebora** missed some of his talks, checked against the a decompile of the files and Clawshot's notes:
+  - his talk on the way to Lake Hylia (`Dm_HrlField_0050`) and in front of Hyrule Castle (`Dm_HrlCastle_0000`)
+    still played;
+  - his first Hyrule Field talk starts with `Dm_HrlField_0000` and `_0005`; only `_0010` was marked as seen.
+    `HavePlayedEvent.Dm_HrlField_0000` also ends the field's music-off stretch, so the field could stay silent;
+  - his first talk moves the castle quest (`Goto_HyruleCastle`) to `Step02`, and Castle Town's entry event only
+    fires at exactly that step. Without Skip Child Zelda, the chain to Zelda's courtyard could stall. The quest
+    now starts at `Step02` (Skip Child Zelda still sets it to complete).
+
+  Not yet tested in-game.
+- **Refills Need Their Item** now covers Deku Nuts and Deku Sticks. A nut or stick bundle only counts once you
+  have picked up a single nut or stick (that gives you their bag; a bundle doesn't, as the game's item data
+  shows), so one found first was lost. Their chests now give a blue rupee until you own the bag, like arrows
+  without the Bow.
+
+### Changed
+- **Renamed: Goggles of Truth.** The window, the spoiler log, the launch scripts and the README use the new name.
+  A seed's folder is now `GogglesOfTruth_<seed>` (was `OoTR_Remake_<seed>`); Longshot support still switches
+  off older `OoTR_Remake_*` seeds. The start file is now `goggles_of_truth_rando.pyw` (was `ootr_remake.pyw`);
+  `Start Randomizer (Windows).bat`, `run_linux.sh` and the Linux menu entry (`setup_linux.sh`) start it. The
+  old `ootr_remake.pyw` stays as a small file that only opens the new one, so shortcuts to it and the restart
+  after updating from 0.5.x keep working. After an automatic update, the randomizer also restarts from the
+  start file when the file it was started from is gone.
+- **The GitHub repository is now https://github.com/AbyssDragonModding/Goggles-of-Truth** (was
+  `OOTNS2-Rando`). GitHub forwards the old address, so existing clones keep updating; a new clone's folder
+  is called `Goggles-of-Truth`. To point an old clone at the new address:
+  `git remote set-url origin https://github.com/AbyssDragonModding/Goggles-of-Truth`.
+- **Bombs Usable Without Goron Bracelet** is now **Bag Bombs without Goron Bracelet** (`bag_bombs_no_bracelet`
+  in `user_settings.toml`; the old `free_bombs` is read as the new name, and old settings strings still load).
+- **Skip Story Scenes skips many more scenes** (still experimental). Every scene the game's quest flows play
+  was surveyed (from the ootdump flow dumps), and each one was run through the skip's own safety checks. Added:
+  - the rest of each post-boss chain: the Deku Tree's last talk and death, the Deku Sprout, Darunia, Ruto and
+    Jabu-Jabu, the lake refilling, Kakariko, the graveyard and the dungeon exits;
+  - before the adult temples: Sheik, Mido, Ruto and Nabooru's scenes (the song lessons still play);
+  - Ganon's Castle: the first visit, each trial's barrier and sage (the barrier flag is still set), and the
+    tower's barrier.
+  Left playing on purpose: the Forest Temple elevator and Shadow Temple boat scenes (they move the dungeon), the
+  sages after Ganon (part of the ending), the child Zelda / Impa scenes (Skip Child Zelda), Ganondorf, Ganon and
+  the ending. A test seed skipped all 84 listed scenes, and none was refused; not yet tested in-game.
+- **Skip Story Scenes**: confirmed in-game: the Great Deku Tree after Gohma (skipped, his check given) and
+  Saria's Fairy Ocarina on the forest bridge.
+
 ## 0.5.1 - 2026-11-15
 
 ### Added
@@ -168,7 +278,7 @@ different version.
   had the harp model; in a chest, from a character, a scrub or a shelf, and on a Gold Skulltula, the song's own
   item actor still used its placeholder rupee model. The song items themselves now use Sheik's harp model, so a
   song looks like a harp wherever it is found.
-- **Gold Skulltula drops** ([issue #2](https://github.com/AbyssDragonModding/OOTNS2-Rando/issues/2)). With
+- **Gold Skulltula drops** ([issue #2](https://github.com/AbyssDragonModding/Goggles-of-Truth/issues/2)). With
   Tokensanity, a Skulltula on a vine dropped its item where Link couldn't collect it, a dropped rupee fell
   instead of floating, and the Skulltula counted as killed (and never came back) even when its drop was
   lost. Every Gold Skulltula drop is now built on the token's own pickup, as OotrR does: it floats where the

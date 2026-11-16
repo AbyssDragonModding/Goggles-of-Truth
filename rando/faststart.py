@@ -11,6 +11,7 @@ Each edit checks the native structure it changes, refuses anything it does not r
 See docs/THIRD_PARTY.md.
 """
 import copy
+import struct
 
 from . import evfl
 
@@ -80,6 +81,90 @@ def opening_without_movie(data):
     query.cases = [(0, movie_index), *query.cases]
     entry.main_event = query_index
     return _check_readback(document, evfl.write(document), "OpeningEvent")
+
+
+# --- New game starts outside, in front of the Kokiri Shop (every seed) -------------------------------------
+# Sequence/Opening runs OpeningEvent:Opening_Introduction once on a new save (Sequence_ReservedBootEventName). It
+# fades to black, sets Meet_DekuTree Step01, pins the terrain at the Deku Tree (Event31), points the event camera
+# there (Event32), waits 75 frames (Event27) and plays Dm_Kokiri_0030: Navi's flight through the forest to Link's
+# bed and Navi waking him, a 12,544-frame timeline (GameAnalyzedEventInfo; it ends on the camera in Link's house).
+# Its load was the long black screen after "New Game". As in the N64 randomizer, a new game now starts outside:
+# after Step01 the terrain is pinned at the spawn, Link and Navi are warped in front of the shop, the flow waits a
+# moment for the area, fades in (the native Event26 fade used after the scene), and continues with the native tail
+# (in-game BGM, Navi counted as talked to, the autosave). Saria's wake-up (gamedata.SARIA_INTRO) and the scene
+# itself (HavePlayedEvent.Dm_Kokiri_0030, read by the basic-controls tip) count as seen, so the house door is open.
+# Spawn: an NPC's standing anchor (AnchorAction2 in KokiriForest_Child_Static) on the ground in front of the shop
+# door (Obj_Kokiri_DoorPillar_A_01 at -0.9, 110.1, -18.3), facing the door. YAngle 0 faces +Z, 90 faces +X
+# (Dm_Kokiri_0075 warps Link to the Deku Tree with 95).
+SHOP_SPAWN = [2.237, 110.754, -11.235]
+SHOP_SPAWN_ANGLE = 205.0
+NAVI_OFFSET = [0.6, 1.0, 0.4]
+WAKE_SCENE = "Dm_Kokiri_0030"
+
+
+def start_outside(data):
+    document = evfl.read(data)
+    fc = document.flowchart
+    if fc is None or fc.name != "OpeningEvent":
+        raise FastStartError("OpeningEvent flowchart not found")
+    if any(e.name.startswith("RandoStartOutside") for e in fc.events):
+        raise FastStartError("the new-game start was already changed")
+
+    def find(actor, action, **params):
+        hits = [i for i, e in enumerate(fc.events) if isinstance(e, evfl.ActionEvent)
+                and fc.actors[e.actor].name == actor and fc.actors[e.actor].actions[e.action] == action
+                and all((e.params or {}).get(k) == v for k, v in params.items())]
+        if len(hits) != 1:
+            raise FastStartError("expected one %s.%s %s, found %d" % (actor, action, params or "", len(hits)))
+        return hits[0]
+
+    step = find("ChallengeSystemActor", "EventExecuteProgressChallengeStep", ChallengeName="Meet_DekuTree")
+    pin = find("TerrainSystemActor", "EventTerrainPinResource")
+    scene = find("EventSystemActor", "EventTransition", EventName=WAKE_SCENE)
+    fade_in = find("UISystemActor", "EventEventFadeIn", Length=1, IsNoPlayAnime=False)
+    bgm_query = [i for i, e in enumerate(fc.events) if isinstance(e, evfl.SwitchEvent)
+                 and fc.actors[e.actor].queries[e.query] == "EventQueryIsInGameBgmSuspend"]
+    if fc.events[step].next != pin or len(bgm_query) != 1 or fc.events[fade_in].next != bgm_query[0]:
+        raise FastStartError("the opening's introduction is not in the expected order")
+    # nothing else may lead into the part that is cut out (the camera, the wait and the scene)
+    cut, i = set(), fc.events[pin].next
+    while i != scene:
+        if i in cut or not isinstance(fc.events[i], evfl.ActionEvent):
+            raise FastStartError("unexpected events between the terrain pin and %s" % WAKE_SCENE)
+        cut.add(i)
+        i = fc.events[i].next
+    cut.add(scene)
+    callers = [e.name for e in fc.events if set(_targets(e)) & cut and e is not fc.events[pin]
+               and fc.events.index(e) not in cut]
+    callers += [e.name for e in fc.entry_points if {e.main_event, *e.sub_flow_events} & cut]
+    if callers:
+        raise FastStartError("the wake-up scene is also reached from %s" % callers)
+
+    def add(event):
+        fc.events.append(event)
+        return len(fc.events) - 1
+
+    def f32(v):                         # the file stores binary32: keep what reads back
+        return struct.unpack("<f", struct.pack("<f", v))[0]
+    navi_pos = evfl.FloatArray(f32(a + b) for a, b in zip(SHOP_SPAWN, NAVI_OFFSET))
+    spawn = evfl.FloatArray(f32(v) for v in SHOP_SPAWN)
+    a, act = _action(fc, "EventSystemActor", "EventWait")
+    wait = add(evfl.ActionEvent("RandoStartOutside_Wait", a, act, fade_in, {"IsWaitEnd": True, "Frames": 30}))
+    a, act = _action(fc, "Npc_Navi", "EventTriggerNaviWarpToTargetPosAndRot")
+    navi = add(evfl.ActionEvent("RandoStartOutside_Navi", a, act, wait, {
+        "Position": navi_pos, "ClothWarpMode": -1, "YAngle": float(SHOP_SPAWN_ANGLE)}))
+    a, act = _action(fc, "Player_Event", "EventPlayerWarpToTargetPosAndRot")
+    link = add(evfl.ActionEvent("RandoStartOutside_Link", a, act, navi, {
+        "IsWaitEnd": True, "UseDemoWait": True, "YAngle": float(SHOP_SPAWN_ANGLE), "Position": spawn,
+        "ASCommand": "EvtWait"}))
+    params = dict(fc.events[pin].params or {})
+    if not isinstance(params.get("Position"), evfl.FloatArray):
+        raise FastStartError("the opening's terrain pin has no position")
+    params["Position"] = spawn
+    fc.events[pin].params = params
+    fc.events[pin].next = link
+    # the cut events stay in the file, unreachable; the wake-up scene's own event loses its target
+    return _check_readback(document, evfl.write(document), "OpeningEvent (start outside)")
 
 
 # --- Start items given by the game's own pouch action -------------------------------------------------------

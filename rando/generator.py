@@ -16,13 +16,15 @@ from . import settings as S
 from .pickups import PickupCloner, patch_song_models
 from .qol import (patch_anju, patch_dodongo_bag_bombs, patch_egg_hatch_guard, 
                   patch_ocarina_bridge, patch_open_forest_mido, patch_saria_song, patch_song_teaching,
-                  patch_small_chest_dungeon_items, patch_kokiri_schedules, patch_big_poe_one, patch_open_zora_arrival)
+                  patch_small_chest_dungeon_items, patch_kokiri_schedules, patch_big_poe_one, patch_open_zora_arrival,
+                  patch_gs_any_time, patch_ganon_trials)
 from .world import World, JUNK, EVENT_LOCATIONS
 from . import scrubtext
 from . import storyskip
 from .door import patch_open_door
 
-VERSION = "0.5.1"
+VERSION = "0.6.0"
+NAME = "Goggles of Truth Randomizer"   # an OoT (2026 remake) randomizer mod
 BOMB_LIFT_PARAM = "Component/LiftableParam/Item_Bomb.game__component__LiftableParam.bgyml"
 BOMB_PACKS = ["Pack/Actor/Item_Bomb.pack.zs", "Pack/Actor/Npc_Hylia_ImperialSoldier_Bomb.pack.zs",
               "Pack/Actor/Obj_BombFlower_A_01.pack.zs", "Pack/Actor/Obj_BombFlower_A_04.pack.zs",
@@ -60,8 +62,13 @@ class GenerationError(Exception):
 # Refills that are useless without their container: the item a chest checks for before giving them.
 # Bombchus count against the Bomb Bag (Item_Bombchu's PouchContentParam: MaxNumGameData "Bomb"), so without a
 # bag they are lost: the get message says "5 Bombchus" but the count stays at 0.
+# Deku Nuts and Sticks have no item of their own, only a bag: a single nut or stick picked up (Item_DekuNut,
+# Item_DekuStick, Obj_DekuStick: IsAbleToGetBagIfGet, SmallBagActor Item_NutBag_Small / Item_StickBag_Small) gives
+# that bag, and only then do they have a slot. A bundle doesn't (no IsAbleToGetBagIfGet: TBox_DekuNutBundle,
+# Item_DekuStickBundle_Small), so one found first was lost.
 REFILL_CONTAINERS = (("ArrowBundle", "Item_Range_Bow"), ("BombBundle", "Item_BombBag_Small"),
-                     ("BombchuBundle", "Item_BombBag_Small"), ("DekuSeedBundle", "Item_Range_SlingShot"))
+                     ("BombchuBundle", "Item_BombBag_Small"), ("DekuSeedBundle", "Item_Range_SlingShot"),
+                     ("DekuNutBundle", "Item_NutBag_Small"), ("DekuStickBundle", "Item_StickBag_Small"))
 REFILL_FALLBACK = "Rupee_Blue"
 
 # Maps & Compasses "Start With": what their checks hold instead (item, weight). Never progression.
@@ -628,7 +635,7 @@ def generate(romfs, out_dir, settings, seed=None, mod_name=None, progress=print,
         plan.hints = H.choose(world, plan, filler, seed, world.zs.read, st["hint_distribution"],
                               mask=st["gossip_stones"] == "mask")
 
-    mod_name = mod_name or "OoTR_Remake_%s" % seed
+    mod_name = mod_name or longshot.MOD_PREFIX + seed
     mod_root = os.path.join(out_dir, mod_name)
     # The game files are only ever read: every patched file is written to the mod folder. Refuse an output
     # folder inside a romfs folder (the GUI checks this too), so a mistake can never write into the game files.
@@ -648,7 +655,7 @@ def generate(romfs, out_dir, settings, seed=None, mod_name=None, progress=print,
         except ImportError:
             progress("note: checklist.xlsx skipped (openpyxl missing; run Setup (Windows).bat or setup_linux.sh)")
     with open(os.path.join(mod_root, "settings.txt"), "w", encoding="utf-8") as fh:
-        fh.write("OoTR Remake %s\nSeed: %s\nSettings string: %s\n" % (VERSION, seed, sstr))
+        fh.write(NAME + " %s\nSeed: %s\nSettings string: %s\n" % (VERSION, seed, sstr))
     if longshot.is_mods_folder(out_dir):
         # Longshot loads every mod in its mods folder; two seeds at once would mix, so switch the others off
         for old, new in longshot.switch_off_other_seeds(out_dir, mod_name):
@@ -757,6 +764,10 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
             raise GenerationError("%s: expected %d actors, patched %d" % (rel, len(edits), hits))
         emit(rel, orig, F.byml_dump(root), dname)
 
+    if plan.st.get("gs_any_time"):
+        # after the item edits: a Skulltula copied for child Link carries its shuffled drop
+        patch_gs_any_time(world, emit, progress, read)
+
     if plan.st["maps_compasses"] == "own" or plan.st["boss_keys"] == "own":
         # a map, compass or boss key can end up in a small chest, whose opening didn't credit the dungeon
         patch_small_chest_dungeon_items(world, emit, progress, read)
@@ -798,6 +809,8 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
         flow_edits.append(("Gossip Stones: No Mask of Truth", H.GOSSIP_FLOW, H.stones_without_mask))
     if plan.st.get("skip_opening"):
         flow_edits.append(("Skip Opening Movie", faststart.OPENING_FLOW, faststart.opening_without_movie))
+    # every seed: a new game starts outside the Kokiri Shop, without Navi's flight and wake-up scene
+    flow_edits.append(("New game start", faststart.OPENING_FLOW, faststart.start_outside))
     if plan.st.get("skip_deku_talk") and plan.st["open_forest"] != "open":
         flow_edits.append(("Skip the Great Deku Tree's Talk", faststart.MIDO_FLOW, faststart.complete_deku_meeting))
     if plan.st.get("quick_chests"):
@@ -816,13 +829,22 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
     if plan.st.get("skip_story_scenes"):
         # after the item edits: a skipped scene's item (read from the patched scene) is the randomized one
         storyskip.patch_story_scenes(world, read, emit, progress, lambda f: gamedata.bool_exists(world, f))
+    if plan.st.get("skip_area_intros"):
+        # the intros whose arrival also advances a quest (the others count as played in the save data)
+        storyskip.patch_area_intros(world, read, emit, progress, lambda f: gamedata.bool_exists(world, f))
+    if plan.st.get("skip_ganon_trials"):
+        # after the story / area skips, which change the same flow
+        try:
+            patch_ganon_trials(world, emit, progress, read)
+        except (ValueError, KeyError, IndexError) as e:
+            raise GenerationError("Skip Ganon's Trials: Defeat_Ganon is not as expected (%s); turn the setting off" % e)
 
     if plan.st["shuffle_songs"] == "anywhere":
         n = patch_song_models(world, read, emit, restbl, progress)
         progress("Songs Anywhere: %d songs show Sheik's harp in chests, gifts and shops" % n)
     pickups.finish()          # world pickups and shelves: RSDB rows and size-table entries
 
-    if plan.st.get("free_bombs"):
+    if plan.st.get("bag_bombs_no_bracelet"):
         # Bag bombs share one LiftableParam resource path; every pack that carries a copy must agree,
         # otherwise whichever pack loads first decides. Bomb flowers keep their own (bracelet) grade.
         for rel in BOMB_PACKS:
@@ -853,7 +875,7 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
         except (ValueError, KeyError, IndexError) as e:
             raise GenerationError("Starting ocarina: %s is not as expected in this romfs (%s)" % (rel, e))
         emit(rel, orig, new, dname)
-        progress("Starting ocarina: %s added when Navi wakes Link" % ", ".join(start_by_event))
+        progress("Starting ocarina: %s added when a new game starts" % ", ".join(start_by_event))
 
     if plan.st.get("saria_song_ocarina"):
         if gd_ok:
@@ -941,7 +963,7 @@ def write_spoiler(world, plan, filler, seed, sstr, mod_root):
         elif loc.id in getattr(plan, "scrub_prices", {}):
             name += "  [%d rupees]" % plan.scrub_prices[loc.id]
         by_region[region].append((loc.name, name))
-    lines = ["OoT Remake Randomizer %s" % VERSION, "Seed: %s" % seed, "Settings string: %s" % sstr, "",
+    lines = ["%s %s" % (NAME, VERSION), "Seed: %s" % seed, "Settings string: %s" % sstr, "",
              "Settings:"]
     for k, v in S.normalize(plan.st).items():
         lines.append("  %-28s %s" % (S.SPEC[k][3] + ":", v))

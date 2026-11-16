@@ -17,7 +17,9 @@ import re
 import sys
 from dataclasses import dataclass
 
-MOD_PREFIX = "OoTR_Remake_"
+MOD_PREFIX = "GogglesOfTruth_"
+OLD_PREFIXES = ("OoTR_Remake_",)                  # seeds made before the 0.6.0 rename
+SEED_PREFIXES = (MOD_PREFIX,) + OLD_PREFIXES
 OFF_PREFIXES = (".", "-", "_")
 
 
@@ -105,6 +107,42 @@ def launcher_nup():
     return ""
 
 
+def game_version(folder):
+    """The version in a game folder's longshot_version.txt ("v3.0.0-rc.4"), or ""."""
+    try:
+        with open(os.path.join(folder, "longshot_version.txt"), encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("version="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def version_key(v):
+    """Sortable form of "v3.0.0-rc.4": a release sorts after its own release candidates. None if unreadable."""
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.?(\d*))?", v or "")
+    if not m:
+        return None
+    pre = (0, m.group(4).lower(), int(m.group(5) or 0)) if m.group(4) else (1, "", 0)
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) + pre
+
+
+def newer_build(out):
+    """The launcher's default build if `out` is the mods folder of an older Longshot version, else None.
+    The launcher puts each version in its own folder, so after a Longshot update the saved folder is stale."""
+    if not is_mods_folder(out):
+        return None
+    builds = find_builds()
+    if not builds or not builds[0].default:
+        return None
+    new = builds[0]
+    if os.path.normcase(os.path.abspath(new.mods)) == os.path.normcase(os.path.abspath(out)):
+        return None
+    old_v, new_v = version_key(game_version(os.path.dirname(os.path.abspath(out)))), version_key(game_version(new.folder))
+    return new if old_v and new_v and new_v > old_v else None
+
+
 def is_mods_folder(path):
     """True if `path` is a Longshot game folder's mods folder."""
     if not path:
@@ -122,7 +160,7 @@ def switch_off_other_seeds(mods_dir, keep):
     except OSError:
         return done
     for n in sorted(names):
-        if n == keep or not n.startswith(MOD_PREFIX) or not os.path.isdir(os.path.join(mods_dir, n)):
+        if n == keep or not n.startswith(SEED_PREFIXES) or not os.path.isdir(os.path.join(mods_dir, n)):
             continue
         new, i = "_" + n, 2
         while os.path.exists(os.path.join(mods_dir, new)):
@@ -138,7 +176,7 @@ def switch_off_other_seeds(mods_dir, keep):
 def active_seeds(mods_dir, keep):
     """Other randomizer seeds still switched on in `mods_dir` (renaming them failed)."""
     try:
-        return [n for n in os.listdir(mods_dir) if n.startswith(MOD_PREFIX) and n != keep
+        return [n for n in os.listdir(mods_dir) if n.startswith(SEED_PREFIXES) and n != keep
                 and os.path.isdir(os.path.join(mods_dir, n))]
     except OSError:
         return []

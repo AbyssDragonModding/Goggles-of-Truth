@@ -33,8 +33,11 @@ and Saria's bridge event didn't start at all. So the rows of every changed event
 so the skipped scenes are left in it.
 
 Anything not exactly as expected is refused (StorySkipError) and that scene keeps playing. The song lessons
-(Dm_MelodyGet_*), boss intros and the ending are not touched.
+(Dm_MelodyGet_*), boss intros and outros, Ganondorf/Ganon and the ending are not touched, and nor is a scene that
+moves the dungeon itself (an elevator, the Shadow Temple boat) or the child Zelda / Impa scenes (Skip Child
+Zelda covers those). The list was checked against every EventTransition in the game (ootdump survey).
 """
+import copy
 import re
 
 from . import evfl
@@ -59,7 +62,35 @@ SKIPS = {
         "Dm_Awake_Forest", "Dm_Awake_Forest_Get", "Dm_Awake_Fire", "Dm_Awake_Fire_Get",
         "Dm_Awake_Water", "Dm_Awake_Water_Get", "Dm_Awake_Shadow", "Dm_Awake_Shadow_Get",
         "Dm_Awake_Spirit", "Dm_Awake_Spirit_Get",
-        "Dm_Kokiri_0130", "Dm_DeathMtTrail_0025", "Dm_ZoraFountain_0030"],
+        "Dm_Kokiri_0130", "Dm_DeathMtTrail_0025", "Dm_ZoraFountain_0030",
+        # the rest of each post-boss chain: the Deku Tree's last talk and death, Darunia, Ruto and Jabu-Jabu,
+        # the Deku Sprout, the lake refilling, Kakariko, the graveyard, the dungeon exits (ootdump survey,
+        # 2026-11-15: each one is a timeline or a talk-only flowchart)
+        "Dm_Deku_0010", "Dm_Kokiri_0080", "Dm_Kokiri_0090", "Dm_Kokiri_0095", "Dm_Kokiri_0140",
+        "Dm_Kokiri_0158", "Dm_Kokiri_0160", "Dm_Kokiri_0162", "Dm_DodongoCave_0030", "Dm_DeathMtTrail_0020",
+        "Dm_DeathMtTrail_0027", "Dm_DeathMtCrater_0010", "Dm_InsideJabu_Jabu_0060", "Dm_ZoraFountain_0020",
+        "Dm_ForestTemple_0020", "Dm_FireTemple_0030", "Dm_WaterTemple_0040", "Dm_LakeHrl_0020",
+        "Dm_ShadowTemple_0020", "Dm_Graveyard_0030", "Dm_Kakariko_0025", "Dm_SpiritTemple_0040",
+        "Dm_DesertColossus_0040"],
+    # before each adult temple: Sheik, Mido, Ruto and Nabooru. Left playing: the Forest Temple elevator
+    # (Dm_ForestTemple_0016) and the Shadow Temple boat (Dm_ShadowTemple_0010), which move the dungeon itself.
+    "SageOfForest": ["Dm_LostWood_0021", "Dm_LostWood_0025"],
+    "SageOfFire": ["Dm_FireTemple_0000"],
+    "SageOfWater": ["Dm_WaterTemple_0010", "Dm_WaterTemple_0015"],
+    "SageOfSpirit": ["Dm_DesertColossus_0020", "Dm_DesertColossus_0025", "Dm_DesertColossus_0030",
+                     "Dm_SpiritTemple_0010", "Dm_SpiritTemple_0020", "Dm_SpiritTemple_0030",
+                     "Dm_TimeTemple_0086", "Dm_TimeTemple_0087"],
+    # Ganon's Castle: the first visit, each trial's barrier and its sage, the tower's barrier. Ganondorf, Ganon
+    # and the ending still play (the sages' scenes Dm_SageRoom_0020/0025/0027 follow Ganon's defeat, so they're
+    # part of the ending). A trial's barrier flag (InsideGanonCastle_Dungeon_BarrierRemove_*) is set by
+    # its scene and copied by the skip.
+    "Defeat_Ganon": ["Dm_InsideGanonCastle_0000", "Dm_InsideGanonCastle_0006", "Dm_InsideGanonCastle_0010",
+                     "Dm_InsideGanonCastle_0015", "Dm_InsideGanonCastle_0020", "Dm_InsideGanonCastle_0025",
+                     "Dm_InsideGanonCastle_0030", "Dm_InsideGanonCastle_0032", "Dm_InsideGanonCastle_0050",
+                     "Dm_InsideGanonCastle_0055", "Dm_InsideGanonCastle_0070", "Dm_InsideGanonCastle_0075",
+                     "Dm_InsideGanonCastle_0080", "Dm_InsideGanonCastle_0085", "Dm_InsideGanonCastle_0090",
+                     "Dm_InsideGanonCastle_0110"],
+    "InsideGanonCastle_CommonGimmick": ["Dm_InsideGanonCastle_0005"],
 }
 
 
@@ -74,7 +105,7 @@ PRESENTATION = re.compile(
     r"Rotate|Scale|Emit|Shake|Anime|Face|Eye|Mouth|Blink|Weather|Wind|Letterbox|DemoProduct|Telop|Subtitle|Cloth|Bone|"
     r"Bind|Attach|Shadow|Fog|Voice|Emotion|GoOffstage|DoNothing|NorifyCut|ScreenShot|DoCommand|TerrainCalc|Culling|"
     r"EquipmentUserRequestChangeState|BootsChange|PerformanceImportantMenu|DisplayGet|Chemical|Time$|SetTime|"
-    r"Shading")
+    r"Shading|PlayerEventStartWith|CloseDemoScreen|Occlusion")
 DROPPED_SUBFLOWS = {"Common_Camera_Pln", "NaviEventCommon"}
 
 
@@ -82,11 +113,18 @@ class StorySkipError(ValueError):
     pass
 
 
-def scene_effects(doc):
+def location_flag(path):
+    """Work/Location/LakeHylia.game__location__Location.gyml -> IsVisitLocation.LakeHylia"""
+    return "IsVisitLocation." + str(path).rsplit("/", 1)[-1].split(".", 1)[0]
+
+
+def scene_effects(doc, area_intro=False):
     """(items, [save flags it sets to True]) for a skippable scene; StorySkipError otherwise.
 
     items: ("gift", actor) for a GetPouchContentByActorName call, ("add", params) for a pouch add the scene makes
-    itself (then its DisplayGetByActorName window is shown too)."""
+    itself (then its DisplayGetByActorName window is shown too).
+    area_intro: the scene may open its area's name banner (UISystemActor.EventTriggerOpenLocationUI), which marks the
+    area as visited; that visit flag is added to the flags."""
     fc = doc.flowchart
     if fc is None:
         return [], []
@@ -121,6 +159,9 @@ def scene_effects(doc):
             elif (actor.name == "PouchSystemActor" and what == "EventTriggerAddOrRemovePouchContent"
                   and isinstance((e.params or {}).get("Num"), int) and e.params["Num"] > 0):
                 adds.append(dict(e.params))                 # Saria hands over the Fairy Ocarina herself
+            elif area_intro and actor.name == "UISystemActor" and what == "EventTriggerOpenLocationUI" and \
+                    (e.params or {}).get("LocationName"):
+                flags.append(location_flag(e.params["LocationName"]))
             elif ("Pouch" in what or "Challenge" in what or "Banc" in what or what == "EventTransition"
                   or actor.name in ("PouchSystemActor", "ChallengeSystemActor")):
                 raise StorySkipError("%s: %s.%s" % (fc.name, actor.name, what))
@@ -187,8 +228,18 @@ def _reach(fc, start):
     return seen
 
 
+SYSTEM_ACTORS = ("GameDataActor", "EventSystemActor", "GameSystemActor", "UISystemActor", "SoundSystemActor")
+
+
 def _action(fc, actor_name, action):
     idx = next((i for i, a in enumerate(fc.actors) if a.name == actor_name and not a.secondary_name), None)
+    if idx is None and actor_name in SYSTEM_ACTORS:
+        # a system actor the flow doesn't use yet: added with another system actor's parameters, the way
+        # faststart adds them (they all have the same member settings)
+        base = next((a for a in fc.actors if a.name in SYSTEM_ACTORS and not a.secondary_name), None)
+        if base is not None:
+            fc.actors.append(evfl.Actor(name=actor_name, params=copy.deepcopy(base.params)))
+            idx = len(fc.actors) - 1
     if idx is None:
         raise StorySkipError("actor %s not in %s" % (actor_name, fc.name))
     actor = fc.actors[idx]
@@ -197,10 +248,11 @@ def _action(fc, actor_name, action):
     return idx, actor.actions.index(action)
 
 
-def skip_scenes(data, scenes, read_scene, flag_exists):
+def skip_scenes(data, scenes, read_scene, flag_exists, area_intro=False):
     """Quest flow `data` with each transition to one of `scenes` replaced by its effects.
 
     read_scene(name) -> the scene's latest bytes; flag_exists(name) -> is it a save flag.
+    area_intro: see scene_effects.
     Returns (new bytes, {scene: "seen" | "item <actor>" | "kept: <reason>"})."""
     document = evfl.read(data)
     fc = document.flowchart
@@ -218,7 +270,7 @@ def skip_scenes(data, scenes, read_scene, flag_exists):
             report[scene] = "kept: not played by %s" % fc.name
             continue
         try:
-            items, flags = scene_effects(evfl.read(read_scene(scene)))
+            items, flags = scene_effects(evfl.read(read_scene(scene)), area_intro)
         except StorySkipError as ex:
             report[scene] = "kept: %s" % ex
             continue
@@ -247,6 +299,9 @@ def skip_scenes(data, scenes, read_scene, flag_exists):
                 a, act = _action(fc, "GameDataActor", "EventTriggerSetGameDataBool")
                 steps.append(evfl.ActionEvent("RandoSkip_%s_%d" % (scene, len(steps)), a, act, evfl.NONE,
                                               {"GameDataName": f, "Index": -1, "Value": True}))
+            if area_intro and fade_colour is None and not after_skip and (not fade or fade[0] == "in"):
+                # an arrival intro may be what ends the loading screen's fade: always fade in (black)
+                fade_colour = fade[1] if fade else 0
             if fade_colour is not None:
                 a, act = _action(fc, "UISystemActor", "EventEventFadeIn")
                 steps.append(evfl.ActionEvent("RandoSkip_%s_Fade" % scene, a, act, evfl.NONE,
@@ -338,28 +393,108 @@ def update_event_info(world, read, emit, flows):
     return changed
 
 
-def patch_story_scenes(world, read, emit, progress, flag_exists):
-    """Apply SKIPS; returns {flow: report}. Run after the item edits, so gifts are the randomized items."""
+def patch_story_scenes(world, read, emit, progress, flag_exists, skips=None, label="Skip Story Scenes",
+                       area_intro=False):
+    """Apply SKIPS (or `skips`); returns {flow: report}. Run after the item edits, so gifts are the randomized
+    items."""
     out, docs = {}, {}
-    for flow, scenes in SKIPS.items():
+    for flow, scenes in (SKIPS if skips is None else skips).items():
         rel = flow_rel(flow)
         if not world.files.exists(rel):
-            progress("warning: Skip Story Scenes: %s not found; its scenes still play" % flow)
+            progress("warning: %s: %s not found; its scenes still play" % (label, flow))
             continue
         orig, dname = read(rel)
         try:
-            new, report = skip_scenes(orig, scenes, lambda s: read(flow_rel(s))[0], flag_exists)
+            new, report = skip_scenes(orig, scenes, lambda s: read(flow_rel(s))[0], flag_exists, area_intro)
         except (StorySkipError, KeyError, IndexError) as ex:
-            progress("warning: Skip Story Scenes: %s not changed (%s); its scenes still play" % (flow, ex))
+            progress("warning: %s: %s not changed (%s); its scenes still play" % (label, flow, ex))
             continue
         if new != orig:
             emit(rel, orig, new, dname)
             docs[flow] = evfl.read(new).flowchart
         kept = {s: r for s, r in report.items() if r.startswith("kept")}
-        progress("Skip Story Scenes: %s: %d scenes skipped%s" % (
-            flow, len(report) - len(kept), "".join("; %s %s" % kv for kv in kept.items())))
+        progress("%s: %s: %d scenes skipped%s" % (
+            label, flow, len(report) - len(kept), "".join("; %s %s" % kv for kv in kept.items())))
         out[flow] = report
     if docs:
         events = update_event_info(world, read, emit, docs)
-        progress("Skip Story Scenes: event info updated for %d events (%s)" % (len(events), ", ".join(events)))
+        progress("%s: event info updated for %d events (%s)" % (label, len(events), ", ".join(events)))
+    return out
+
+
+# Skip Area Intros, for the intros whose arrival entry also advances a quest or sets flags (so the intro can't
+# simply count as already played: the entry wouldn't run). The intro's transition is replaced in its arrival flow
+# like a story scene, so what follows it (the quest step, Navi's Death Mountain Crater remark, the flags) still
+# runs; the area's name banner, which marks it visited, becomes its IsVisitLocation flag.
+AREA_SKIPS = {
+    "Dm_SY_BancChangeArrive": [
+        "Dm_Deku_0000",                 # inside the Deku Tree (Get_StoneOfForest MeetBoss)
+        "Dm_DeathMtTrail_0000",         # Death Mountain Trail from Kakariko (Get_StoneOfFire)
+        "Dm_Goron_0000",                # Goron City from the trail (Get_StoneOfFire)
+        "Dm_Zora_0000",                 # Zora's Domain from the river (Get_StoneOfWater Step03)
+        "Dm_DesertColossus_0000",       # Desert Colossus from the wasteland (SageOfSpirit Step04)
+        "Dm_HrlCastle_0005",            # Castle Town (Goto_HyruleCastle EntryMarket)
+        "Dm_DeathMtCrater_0000",        # Death Mountain Crater from Goron City (SageOfFire)
+        "Goto_SacredForest",            # Sacred Forest Meadow
+        "Goto_IceCave",                 # Ice Cavern (SageOfWater Step03)
+        "Goto_ShadowTemple",            # Shadow Temple entrance (SageOfShadow MeetBoss)
+        "Goto_GerudoTrainingGround",    # Gerudo Training Ground (SubEvent_GetIceArrow)
+    ],
+    # Lon Lon Ranch: the entry also sets Malon's whereabouts flags
+    "Entry_LonLonRanch": ["Dm_LonLon_0010"],
+    # inside Ganon's Castle, the first visit (the castle's LocationArea only exists once it has played)
+    "Defeat_Ganon": ["Dm_InsideGanonCastle_0003"],
+}
+# Intros that are events of their own (started by an EventRequestActor in the stage, no arrival flow): their first
+# entry is cut down to the area's visit flag.
+AREA_STANDALONE = ["Dm_DodongoCave_0000", "Goto_WaterTemple"]
+
+
+def empty_intro(data, flag_exists):
+    """Standalone intro scene `data` with its first entry doing nothing but setting its flags."""
+    document = evfl.read(data)
+    fc = document.flowchart
+    if fc is None or not fc.entry_points:
+        raise StorySkipError("no flowchart")
+    _, flags = scene_effects(document, area_intro=True)
+    # its played flag too (Dodongo's Cavern's location area only exists once Dm_DodongoCave_0000 has played)
+    flags = [f for f in dict.fromkeys(flags + ["HavePlayedEvent." + fc.name]) if flag_exists(f)]
+    entry = fc.entry_points[0]
+    steps = []
+    for f in flags:
+        a, act = _action(fc, "GameDataActor", "EventTriggerSetGameDataBool")
+        steps.append(evfl.ActionEvent("RandoIntro_%d" % len(steps), a, act, evfl.NONE,
+                                      {"GameDataName": f, "Index": -1, "Value": True}))
+    if not steps:
+        a, act = _action(fc, "EventSystemActor", "EventWait")
+        steps.append(evfl.ActionEvent("RandoIntro_Wait", a, act, evfl.NONE, {"Frames": 1, "IsWaitEnd": True}))
+    first = len(fc.events)
+    fc.events.extend(steps)
+    for k in range(len(steps)):
+        steps[k].next = first + k + 1 if k + 1 < len(steps) else evfl.NONE
+    entry.main_event = first
+    entry.sub_flow_events = [i for i in entry.sub_flow_events if i in _reach(fc, first)]
+    new = evfl.write(document)
+    if evfl.read(new) != document:
+        raise StorySkipError("%s: the written flow does not read back as the changed flow" % fc.name)
+    return new, flags
+
+
+def patch_area_intros(world, read, emit, progress, flag_exists):
+    """Skip Area Intros for the intros AREA_SKIPS and AREA_STANDALONE list."""
+    out = patch_story_scenes(world, read, emit, progress, flag_exists, AREA_SKIPS, "Skip Area Intros", True)
+    for scene in AREA_STANDALONE:
+        rel = flow_rel(scene)
+        if not world.files.exists(rel):
+            progress("warning: Skip Area Intros: %s not found; it still plays" % scene)
+            continue
+        orig, dname = read(rel)
+        try:
+            new, flags = empty_intro(orig, flag_exists)
+        except (StorySkipError, KeyError, IndexError) as ex:
+            progress("warning: Skip Area Intros: %s not changed (%s); it still plays" % (scene, ex))
+            continue
+        emit(rel, orig, new, dname)
+        progress("Skip Area Intros: %s emptied (sets %s)" % (scene, ", ".join(flags) or "nothing"))
+        out[scene] = {scene: "emptied"}
     return out

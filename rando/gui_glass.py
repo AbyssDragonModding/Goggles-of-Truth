@@ -1,7 +1,7 @@
 """Alternate "glass" GUI built with Raven (https://github.com/oscar-soirey/Raven).
 
 Install the Python bindings first:   pip install raven-gui
-Started by ootr_remake.pyw.
+Started by goggles_of_truth_rando.pyw.
 """
 import math
 import os
@@ -214,6 +214,12 @@ class GlassApp:
             self.write(m)
         if not self.paths["out"].strip():
             self._use_longshot(quiet=True)     # first start with Longshot installed: use its mods folder
+        else:
+            newer = longshot.newer_build(self.paths["out"])
+            if newer:                          # Longshot was updated into a new version folder: follow it
+                self.write("Longshot was updated to %s, so seeds now go to its mods folder. Seeds in the old "
+                           "folder (%s) aren't loaded by the new version." % (newer.name, self.paths["out"]))
+                self._use_longshot()
         update_msg = os.environ.pop(updater.MSG_ENV, None)     # set by updater.check() at launch
         if update_msg:
             self.write(update_msg)

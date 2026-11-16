@@ -137,7 +137,9 @@ SETTINGS = [
      "Minimal: all Pieces of Heart and Heart Containers become rupees."),
     ("refill_needs_item", "Items", "Item Pool", "Refills Need Their Item", "bool", None, True,
      "A chest with arrows, bombs, Bombchus or Deku seeds gives a blue rupee instead until you own the\n"
-     "Bow, a Bomb Bag (Bombchus go in the Bomb Bag in the remake) or the Slingshot. Refills placed\n"
+     "Bow, a Bomb Bag (Bombchus go in the Bomb Bag in the remake) or the Slingshot. Deku Nuts and Deku\n"
+     "Sticks work the same way: a bundle only counts once you have picked up a single nut or stick\n"
+     "(that gives you their bag), so until then their chests give a blue rupee too. Refills placed\n"
      "anywhere other than a chest are always blue rupees."),
     # ---- Dungeon Items
     ("maps_compasses", "Dungeon Items", "Dungeon Items", "Maps & Compasses", "choice",
@@ -183,29 +185,35 @@ SETTINGS = [
      "- adult Temple of Time: Sheik's first talk, the sages' talks, Zelda's reveal and the Light Arrows;\n"
      "- after a boss: each sage's awakening and medallion, and the Deku Tree / Darunia / Ruto handing over\n"
      "  the Spiritual Stones;\n"
-     "- leaving Kokiri Forest: Saria's goodbye on the bridge (the Fairy Ocarina is given at once).\n"
+     "- leaving Kokiri Forest: Saria's goodbye on the bridge (the Fairy Ocarina is given at once);\n"
+     "- the rest of each post-boss chain (the Deku Tree's death, Darunia, Ruto, the Deku Sprout, the\n"
+     "  lake refilling...), Sheik/Mido/Ruto/Nabooru before the adult temples, and Ganon's Castle's\n"
+     "  first visit, trial barriers and tower barrier (not yet tested in-game).\n"
      "Song lessons, boss intros and the ending still play (Make All Cutscenes Skippable covers those).\n"
-     "Tested in-game so far: only Rauru's Light Medallion after the Master Sword and Saria's Fairy\n"
-     "Ocarina on the bridge. Known to still play: leaving the Temple of Time as adult and Ganon's\n"
-     "Castle's first-visit scene."),
-    ("skip_area_intros", "Quality of Life", "Cutscenes", "Skip Area Intro Cutscenes (experimental)", "bool", None, False,
-     "Experimental: early reports say the intros still play.\n"
-     "First-arrival camera pans count as already seen: Kakariko, Graveyard, Hyrule Castle, Lake Hylia,\n"
-     "Gerudo Valley/Fortress, Zora's River/Fountain, Ganon's Castle, Lost Woods (after Saria), and the\n"
-     "Fire Temple / Bottom of the Well / Spirit Temple entrances. Intros that also advance a quest\n"
-     "(Deku Tree, Death Mountain, Zora's Domain, Colossus, Castle Town, Crater, Ice Cavern, Shadow Temple,\n"
-     "Training Ground, Kokiri Forest, Goron City, Hyrule Field) still play; use the skip button for those."),
+     "Tested in-game so far: Rauru's Light Medallion after the Master Sword, the Great Deku Tree after\n"
+     "Gohma (his check is given) and Saria's Fairy Ocarina on the bridge. Known to still play: leaving\n"
+     "the Temple of Time as adult."),
+    ("skip_area_intros", "Quality of Life", "Cutscenes", "Skip Area Intro Cutscenes (needs further testing)", "bool",
+     None, False,
+     "First-arrival camera pans don't play: Kakariko, Graveyard, Hyrule Castle, Lake Hylia, Gerudo\n"
+     "Valley/Fortress, Zora's River/Fountain, Ganon's Castle, and the Fire Temple / Bottom of the Well /\n"
+     "Spirit Temple entrances (tested). Those areas count as visited, so their maps work without the\n"
+     "intro's area-name banner, and Kaepora still waits at Lake Hylia for his ride.\n"
+     "Also skipped, keeping the quest step they start (not yet tested): inside the Deku Tree, Dodongo's\n"
+     "Cavern, Death Mountain Trail from Kakariko, Goron City, Death Mountain Crater, Zora's Domain,\n"
+     "Lon Lon Ranch, Castle Town, Sacred Forest Meadow, Desert Colossus, Ice Cavern, Shadow Temple,\n"
+     "Gerudo Training Ground, the Water Temple and inside Ganon's Castle."),
     ("skip_kaepora", "Quality of Life", "Cutscenes", "Skip Kaepora Gaebora", "bool", None, True,
      "Kaepora Gaebora doesn't stop you to talk when you leave Kokiri Forest, in the Lost Woods after\n"
-     "Saria's Song, in Hyrule Field or at Zora's River. The quest menu and the amiibo menu item he unlocks are available anyway. His optional\n"
-     "rides at Lake Hylia and Death Mountain, and his talk in front of Hyrule Castle, are unchanged."),
+     "Saria's Song, in Hyrule Field (also on the way to Lake Hylia), in front of Hyrule Castle or at\n"
+     "Zora's River. The quest menu and the amiibo menu item he unlocks are available anyway, the field\n"
+     "music plays, and Castle Town works as if he had talked to you. His optional rides at Lake Hylia\n"
+     "and Death Mountain are unchanged."),
     ("skip_opening", "Quality of Life", "Cutscenes", "Skip Opening Movie", "bool", None, True,
-     "A new game starts in Link's house without the opening movie (the narrated prologue, the Great Deku\n"
-     "Tree's dream and Navi's flight). The game still waits for Kokiri Forest to load. Navi waking Link\n"
-     "still plays. (From Clawshot.)"),
-    ("skip_saria_intro", "Quality of Life", "Cutscenes", "Skip Saria's Wake-Up Scene", "bool", None, True,
-     "Saria doesn't wait at Link's door, walk him out or greet Navi. The door is open, Saria counts as\n"
-     "talked to, and the pause map works. The basic-controls tip still shows. (From Clawshot.)"),
+     "A new game doesn't play the opening movie (the narrated prologue and the Great Deku Tree's dream).\n"
+     "The game still waits for Kokiri Forest to load. (From Clawshot.)\n"
+     "Whatever this is set to, every seed starts outside in front of the Kokiri Shop, without Navi's\n"
+     "flight, Navi waking Link or Saria at the door."),
     ("skip_deku_talk", "Quality of Life", "Cutscenes", "Skip the Great Deku Tree's Talk", "bool", None, True,
      "The Great Deku Tree's speech when you first reach him doesn't play: his mouth is open and you can\n"
      "walk straight in. With Mido still blocking (Kokiri Forest not Open), this happens when Mido steps\n"
@@ -215,13 +223,25 @@ SETTINGS = [
      "the item up and its message shows. The fanfare starts at once. (From OotrR.) Small chests keep\n"
      "their own short opening. A chest that starts a story scene (such as the vanilla Kokiri Sword)\n"
      "keeps it."),
-    ("free_bombs", "Quality of Life", "Gameplay", "Bombs Usable Without Goron Bracelet", "bool", None, True,
+    ("bag_bombs_no_bracelet", "Quality of Life", "Gameplay", "Bag Bombs without Goron Bracelet", "bool", None, True,
      "Bombs from the bag can be pulled out and thrown as soon as you have a Bomb Bag. In the remake they\n"
      "normally need the Goron Bracelet, which the original always gave you first. Bomb Flowers still\n"
      "need the bracelet. Off: the logic expects the Goron Bracelet before bombs."),
     ("dodongo_bag_bombs", "Quality of Life", "Gameplay", "Bag Bombs Open Dodongo's Cavern", "bool", None, True,
      "A bomb from your Bomb Bag breaks the boulder in front of Dodongo's Cavern, so you don't need the\n"
      "Goron Bracelet to open it. Off: only the bomb flower next to it works, which needs the bracelet."),
+    ("gs_any_time", "Quality of Life", "Gameplay", "Gold Skulltulas Day and Night, Any Age", "bool",
+     None, False,
+     "Night-only Gold Skulltulas are there in the daytime too, and the overworld Gold Skulltulas that\n"
+     "only appear for adult Link (Kakariko, Death Mountain Trail, Zora's River and others) are there for\n"
+     "child Link too, at the same spot; it's the same Skulltula, so it counts once. Not copied: the ones\n"
+     "tied to another object (Lake Hylia, Zora's Domain) and Gerudo's Fortress (child can't go there).\n"
+     "The logic doesn't count on this: it still expects night or adult Link for them. Tested in-game."),
+    ("skip_ganon_trials", "Quality of Life", "Gameplay", "Skip Ganon's Trials (experimental)", "bool", None, False,
+     "The six trials inside Ganon's Castle count as done from the start: the barriers are gone and the\n"
+     "way up the tower is open. The trial rooms and their chests are still there. The logic then only\n"
+     "needs the rainbow bridge, the Bow and the Light Arrows to beat Ganon (the trial rooms' own\n"
+     "checks still expect what the trials need). Not yet tested in-game."),
     ("saria_song_ocarina", "Quality of Life", "Gameplay", "Saria's Song With Just an Ocarina", "bool", None, True,
      "Saria teaches her song in Sacred Forest Meadow as soon as you own an ocarina (either one);\n"
      "you don't need to meet Zelda first. Works with any Kokiri Forest setting."),
@@ -245,8 +265,9 @@ SPEC = {s[0]: s for s in SETTINGS}
 # Log are left as they are. Only options confirmed in-game are used: nothing experimental or untested.
 _PRESET_QOL = {
     "skip_cutscenes": True, "skip_story_scenes": False, "skip_area_intros": False, "skip_kaepora": True,
-    "skip_opening": True, "skip_saria_intro": True, "skip_deku_talk": True, "quick_chests": True,
+    "skip_opening": True, "skip_deku_talk": True, "quick_chests": True,
     "dodongo_bag_bombs": True, "saria_song_ocarina": True, "anju_one_cucco": True, "big_poe_one": False,
+    "gs_any_time": False, "skip_ganon_trials": False,
     "skip_epona_race": False, "logic_rules": "glitchless", "reachable_locations": "all",
     "small_keys": "vanilla", "boss_keys": "vanilla", "item_pool": "balanced", "refill_needs_item": True,
     "shuffle_freestanding": True, "shuffle_heart_containers": True, "shuffle_npc": True, "shuffle_quest": True,
@@ -258,19 +279,19 @@ PRESETS = {
         shuffle_songs="song", shuffle_rewards="vanilla", shuffle_ocarinas=False, shuffle_kokiri_sword=False,
         shuffle_weird_egg=False, shuffle_rupees=False, shuffle_scrubs=False, scrub_prices="low",
         tokensanity="off", shopsanity="off", shop_prices="low", maps_compasses="start_with",
-        hint_distribution="balanced", gossip_stones="no_mask", free_bombs=True),
+        hint_distribution="balanced", gossip_stones="no_mask", bag_bombs_no_bracelet=True),
     "Standard": dict(_PRESET_QOL,
         open_forest="open", open_door="open", open_zora="closed", open_dmt=False, skip_child_zelda=True,
         shuffle_songs="song", shuffle_rewards="vanilla", shuffle_ocarinas=False, shuffle_kokiri_sword=True,
         shuffle_weird_egg=False, shuffle_rupees=False, shuffle_scrubs=True, scrub_prices="regular",
         tokensanity="dungeons", shopsanity="off", shop_prices="low", maps_compasses="start_with",
-        hint_distribution="balanced", gossip_stones="mask", free_bombs=True),
+        hint_distribution="balanced", gossip_stones="mask", bag_bombs_no_bracelet=True),
     "Expert": dict(_PRESET_QOL,
         open_forest="closed", open_door="closed", open_zora="closed", open_dmt=False, skip_child_zelda=False,
         shuffle_songs="anywhere", shuffle_rewards="anywhere", shuffle_ocarinas=True, shuffle_kokiri_sword=True,
         shuffle_weird_egg=True, shuffle_rupees=True, shuffle_scrubs=True, scrub_prices="random",
         tokensanity="all", shopsanity="4", shop_prices="random", maps_compasses="vanilla",
-        hint_distribution="balanced", gossip_stones="mask", free_bombs=False),
+        hint_distribution="balanced", gossip_stones="mask", bag_bombs_no_bracelet=False),
 }
 PRESET_TIPS = {
     "Beginner": "Everything open from the start (Kokiri Forest, Door of Time, Zora's Fountain, Death Mountain),\n"
@@ -333,9 +354,19 @@ UNSUPPORTED = [
 ]
 
 
+# Settings that were renamed, and settings that are now part of every seed (no longer a choice).
+RENAMED = {"free_bombs": "bag_bombs_no_bracelet"}
+BUILT_IN = {"skip_saria_intro"}
+# Settings that were removed (dropped silently from saved settings).
+REMOVED = {"unrestricted_items"}
+
+
 def normalize(settings):
     out = dict(DEFAULTS)
     settings = dict(settings or {})
+    for old, new in RENAMED.items():
+        if old in settings:
+            settings.setdefault(new, settings.pop(old))
     if settings.get("shuffle_scrubs") in ("off", "low", "regular", "random"):
         # before 0.5.0's price settings, the scrub setting held the price
         old = settings.pop("shuffle_scrubs")

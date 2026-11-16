@@ -74,30 +74,40 @@ SETTING_TESTS = {
                                "the drop, come back") if v != "off" else None),
     "skip_cutscenes": lambda v: ("Every cutscene can be skipped (opening, credits too)", "Press the skip button in the opening") if v else None,
     "skip_area_intros": lambda v: ("First-arrival intros don't play: Kakariko, Graveyard, Hyrule Castle, Lake Hylia, "
-                                   "Gerudo Valley/Fortress, Zora's River/Fountain, Ganon's Castle, Lost Woods (after Saria), "
-                                   "Fire Temple / Well / Spirit Temple entrances",
-                                   "Arrive in those areas for the first time on a new save") if v else None,
-    "refill_needs_item": lambda v: ("Arrow / bomb / Bombchu / seed chests give a blue rupee without the Bow / Bomb Bag / Slingshot",
+                                   "Gerudo Valley/Fortress, Zora's River/Fountain, Ganon's Castle, Fire Temple / Well / Spirit "
+                                   "Temple entrances; their maps work; Kaepora is at Lake Hylia. Also: Deku Tree, Dodongo's "
+                                   "Cavern, Death Mountain Trail/Crater, Goron City, Zora's Domain, Lon Lon Ranch, Castle "
+                                   "Town, Sacred Forest Meadow, Colossus, Ice Cavern, Shadow Temple, Training Ground, Water Temple, inside Ganon's Castle, with "
+                                   "their quest steps kept",
+                                   "Arrive in those areas for the first time on a new save; open the map there") if v else None,
+    "refill_needs_item": lambda v: ("Arrow / bomb / Bombchu / seed / nut / stick chests give a blue rupee without the Bow / "
+                                    "Bomb Bag / Slingshot / a Deku Nut / a Deku Stick picked up first",
                                     "Open a refill chest (see Check rows) before owning its item") if v else None,
     "big_poe_one": lambda v: ("The Big Poe buyer gives his reward for a single Big Poe",
                               "Adult: catch one Big Poe in Hyrule Field, sell it in the Market ghost shop") if v else None,
     "skip_kaepora": lambda v: ("Kaepora doesn't stop you outside Kokiri Forest, in the Lost Woods after Saria's Song, "
-                               "in Hyrule Field or at Zora's River; the quest menu still works",
+                               "in Hyrule Field (also towards Lake Hylia), in front of Hyrule Castle or at Zora's River; the quest "
+                               "menu and the field music work",
                                "Leave Kokiri Forest, go back into the Lost Woods after Saria's Song, cross Hyrule "
-                               "Field, go up Zora's River") if v else None,
+                               "Field towards the castle and Lake Hylia, go up Zora's River") if v else None,
+    "gs_any_time": lambda v: ("Night-only Gold Skulltulas are there by day; adult-only overworld ones are there for child "
+                              "Link too (same Skulltula, counts once)",
+                              "By day: Kokiri Forest (House of Twins), Zora's River, Gerudo Valley, Lon Lon Ranch. As child: Kakariko, "
+                              "Death Mountain Trail, Goron City, Sacred Forest Meadow") if v else None,
+    "skip_ganon_trials": lambda v: ("Ganon's Castle: the six trial barriers are gone from the start; the tower is open",
+                                    "Debug menu: go into Ganon's Castle as adult; walk to the tower stairs in the middle room") if v else None,
     "anju_one_cucco": lambda v: ("Anju's minigame finishes after returning 1 cucco", "Kakariko, child: return one cucco to the pen") if v else None,
-    "free_bombs": lambda v: ("Bag bombs can be pulled out and thrown without the Goron Bracelet",
+    "bag_bombs_no_bracelet": lambda v: ("Bag bombs can be pulled out and thrown without the Goron Bracelet",
                              "Get a Bomb Bag before the bracelet; use a bomb") if v else
                             ("Bombs need the Goron Bracelet (logic gives the bracelet first)", "Check the bracelet is found before bombs are needed"),
-    "skip_opening": lambda v: ("A new game starts in Link's house; Navi wakes Link", "Start a new save") if v else None,
-    "skip_saria_intro": lambda v: ("Saria isn't at the door; the door is open; the pause map works",
-                                   "Start a new save, walk out of Link's house, open the map") if v else None,
+    "skip_opening": lambda v: ("A new game skips the opening movie", "Start a new save") if v else None,
     "skip_deku_talk": lambda v: ("The Great Deku Tree's speech doesn't play; his mouth is open",
                                  "Walk up to the Deku Tree (after showing Mido sword + shield unless Kokiri Forest is Open)") if v else None,
     "skip_story_scenes": lambda v: ("Rauru, the sages' awakenings, Sheik/Zelda in the Temple of Time, the stone scenes "
-                                    "and Saria's bridge goodbye don't play; their items are given straight away",
+                                    "Saria's bridge goodbye, the rest of each post-boss scene chain, Sheik/Ruto/Nabooru before the "
+                                    "adult temples and Ganon's Castle's trial scenes don't play; their items are given straight away",
                                     "Leave Kokiri Forest (Fairy Ocarina), pull the Master Sword (Rauru's item), beat a "
-                                    "boss (stone / medallion item)") if v else None,
+                                    "boss (stone / medallion item), enter Ganon's Castle and clear a trial") if v else None,
     "quick_chests": lambda v: ("Chests open without the camera move or Link's opening animation; Link holds the item up",
                                "Open a big chest and a small chest") if v else None,
     "hint_distribution": lambda v: (("Gossip Stones give the hints listed in the spoiler (%s)" % v,

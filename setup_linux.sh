@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ===========================================================================================
-#  OoT Remake Randomizer - first-time setup for Linux
+#  Goggles of Truth Randomizer - first-time setup for Linux
 #
 #  Run it once from a terminal in this folder:   bash setup_linux.sh
 #  It:
@@ -8,7 +8,7 @@
 #       package manager doesn't have 3.14),
 #    2. creates a private Python environment in ".venv" inside this folder and installs
 #       requirements.txt into it (nothing is installed into the system Python),
-#    3. adds an "OoT Remake Randomizer" entry to your application menu and makes .pyw files open
+#    3. adds an "Goggles of Truth Randomizer" entry to your application menu and makes .pyw files open
 #       with Python, for your user only.
 #  It asks before anything that needs sudo. Run it again after downloading a new version.
 # ===========================================================================================
@@ -103,10 +103,11 @@ APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 MIME="${XDG_DATA_HOME:-$HOME/.local/share}/mime"
 mkdir -p "$APPS" "$MIME/packages"
 
-cat > "$APPS/ootr-remake-randomizer.desktop" <<EOF
+rm -f "$APPS/ootr-remake-randomizer.desktop"      # the menu entry before the 0.6.0 rename
+cat > "$APPS/goggles-of-truth-randomizer.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=OoT Remake Randomizer
+Name=Goggles of Truth Randomizer
 Comment=Generate a randomizer mod for the Ocarina of Time remake
 Exec="$HERE/run_linux.sh"
 Path=$HERE
@@ -139,5 +140,5 @@ command -v xdg-mime >/dev/null 2>&1 && xdg-mime default python-pyw-launcher.desk
 # .py files are left to open in your text editor: running any .py on double-click is risky.
 
 say "Setup finished."
-echo "Start the randomizer from your application menu (OoT Remake Randomizer), by double-clicking"
-echo "ootr_remake.pyw, or with:   ./run_linux.sh"
+echo "Start the randomizer from your application menu (Goggles of Truth Randomizer), by double-clicking"
+echo "goggles_of_truth_rando.pyw, or with:   ./run_linux.sh"

@@ -70,23 +70,23 @@ def _all(*xs):
 
 # --------------------------------------------------------------------------- primitives
 # Generation options the rules depend on (set by the generator before filling).
-OPTIONS = {"free_bombs": True, "open_forest": "closed", "open_zora": "closed", "open_door": "closed",
+OPTIONS = {"bag_bombs_no_bracelet": True, "open_forest": "closed", "open_zora": "closed", "open_door": "closed",
            "saria_song_ocarina": True, "dodongo_bag_bombs": False,
-           "shuffle_ocarinas": False, "open_dmt": False, "skip_child_zelda": False}
+           "shuffle_ocarinas": False, "open_dmt": False, "skip_child_zelda": False, "skip_ganon_trials": False}
 
 
 def set_options(st):
-    OPTIONS.update(free_bombs=bool(st["free_bombs"]), open_forest=st["open_forest"], open_zora=st["open_zora"],
+    OPTIONS.update(bag_bombs_no_bracelet=bool(st["bag_bombs_no_bracelet"]), open_forest=st["open_forest"], open_zora=st["open_zora"],
                    open_door=st["open_door"], saria_song_ocarina=bool(st["saria_song_ocarina"]),
                    dodongo_bag_bombs=bool(st["dodongo_bag_bombs"]),
                    shuffle_ocarinas=bool(st["shuffle_ocarinas"]), open_dmt=bool(st["open_dmt"]),
-                   skip_child_zelda=bool(st["skip_child_zelda"]))
+                   skip_child_zelda=bool(st["skip_child_zelda"]), skip_ganon_trials=bool(st.get("skip_ganon_trials")))
 
 
 def bombs(s):
     bag = s.has("BombBag_Small") or s.has("BombBag_Medium") or s.has("BombBag_Large")
     # Bag bombs are lifted objects in the remake: without the bomb patch they need the Goron Bracelet.
-    return bag and (OPTIONS["free_bombs"] or s.has("Gauntlet_Goron") or str2(s))
+    return bag and (OPTIONS["bag_bombs_no_bracelet"] or s.has("Gauntlet_Goron") or str2(s))
 def hookshot(s): return s.has("Hookshot") or s.has("Longshot")
 def longshot(s): return s.has("Longshot")
 def bow(s): return s.has("Range_Bow")
@@ -216,7 +216,13 @@ def ganon_done(s): return _all(s.bridge, hookshot(s), lens(s), s.has("Hammer"), 
                                bombs(s), s.has("Arrow_Fire"), s.has("Arrow_Light"), bow(s), bottle(s),
                                s.has("Shield_Mirror"), song(s, "ZeldaLullaby"), song(s, "TimeSong"))
 @rule
-def win(s): return s.ganon_done
+def ganon_tower(s):
+    # Skip Ganon's Trials: the tower is open; Ganondorf needs the Light Arrows (the Master Sword comes with adult)
+    if OPTIONS["skip_ganon_trials"]:
+        return _all(s.bridge, bow(s), s.has("Arrow_Light"))
+    return s.ganon_done
+@rule
+def win(s): return s.ganon_tower
 
 
 DUNGEON_RULE = {

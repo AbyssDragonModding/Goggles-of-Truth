@@ -30,7 +30,7 @@ before the public 0.1.0 release.
 | Item Pool (Balanced / Scarce / Minimal) | Same (Plentiful not available) |
 | Excluded Locations | Same |
 | Hints | **Hint Distribution** (No Hints / Balanced / Strong / Useless) and **Gossip Stones** (Mask of Truth Required / No Mask of Truth); Strong and Useless experimental (explained below) |
-| Quality of Life | **Skip Opening Movie**, **Skip Saria's Wake-Up Scene**, **Skip the Great Deku Tree's Talk**, **Chests Without Cutscene** (off; explained below); **Skip Story Scenes** (experimental, needs additional testing, on; explained below); **Make All Cutscenes Skippable**, **Bombs Usable Without Goron Bracelet**, **Anju Needs Only 1 Cucco**, **Refills Need Their Item** (all on by default); **Bag Bombs Open Dodongo's Cavern** (off); **Skip Area Intro Cutscenes** (experimental, off); **Big Poe Buyer Needs Only 1 Big Poe**, **Skip Kaepora Gaebora** (experimental, off) |
+| Quality of Life | **Skip Opening Movie**, **Skip the Great Deku Tree's Talk**, **Chests Without Cutscene** (off; explained below); **Skip Story Scenes** (experimental, needs additional testing, on; explained below); **Make All Cutscenes Skippable**, **Bag Bombs without Goron Bracelet**, **Anju Needs Only 1 Cucco**, **Refills Need Their Item** (all on by default); **Bag Bombs Open Dodongo's Cavern** (off); **Skip Area Intro Cutscenes** (experimental, off); **Big Poe Buyer Needs Only 1 Big Poe**, **Skip Kaepora Gaebora** (experimental, off) |
 | Settings string | Same idea (import / copy) |
 
 The **Not Supported** tab lists the classic options that can't be done yet, and why.
@@ -49,7 +49,7 @@ These settings change the **default save data** (`GameData/GameDataList`). A fla
 | Door of Time: Open | Clawshot's Open mode (`rando/door.py`): the door's logic module `Logic/Market_Common_f252.logic.module.ainb` opens the door from Door of Time quest step `Step06`; its one `Step06` literal becomes `Ready` (same size). The child Master Sword pedestal's AI group in `Market_Child_Static` gets the ungated module `SpiritTemple_Prefab_5299` with the first-pull request and the sword. A new save starts that quest (`Step_DoorOfTime`) at `NotReady`, before `Ready`, so the quest is also started at `Ready` (not with Skip Child Zelda, which starts it at `Step02`): without it the door stayed shut for a player who went straight there (test seed 5). Setting `Market_Child_TimeTempleDoor_Opened` (up to 0.5.0's first test seeds) left the door shut. Works in-game (test seed 6) |
 | Skip Epona Race | Flow edit of `Dm_SY_Ocarina_EponaSong` (`rando/faststart.py`, `epona_without_race`); see below |
 | Saria's Song With Just an Ocarina | Adds a computed flag `Rando_HasOcarina_Exp` (`IsGet.Item_Ocarina_Fairy` OR `IsGet.Item_Ocarina_Time`) and re-points the two child Sacred Forest Meadow logic modules (`SacredForestMeadow_Child_Prefab_3265` / `_bbc3`) from `DoorOfTime_IsAfter_Step01_Exp` (met Zelda) to it. The quest-log step the scene advances is already guarded by Darunia's progress, so getting the song early is safe |
-| Skip Area Intro Cutscenes (experimental) | `HavePlayedEvent.<intro>` True for 13 first-arrival intros (listed in `rando/gamedata.py`, explained below) |
+| Skip Area Intro Cutscenes (experimental) | `HavePlayedEvent.<intro>` True for 13 first-arrival intros (listed in `rando/gamedata.py`, explained below), `IsVisitLocation.<area>` True for their 12 areas, and `Npc_Kaepora_LakeHrl_Appeared_FromValley` True |
 
 The logic follows the open settings:
 - The forest exit no longer needs the Deku Tree.
@@ -75,25 +75,63 @@ ones whose arrival does nothing else: Kakariko, Graveyard, Hyrule Castle, Lake H
 Fortress, Zora's River, Zora's Fountain, Ganon's Castle, Lost Woods (after Saria's Song), and the Fire Temple,
 Bottom of the Well and Spirit Temple entrances.
 
-**Experimental:** in-game reports say the intros still play with this on, so setting
-`HavePlayedEvent.<intro>` in the default save data isn't enough. Not yet known why: possibly the entrance actors
-read a different flag, or the default value doesn't reach the save.
+The `InitDemo_<area>` flags are `BoolExp`s in reverse Polish notation over `[opcode, hash]` items (0 reads a
+Bool, 4 is OR, 5 is NOT, as in `GameDataPatcher.add_bool_exp_any`): `InitDemo_KakarikoVillage` =
+`HavePlayedEvent.Dm_Kakariko_0000` OR NOT `Sequence_IsChildhood`, `InitDemo_LakeHylia` = any of
+`Dm_LakeHrl_0000` / `_0003` / `_0005` OR adult, `InitDemo_DeathMtCrater` = `Dm_DeathMtCrater_0000` OR
+`_0000_FromTop` (the hashes were matched by MurmurHash3). So a played flag in the default save data does satisfy
+them. Version 0.1.0's report that the intros still played predates most of the save-data work and wasn't
+reproduced since.
 
-These intros still play, because their arrival entry also advances a quest or sets a flag:
-- **Deku Tree:** Get_StoneOfForest, MeetBoss.
-- **Death Mountain Trail:** Get_StoneOfFire, DeathMtTrailNpc.
-- **Zora's Domain:** Get_StoneOfWater, Step03.
-- **Desert Colossus:** SageOfSpirit, Step04.
-- **Castle Town:** Goto_HyruleCastle.
-- **Death Mountain Crater:** SageOfFire.
-- **Ice Cavern:** SageOfWater, Step03.
-- **Shadow Temple:** SageOfShadow, MeetBoss.
-- **Gerudo Training Ground:** SubEvent_GetIceArrow.
-- **Sacred Forest Meadow:** a Moblin position flag.
-- **Story intros:** Kokiri Forest, Goron City, Lost Woods, Hyrule Field and Zora's River (Kaepora).
+What the setting missed until 0.6.0: an intro is where its area is first "visited". Each of these intros opens
+the area's name banner (`UISystemActor.EventTriggerOpenLocationUI`), which sets `IsVisitLocation.<area>`, and
+these locations show their banner only in that scene (RSDB `Location`: `IsShowLocationUIFirstTimeInDemo`).
+Clawshot found the same for Saria's skipped scene (`IsVisitLocation.KokiriForest`, needed for the pause map).
+So the 12 areas (`AREA_INTRO_VISITS`) now count as visited from the start. The Lake Hylia intros
+(`Dm_LakeHrl_0003` / `_0005`) also set `Npc_Kaepora_LakeHrl_Appeared_FromValley`, which puts Kaepora on the lake
+for his ride; that's set too. Tested in-game for Kakariko, Hyrule Field, Lake Hylia, Zora's River and
+Fountain, Gerudo Valley and the Fire Temple, Spirit Temple and Bottom of the Well entrances.
 
-Version 0.1 also skipped several of these, which could have stalled those quests. Use the skip button for
-them.
+The intros whose arrival entry also advances a quest or sets a flag can't simply count as played (the entry
+would never run, which could stall the quest; version 0.1 did that). Since 0.6.0 they are skipped inside the
+arrival flow instead (`AREA_SKIPS` in `rando/storyskip.py`): the `EventTransition` to the intro is replaced like
+a story scene (`skip_scenes` with `area_intro=True`), so what follows it still runs. Two differences from story
+scenes: the intro's `UISystemActor.EventTriggerOpenLocationUI` (its name banner) is allowed and becomes its
+`IsVisitLocation.<area>` flag, and the replacement always fades in (black) unless the intro starts with a fade
+out, because an arrival intro may be what ends the loading screen's fade. Covered, with what keeps running:
+- **Deku Tree** (`Dm_Deku_0000`): Get_StoneOfForest, MeetBoss.
+- **Death Mountain Trail from Kakariko** (`Dm_DeathMtTrail_0000`): Get_StoneOfFire, DeathMtTrailIn.
+- **Goron City from the trail** (`Dm_Goron_0000`): Get_StoneOfFire, ArriveCity.
+- **Zora's Domain from the river** (`Dm_Zora_0000`): Get_StoneOfWater, Step03 / Step03_Impa.
+- **Desert Colossus from the wasteland** (`Dm_DesertColossus_0000`): SageOfSpirit, Step04.
+- **Castle Town** (`Dm_HrlCastle_0005`): Goto_HyruleCastle.
+- **Death Mountain Crater from Goron City** (`Dm_DeathMtCrater_0000`): Navi's remark (SageOfFire), the
+  first-entry flag. From the trail the crater plays `Dm_DeathMtCrater_0000_FromTop`, which has no flowchart
+  file to check, so it still plays.
+- **Sacred Forest Meadow, Ice Cavern, Shadow Temple, Gerudo Training Ground** (`Goto_SacredForest`,
+  `Goto_IceCave`, `Goto_ShadowTemple`, `Goto_GerudoTrainingGround`): their quest steps and flags.
+- **Lon Lon Ranch** (`Dm_LonLon_0010` in `Entry_LonLonRanch`): Malon's whereabouts flags; the scene's
+  `LonLonRanch_IsVisited_Child` is copied.
+
+A flow that has no `GameDataActor` (or other system actor) for the new steps gets one, with another system
+actor's parameters, as `faststart` does.
+
+**Inside Ganon's Castle** (`Dm_InsideGanonCastle_0003`, in `Defeat_Ganon`): the first visit; the castle's
+`LocationArea` exists only once it has played. Its `VoicePlayActor.EventTriggerCloseDemoScreen` (closing the
+voice/subtitle screen) is counted as presentation.
+
+**Dodongo's Cavern** (`Dm_DodongoCave_0000`) and **the Water Temple** (`Goto_WaterTemple`) intros are events of
+their own, each requested by an `EventRequestActor` inside, with no arrival flow. Their first entry is cut down
+to setting their flags (`AREA_STANDALONE`, `empty_intro`): the area's `IsVisitLocation` flag and its
+`HavePlayedEvent` flag (Dodongo's Cavern's `LocationArea` only exists once `HavePlayedEvent.Dm_DodongoCave_0000`
+is set).
+
+Still playing:
+- **Lake Hylia's hookshot target** (the debug test's "Water Temple still played" was the intro inside,
+  `Goto_WaterTemple`, now emptied) (`Dm_WaterTemple_0000`, an `EventRequestActor` in Hyrule Field): the scene
+  that raises the Water Temple's pillar. It sets `WaterTemple_EmitGatePillar`, so it's gameplay, not an intro.
+- **Shadow Temple gate** (`Dm_ShadowTemple_0000`, inside): opens the temple's gates (four flags).
+- **Story intros:** Kokiri Forest, Lost Woods, Hyrule Field and Zora's River (Kaepora, see Skip Kaepora).
 
 ## Maps & Compasses: Start With
 
@@ -135,6 +173,67 @@ logic now requires the Goron Bracelet** to enter Dodongo's Cavern. Version 0.1 a
 A bag bomb near the boulder, or a bomb-flower fruit, then triggers the break. With the option on, the logic
 accepts bombs or the bracelet. If the file isn't recognised, generation stops with an error rather than
 producing an unsafe seed.
+
+## Gold Skulltulas day and night, any age
+
+A Gold Skulltula is an `Enemy_Skulltula_Gold` placement in the stage files. A night-only one has the dynamic
+parameter `Enemy_Skulltula_Gold_Nocturnal = true` (30 placements); the setting deletes it, so the Skulltula is
+always there.
+
+A Skulltula that both ages meet is placed in both the area's Adult and Child stage files with the same instance
+hash, and that hash is its save flag (`Bool64bitKey`), so killing it as either age counts once. An adult-only
+Skulltula is placed only in the Adult file(s). The setting copies such a placement (after the item edits, so with
+its shuffled drop) into the area's `<Area>_Child_Static` file, unchanged. Overworld only (dungeon stage files are
+shared by both ages). Left out: a placement with `Links` (a link names another actor of its own file, which the
+child file doesn't have: two in Hyrule Field near Lake Hylia, one in Zora's Domain), and Gerudo's Fortress (no
+child stage file). That leaves 11: Death Mountain Trail 2, Goron City 1, Kakariko 1, Kokiri Forest 1, Sacred
+Forest Meadow 1, Zora's River 2, Gerudo Valley 2, Hyrule Field 1 (`qol.patch_gs_any_time`).
+
+The child area can differ from the adult one at the same spot, so a copy might float or sit inside a wall. The
+Every night-only Skulltula is also referenced by an `AiGroup` (the stage file's `AiGroups`) running
+`Logic/Module/Gimmick_Nighttime_Skulltula_Gold_Appear`: it reads the time of day (`HoldWmGetTimeDiv`) and drives
+the Skulltula's and its spider web's `Logic_Delete`. With only the parameter removed, Lon Lon Ranch's night
+Skulltulas still didn't appear by day (debug test 1), so those groups are removed too; the Skulltula is then an
+ordinary placement (like the copies for child Link, which never had a group). Its spider web, no longer tied to
+it, stays after it's killed. Tested: Lon Lon Ranch's appear by day.
+
+Other Skulltula gates (survey of every placement's `AiGroups` and `Presence`): `Gimmick_AllDay_Skulltula` (51,
+no time check), `Gimmick_SwayingTree_Skulltula_Gold_00` (7, pop out of a tree), `Gimmick_BoxBroken_Skulltula`
+(4, in a crate), bean soil `Presence` flags (10, child only), and room / area prefabs. Of the adult-only
+Skulltulas copied for child Link, the two on Death Mountain Trail are in `DeathMountainTrail_Adult_Prefab`
+groups with an `Obj_BrokenRock_A_02` in front (the Hammer rocks). The rock exists only in the adult file and
+isn't copied, so child Link's copies are in the open (with the rock they'd be unreachable as child). The
+other copies are in `Gimmick_AllDay_Skulltula` or night-time groups, which aren't copied either.
+
+The logic is unchanged: it still expects night or adult Link for these Skulltulas, so a seed never depends on them.
+Tested in-game (debug seed): night-only ones appear by day, adult-only ones as child.
+
+## Skip Ganon's Trials (experimental)
+
+Each trial's sage room has an `EventRequestActor` for
+`Defeat_Ganon:InsideGanonCastle_Dungeon_BarrierRemove_<trial>` (Forest, Fire, Water, Shadow, Spirit, Light).
+That entry sets `InsideGanonCastle_Dungeon_BarrierRemove_<trial>` (the barrier is gone while it's set) and
+counts the Int `InsideGanonCastle_Dungeon_Barrier_Count` down from 6. At 0 it calls `BarrierRemove_All`, which
+removes the tower barrier and sets `InsideGanonCastle_IsAllBarrierClear` (read by the middle room's logic,
+`InsideGanonCastle_Level_Room_01_Prefab`). The sage's light in the middle room
+(`EftLoc_InsideGanonCastle_SageRoom_*`) shows once the entry's played flag is set.
+
+The setting starts a new save with all of that done: the six barrier flags and their
+`HavePlayedEvent.InsideGanonCastle_Dungeon_BarrierRemove_*` flags true, the counter at 0 and
+`IsAllBarrierClear` true (`GANON_TRIALS` in `rando/gamedata.py`; `GameDataPatcher.set_int` for the counter).
+
+`BarrierRemove_All` does two more things. It plays `Dm_InsideGanonCastle_0090`, and the tower's lift
+(`Obj_InsideGanonCastle_ElevatedFloor_A_01`, `InsideGanonCastle_Level_Room_01_Prefab_e183`) only works once
+that scene's played flag is set, so the save sets it too (debug test 3: door open, lift dead). And it moves the
+`Defeat_Ganon` quest from Step03 to Step04 (Ganondorf's rooms then check Step05). The quest can't start at
+Step04 in the save: `GanonCastle_Level_Field_00_Prefab` makes the rainbow bridge appear once the quest is past
+Step01. So `qol.patch_ganon_trials` adds a Step04 progress right after each of the two Step03 progresses
+(`GanonCastle_Adult_Field_SeeTowerBarrier` and `_FromDoor`, the first look at the tower barrier from the middle
+room).
+
+Logic: `win` becomes `ganon_tower`, which with the setting on needs only the bridge, the Bow and the Light
+Arrows (Ganondorf; the Master Sword comes with adult Link). The trial rooms' locations keep the full
+`ganon_done` rule, so they still expect the trials' items.
 
 ## Songs: the teaching flow gave the vanilla song too
 
@@ -217,7 +316,7 @@ A new save starts as if Hyrule Castle had already been done as a child:
   through the save flags, the Ocarina of Time was in the menu but couldn't be played, and Link held no ocarina
   in Saria's song scene (seed 3LETP69LQZ). So a start check's ocarina (`faststart.START_BY_EVENT`) is no longer
   a save default. `faststart.give_at_start` adds it with that same action, silently (`IsGetEvent` false), in
-  `OpeningEvent:Opening_Introduction` (Navi waking Link, once per new save, skipped or not), just before the
+  `OpeningEvent:Opening_Introduction` (once per new save; it no longer plays Navi waking Link since 0.6.0), just before the
   flow's autosave. Confirmed in-game (seed 3LETP69LQZ).
 - **Unknowns.** It hasn't been tested whether a new save picks up these Enum and Int defaults like it does
   the plain Bools. It also hasn't been tested whether a later scene could still move the castle quest back.
@@ -356,8 +455,13 @@ A chest can already say "if the player owns X, give Y, otherwise give Z" (`Drop_
 red rupee without. With **Refills Need Their Item**, every randomized chest holding arrows, bombs, Bombchus or
 Deku Seeds gets that check against the Bow, the Bomb Bag or the Slingshot, with a blue rupee as the fallback.
 Other check types (NPCs, freestanding items, heart containers, Gold Skulltulas) can't test for an item. The fill
-therefore puts refills in chests, and any refill that doesn't fit in a chest becomes a blue rupee. Nuts and
-sticks need no container and are unchanged.
+therefore puts refills in chests, and any refill that doesn't fit in a chest becomes a blue rupee.
+
+Deku Nuts and Sticks (since 0.6.0) have no item of their own, only a bag. A single nut or stick picked up
+(`Item_DekuNut`, `Item_DekuStick`, `Obj_DekuStick`: `IsAbleToGetBagIfGet`, `SmallBagActor`
+`Item_NutBag_Small` / `Item_StickBag_Small`) gives that bag, and only then do they have a slot. A bundle
+(`TBox_DekuNutBundle`, `Item_DekuStickBundle_Small`) has no `IsAbleToGetBagIfGet`, so one found first was
+lost. Their chests check for the small bag.
 
 Unlike the original, the remake keeps Bombchus in the Bomb Bag: `Item_Bombchu`'s PouchContentParam has
 `MaxNumGameData: "Bomb"` and `SmallBagActor: Item_BombBag_Small`. Bombchus picked up without a bag show the
@@ -387,7 +491,8 @@ In the remake, a bomb pulled from the Bomb Bag is a *liftable* object. Lifting i
 **Goron Bracelet** grants (lift grade `3655598229`). Without the bracelet, Link starts the pull-out animation
 and then nothing happens. Vanilla never hits this, because you always get the bracelet before the Bomb Bag.
 
-**Bombs Usable Without Goron Bracelet** lowers the required lift grade of bag bombs (`Item_Bomb`'s
+**Bag Bombs without Goron Bracelet** (`bag_bombs_no_bracelet`, called Bombs Usable Without Goron Bracelet /
+`free_bombs` before 0.6.0; `settings.RENAMED` maps the old key) lowers the required lift grade of bag bombs (`Item_Bomb`'s
 LiftableParam) to the grade pots, small rocks and Bombchus use (`3069107721`). The change is made in every
 pack that carries a copy of that shared resource. Bomb Flowers use their own parameter, so they still need the
 bracelet, as in vanilla. With the option off, the logic requires the Goron Bracelet before bombs count.
@@ -528,16 +633,19 @@ is False:
 |---|---|
 | `Dm_LostWood_0000` | Outside Kokiri Forest (the Lost Woods bridge). Its Goron City version (`EnterFromGoronCity`) only plays while this one is unseen |
 | `Dm_LostWood_0010` | Lost Woods after Saria's Song (`Dm_SY_BancChangeArrive`, once `HavePlayedEvent.SacredForestMeadow_Field_MelodyGet_Saria` is set). Added after seed 3LETP69LQZ |
-| `Dm_HrlField_0010` | First Hyrule Field talk (`Goto_HyruleCastle:Goto_HyruleCastle_Kaepora_00`) |
+| `Dm_HrlField_0000`, `_0005`, `Dm_HrlField_0010` | First Hyrule Field talk (`Goto_HyruleCastle:Goto_HyruleCastle_Kaepora_00`). `_0000`/`_0005` added in 0.6.0: `HavePlayedEvent.Dm_HrlField_0000` also ends the field's BGM-off stretch (Bootup `BGMGeneralParam_Default` `SequenceRangeDisableBgm`, Clawshot) |
 | `Dm_HrlField_0030`, `Dm_HrlField_0040` | Hyrule Field (0040 after visiting Gerudo Valley) |
+| `Dm_HrlField_0050` | Hyrule Field on the way to Lake Hylia (`HyruleField_Child_Prefab_b9db`: unless seen or `IsVisitLocation.LakeHylia`). Added in 0.6.0 |
+| `Dm_HrlCastle_0000` | In front of Hyrule Castle (an entrance `InitEvent` on `HavePlayedEvent.Dm_HrlCastle_0000`; talk only). Added in 0.6.0 |
 | `Dm_ZoraRiver_0000`, `Dm_ZoraRiver_0005` | Zora's River |
 
 The first Hyrule Field talk also opens the quest menu (`UI_IsFinishChallengeMenuOpenEvent`), sets
 `HyruleField_ArriveEntrance` and gives the amiibo menu item (`Pouch_Amiibo`); those are set too, as Skip Child
-Zelda does. Its quest step (`Goto_HyruleCastle` Step02) is left alone: only two NPCs' dialogue reads it, and
-entering the Market moves the quest on to Step02_01. Left alone:
-- `Dm_HrlCastle_0000` in front of Hyrule Castle. It's an entrance `InitEvent`, the same mechanism as the area
-  intros, which didn't skip in testing.
+Zelda does. Its quest step matters (fixed in 0.6.0): the talk moves `Goto_HyruleCastle` to `Step02`, and
+Castle Town's entry event (`Market_Child_Prefab_c061`: `HoldChallengeCurrentStepCheckOrder` on `Step02`, then
+an AND) only fires at exactly that step, which starts the chain to Zelda's courtyard (Clawshot: the courtyard's
+`HyruleCastle_Prefab_941f` fires at exactly `Step04`). So without Skip Child Zelda the quest now starts at
+`Step02` (`KAEPORA_QUEST`); Skip Child Zelda sets it to Complete instead. Left alone:
 - `Dm_HrlField_0080` (sets `DreamWorld_Open`).
 - His optional rides at Lake Hylia and Death Mountain, which only start when you talk to him.
 
@@ -650,13 +758,28 @@ structure it changes, refuses anything else, and reads its result back. An entry
 reachable from it (`sub_flow_events`); a call missing from that list hung the game in Clawshot's tests, so new
 calls are registered.
 
-## Skip Opening Movie, Saria's Wake-Up Scene, the Great Deku Tree's Talk
+## New game start, Skip Opening Movie, the Great Deku Tree's Talk
+
+- **New game start (every seed, 0.6.0, `faststart.start_outside`):** `Sequence/Opening` runs
+  `OpeningEvent:Opening_Introduction` once on a new save (`Sequence_ReservedBootEventName`). It fades out,
+  sets `Meet_DekuTree` Step01, pins the terrain at the Deku Tree (`Event31`), moves the event camera there
+  (`Event32`), waits 75 frames (`Event27`) and plays `Dm_Kokiri_0030`: Navi's flight to Link's bed and Navi
+  waking him, a 12,544-frame timeline (`GameAnalyzedEventInfo`). After 0.5.1 testers saw about 30 seconds of
+  black after New Game. Now the terrain pin moves to the spawn, then `Player_Event.EventPlayerWarpToTargetPosAndRot`
+  and `Npc_Navi.EventTriggerNaviWarpToTargetPosAndRot` put Link and Navi in front of the Kokiri Shop, a
+  30-frame wait, and the flow joins the native fade-in `Event26` and its tail (BGM, Navi talked to, autosave).
+  The spawn is an NPC standing anchor (`AnchorAction2`, 2.24, 110.75, -11.24) in front of the shop door
+  (`Obj_Kokiri_DoorPillar_A_01` at -0.9, 110.1, -18.3), YAngle 205 (0 faces +Z, 90 faces +X: `Dm_Kokiri_0075`
+  turns Link to the Deku Tree with 95). The cut events stay in the file, unreachable. Saria's wake-up state
+  (below) and `HavePlayedEvent.Dm_Kokiri_0030` (read by the basic-controls tip's logic) are new-save values
+  on every seed; the Skip Saria's Wake-Up Scene setting was removed (`settings.BUILT_IN`). Float parameters
+  are rounded to binary32 first so the flow reads back.
 
 From Clawshot (`rando/faststart.py`, `rando/gamedata.py`):
 - **Opening movie:** `OpeningEvent:Opening_LoadingKokiriForest` plays `Dm_Kokiri_0000` while Kokiri Forest loads,
   then waits on `EventQueryBancChangeIsLoaded`. The entry now starts at that query, and the movie's event
-  becomes a one-frame wait back to it (its "not loaded yet" case). Navi waking Link still plays.
-- **Saria:** new-save values only: `HavePlayedEvent.Dm_Kokiri_0045` / `_0050` / `_0060`,
+  becomes a one-frame wait back to it (its "not loaded yet" case).
+- **Saria (every seed since 0.6.0):** new-save values only: `HavePlayedEvent.Dm_Kokiri_0045` / `_0050` / `_0060`,
   `KokiriForest_LinkHouseDoor_Open`, `HaveTalked.Npc_Kokiri_Saria_Child`, and `IsVisitLocation.KokiriForest`
   (the area banner of `Dm_Kokiri_0045` sets it; without it the pause map stays unavailable).
 - **Deku Tree:** the talk's state is `HavePlayedEvent.Dm_Kokiri_0070`, `Meet_DekuTree` Complete,
@@ -675,6 +798,29 @@ another with `EventSystemActor.EventTransition` and then moves Link on (`EventRe
 - `Dm_SY_BancChange_EscapeDungeon` (after each boss): `Dm_Awake_<sage>` and `Dm_Awake_<sage>_Get` (the medallion),
   `Dm_Kokiri_0130`, `Dm_DeathMtTrail_0025` and `Dm_ZoraFountain_0030` (the stones);
 - `Goto_HyruleCastle`: `Dm_Kokiri_0150` / `_0155` (Saria's goodbye on the bridge and the Fairy Ocarina).
+
+Added in 0.5.1, from a survey of every `EventTransition` in the game (the ootdump flow dumps), each one run
+through the same checks as above before it was listed:
+- `Dm_SY_BancChange_EscapeDungeon`, the rest of each post-boss chain: `Dm_Deku_0010`, `Dm_Kokiri_0080` to `_0095`
+  and `_0140` (the Deku Tree's last talk and death), `Dm_Kokiri_0158` to `_0162` (the Deku Sprout),
+  `Dm_DodongoCave_0030`, `Dm_DeathMtTrail_0020` / `_0027`, `Dm_DeathMtCrater_0010`, `Dm_InsideJabu_Jabu_0060`,
+  `Dm_ZoraFountain_0020`, `Dm_ForestTemple_0020`, `Dm_FireTemple_0030`, `Dm_WaterTemple_0040`, `Dm_LakeHrl_0020`
+  (the lake refilling), `Dm_ShadowTemple_0020`, `Dm_Graveyard_0030`, `Dm_Kakariko_0025`, `Dm_SpiritTemple_0040`,
+  `Dm_DesertColossus_0040`;
+- `SageOfForest` (`Dm_LostWood_0021` / `_0025`), `SageOfFire` (`Dm_FireTemple_0000`), `SageOfWater`
+  (`Dm_WaterTemple_0010` / `_0015`), `SageOfSpirit` (`Dm_DesertColossus_0020` to `_0030`, `Dm_SpiritTemple_0010` to
+  `_0030`, `Dm_TimeTemple_0086` / `_0087`): Sheik, Mido, Ruto and Nabooru before each adult temple;
+- `Defeat_Ganon`: `Dm_InsideGanonCastle_0000` (the first visit), `_0006` to `_0085` (each trial's barrier and its
+  sage; the scene sets `InsideGanonCastle_Dungeon_BarrierRemove_<trial>`, which is copied), `_0090` / `_0110` (the
+  tower barrier), and `InsideGanonCastle_CommonGimmick`'s `Dm_InsideGanonCastle_0005`.
+
+Left playing on purpose, although they pass the checks: `Dm_ForestTemple_0016` (moves the Forest Temple's elevator
+and candlesticks) and `Dm_ShadowTemple_0010` (the boat; sets `ShadowTemple_RoomB3FB4FJ_Departure`), which are
+gameplay; `Dm_SageRoom_0020` / `_0025` / `_0027`, which follow `Dm_FinalBattle_BossOut` (the ending); the child
+Zelda / Impa scenes in `DoorOfTime` and `Goto_HyruleCastle` (Skip Child Zelda); song lessons, boss intros and
+outros, Ganondorf, Ganon and the ending. Refused by the checks (they keep playing): the Jabu-Jabu scenes with Ruto,
+Darunia's dance and Goron City scenes, the Zora's Domain / Zora's River scenes, the Water Temple water-level scenes,
+the Fire Temple chain lock, the Gerudo Fortress scenes, the escape from Ganon's Castle.
 
 Each of those transitions is replaced in the quest flow by what the scene leaves behind:
 - a scene that is only a timeline (camera, voices, actors; no flowchart, so nothing in it changes the save) is
@@ -809,10 +955,10 @@ trap chests and the Hall of Fallen Foes are left untouched.
 | `rando/scrubtext.py` | Business Scrub sale lines naming the item (new MSBT labels) |
 | `rando/door.py` | Door of Time: Open (from Clawshot) |
 | `rando/storyskip.py` | Skip Story Scenes: quest-flow transitions replaced by the scene's flags and item |
-| `rando/usersettings.py` | `user_settings.toml` (next to `ootr_remake.pyw`): the window's settings and folders, loaded when it opens and saved on every change. Read with `tomllib`, written by hand with every setting's allowed values as comments; invalid values fall back to the default. Takes over `~/.ootr_remake.json` once |
-| `rando/updater.py` | Update check at launch, called from `ootr_remake.pyw` before the window is imported. Only in a git clone with an upstream branch: `git fetch` (15 s timeout, `GIT_TERMINAL_PROMPT=0`, no console window), then `git pull --ff-only` when behind and the tree has no tracked changes and no local commits. Runs `pip install -r requirements.txt` when that file changed. Restarts with `sys.executable` and `OOTR_JUST_UPDATED=1` (so the new process doesn't check again), and passes the log text in `OOTR_UPDATE_MSG`, which `gui_glass` writes to the log. Off with `[app] auto_update = false` (`usersettings.load_app`; `save` keeps the `[app]` section) or `OOTR_NO_UPDATE` |
-| `rando/longshot.py` | Longshot (PC version) support. `find_builds()` reads the launcher's `builds.json` (Windows `%LOCALAPPDATA%\LongshotLauncher`, Linux `~/.local/share/LongshotLauncher` or `~/.config/LongshotLauncher`; entries have `folder`, `name`, `nup`, `default`), then scans `~/Games/Longshot/*` and the launcher's `buildsFolder`; a game folder is one with `longshot_version.txt`. Mods go in `<game folder>/mods/<mod>/romfs` (seen in Longshot's log: `mods: 2 mods from D:\Games\OOT PC\mods`). Longshot loads every mod there, sorted by path, and skips names starting with `.`, `-` or `_`, so after a successful generate into a `mods` folder `generate()` renames the other `OoTR_Remake_*` folders to `_OoTR_Remake_*`. Longshot merges its button prompts into a mod's `ResourceSizeTable` itself and ignores exefs patches (the randomizer writes none) |
-| `rando/gui_glass.py` | The Raven GUI (`ootr_remake.pyw` starts it); its layout is `rando/ui/main.xml`, Raven's XML format, with the settings cards made from `rando/settings.py` when the window opens |
+| `rando/usersettings.py` | `user_settings.toml` (next to `goggles_of_truth_rando.pyw`): the window's settings and folders, loaded when it opens and saved on every change. Read with `tomllib`, written by hand with every setting's allowed values as comments; invalid values fall back to the default. Takes over `~/.ootr_remake.json` once |
+| `rando/updater.py` | Update check at launch, called from `goggles_of_truth_rando.pyw` before the window is imported. Only in a git clone with an upstream branch: `git fetch` (15 s timeout, `GIT_TERMINAL_PROMPT=0`, no console window), then `git pull --ff-only` when behind and the tree has no tracked changes and no local commits. Runs `pip install -r requirements.txt` when that file changed. Restarts with `sys.executable` and `OOTR_JUST_UPDATED=1` (so the new process doesn't check again), and passes the log text in `OOTR_UPDATE_MSG`, which `gui_glass` writes to the log. Off with `[app] auto_update = false` (`usersettings.load_app`; `save` keeps the `[app]` section) or `OOTR_NO_UPDATE` |
+| `rando/longshot.py` | Longshot (PC version) support. `find_builds()` reads the launcher's `builds.json` (Windows `%LOCALAPPDATA%\LongshotLauncher`, Linux `~/.local/share/LongshotLauncher` or `~/.config/LongshotLauncher`; entries have `folder`, `name`, `nup`, `default`), then scans `~/Games/Longshot/*` and the launcher's `buildsFolder`; a game folder is one with `longshot_version.txt`. Mods go in `<game folder>/mods/<mod>/romfs` (seen in Longshot's log: `mods: 2 mods from D:\Games\OOT PC\mods`). Longshot loads every mod there, sorted by path, and skips names starting with `.`, `-` or `_`, so after a successful generate into a `mods` folder `generate()` renames the other `GogglesOfTruth_*` (and pre-0.6.0 `OoTR_Remake_*`) folders to `_<name>`. The launcher installs each version in its own folder, so `newer_build(out)` returns the default build when the saved output is the `mods` folder of an older version (`longshot_version.txt`, `v3.0.0-rc.3` < `-rc.4` < `v3.0.0`), and the window switches to it at startup. Longshot merges its button prompts into a mod's `ResourceSizeTable` itself and ignores exefs patches (the randomizer writes none) |
+| `rando/gui_glass.py` | The Raven GUI (`goggles_of_truth_rando.pyw` starts it); its layout is `rando/ui/main.xml`, Raven's XML format, with the settings cards made from `rando/settings.py` when the window opens |
 
 How each location type is patched:
 - **Chests**: `Dynamic.Drop__DropActor` in the stage file.

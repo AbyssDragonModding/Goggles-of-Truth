@@ -1,6 +1,8 @@
-# OoT Remake Randomizer
-## Current Version: 0.5.1 (PUBLIC BETA RELEASE)
-An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time*. It shuffles chests,
+# Goggles of Truth
+### An OoT26 randomizer mod
+## Current Version: 0.6.0 (PUBLIC BETA RELEASE)
+**Goggles of Truth** is an item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time*
+(OoT26); the **Goggles of Truth Randomizer** is the program that makes the seeds. It shuffles chests,
 songs, dungeon rewards, NPC rewards, shop items, Gold Skulltulas and more, and checks that every seed can be
 beaten. The settings follow the classic [OoT Randomizer](https://ootrandomizer.com), adjusted to what the
 remake allows.
@@ -22,10 +24,10 @@ and `exefs`) and writes only the files it changes into a new mod folder. Share s
 > and choose *Open in Terminal*), and run:
 >
 > ```bash
-> git clone https://github.com/AbyssDragonModding/OOTNS2-Rando
+> git clone https://github.com/AbyssDragonModding/Goggles-of-Truth
 > ```
 >
-> Then run the setup in the new `OOTNS2-Rando` folder as usual ([Setup](#setup)). From then on, every time you open
+> Then run the setup in the new `Goggles-of-Truth` folder as usual ([Setup](#setup)). From then on, every time you open
 > the randomizer it checks GitHub, pulls the newest version, installs any new packages and restarts itself,
 > and the log lists what changed. A ZIP download doesn't update itself; you have to download each new version
 > by hand. Already have the ZIP? Clone into a new folder and copy your `user_settings.toml` over. More in
@@ -99,7 +101,7 @@ The randomizer reads the game from your own dump; it never comes with any game f
 **Or, if you have [git](https://git-scm.com/downloads): clone it instead, and it keeps itself up to date.**
 
 ```bash
-git clone https://github.com/AbyssDragonModding/OOTNS2-Rando
+git clone https://github.com/AbyssDragonModding/Goggles-of-Truth
 ```
 
 A cloned randomizer checks GitHub each time it opens. If there's a newer version, it pulls it, installs any
@@ -114,7 +116,8 @@ The extracted folder looks like this. These are the files you'll use:
 | `Start Randomizer (Windows).bat` | **Windows:** opens the randomizer. |
 | `setup_linux.sh` | **Linux:** installs everything. Run it once. |
 | `run_linux.sh` | **Linux:** opens the randomizer. |
-| `ootr_remake.pyw` | The randomizer itself. Double-clicking it also works once setup is done. |
+| `goggles_of_truth_rando.pyw` | The randomizer itself. Double-clicking it also works once setup is done. |
+| `ootr_remake.pyw` | The old start file (before 0.6.0). It only opens `goggles_of_truth_rando.pyw`, so old shortcuts still work. |
 
 ### Step 3 (Windows): Run the setup
 
@@ -150,7 +153,7 @@ If it says *"Python was installed, but this window can't see it yet"*, close the
    without a password.
 4. It then makes a private Python environment in a `.venv` folder inside the randomizer folder and
    installs the packages there. Nothing goes into your system Python.
-5. Finally it adds **OoT Remake Randomizer** to your application menu and makes `.pyw` files open with
+5. Finally it adds **Goggles of Truth Randomizer** to your application menu and makes `.pyw` files open with
    Python. It doesn't do this for `.py` files, so they still open in your text editor.
 
 You also need a **Vulkan graphics driver**. Most distributions already have one; the setup warns you if it
@@ -158,8 +161,8 @@ can't find `vulkaninfo`.
 
 ### Step 4: Start the randomizer
 
-- **Windows:** double-click **`Start Randomizer (Windows).bat`** (or `ootr_remake.pyw`).
-- **Linux:** open **OoT Remake Randomizer** from your application menu, double-click `ootr_remake.pyw`, or run
+- **Windows:** double-click **`Start Randomizer (Windows).bat`** (or `goggles_of_truth_rando.pyw`).
+- **Linux:** open **Goggles of Truth Randomizer** from your application menu, double-click `goggles_of_truth_rando.pyw`, or run
   `./run_linux.sh` in a terminal.
 
 The start scripts check that everything is still installed and fix it if not, for example after you download
@@ -185,7 +188,7 @@ and running the setup again is never harmful.
 | What you see | What to do |
 |---|---|
 | "Windows protected your PC" | Click **More info**, then **Run anyway**. |
-| `ootr_remake.pyw` opens in Notepad, or Windows asks which app to use | Use `Start Randomizer (Windows).bat` instead, or right-click the file > **Open with** > **Choose another app** > **Python** > tick **Always**. |
+| `goggles_of_truth_rando.pyw` opens in Notepad, or Windows asks which app to use | Use `Start Randomizer (Windows).bat` instead, or right-click the file > **Open with** > **Choose another app** > **Python** > tick **Always**. |
 | "Python 3.14 or newer is required" | Run the setup again. If you installed Python yourself, make sure it's 3.14 or newer. |
 | "The GUI library isn't installed yet" | Run the setup again (it needs an internet connection). |
 | The window doesn't open, or closes straight away | Your graphics driver may not support Vulkan. Update it from NVIDIA, AMD or Intel. |
@@ -202,7 +205,7 @@ python -m pip install -r requirements.txt
 ```
 
 ```bash
-python ootr_remake.pyw
+python goggles_of_truth_rando.pyw
 ```
 
 On Linux use `python3.14` (or a virtual environment) in place of `python`. macOS isn't tested, but the same
@@ -228,7 +231,7 @@ two commands should work with Python 3.14 from python.org.
    gets its own folder there:
 
 ```
-<output folder>/OoTR_Remake_<seed>/
+<output folder>/GogglesOfTruth_<seed>/
     romfs/            <- the mod itself; this is what goes into the emulator
     settings.txt      <- version, seed and settings string
     spoiler.txt       <- where every item is, plus a playthrough
@@ -243,7 +246,7 @@ show every item's location.
 settings string from the GUI (or `settings.txt`) and send it with the seed, so others can make the seed
 themselves from their own game files.
 
-**Your settings are saved** in `user_settings.toml`, next to `ootr_remake.pyw`, every time you change something,
+**Your settings are saved** in `user_settings.toml`, next to `goggles_of_truth_rando.pyw`, every time you change something,
 and loaded when the window opens. The game and output folders are saved there too.
 - **To reset everything**, close the randomizer and delete `user_settings.toml`. To reset only the settings and
   keep your folders, press **Reset** next to the settings string.
@@ -257,11 +260,12 @@ and loaded when the window opens. The game and output folders are saved there to
 
 1. In your emulator, right-click the game and choose **Open Mod Data Location** (the name varies a little
    between emulators).
-2. Copy the whole `OoTR_Remake_<seed>` folder into that location, so the result looks like
-   `<mod data location>/OoTR_Remake_<seed>/romfs/...`.
+2. Copy the whole `GogglesOfTruth_<seed>` folder into that location, so the result looks like
+   `<mod data location>/GogglesOfTruth_<seed>/romfs/...`.
 3. Make sure only one randomizer seed is enabled at a time (most emulators list mods in the game's
    **Properties** > **Add-Ons** page).
-4. **Start a new save file** for every seed. Old saves keep the previous seed's progress flags.
+4. **Start a new save file** for every seed. Old saves keep the previous seed's progress flags. A new save
+   starts outside, in front of the Kokiri Shop (no Navi wake-up or Saria at the door).
 
 ### Playing with Longshot (PC)
 
@@ -276,9 +280,15 @@ randomizer can write seeds straight into it:
    - A Longshot game somewhere else: choose its `mods` folder (next to `longshot.exe`) with **Browse**. It's
      recognized as Longshot all the same.
 3. Generate. Close the game before you do: Longshot reads its mods only when it starts.
+   - Each Longshot update goes into a new folder (`Games\Longshot\<new version>`) with its own `mods` folder.
+     When the randomizer opens after an update, it switches to the new version's `mods` folder by itself (the
+     log says so). Seeds in the old version's folder aren't loaded any more; generate again, or move the one
+     you're playing into the new `mods` folder.
 4. Longshot loads every mod in that folder, so the randomizer **switches off the older seeds** there by putting
-   `_` in front of their names (`_OoTR_Remake_<seed>`), which Longshot skips. They aren't deleted: to play one
-   again, remove the `_` (and add it to the newer one). Other mods, like a HUD mod, are left alone.
+   `_` in front of their names (`_GogglesOfTruth_<seed>`; seeds from before 0.6.0 were called `OoTR_Remake_<seed>`),
+   which Longshot skips. They aren't deleted: to play one again, remove the `_` (and add it to the newer
+   one). Other mods, like a HUD mod, are left alone. If a seed can't be renamed (the game, or another program,
+   has a file in it open), the log says so; rename it by hand.
 5. **Start a new save file** for every seed.
 
 ## Testing and reporting problems
@@ -375,7 +385,7 @@ The GUI explains every option when you hover over it. In short:
 | **Items** | Quest items: songs, Spiritual Stones and Medallions (in boss rewards or anywhere), ocarinas, Kokiri Sword, Weird Egg. Shuffled locations: freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards (Zelda's Letter, Light Arrows, Biggoron), Great Fairies, Skulltula House rewards, Gold Skulltula tokens (Tokensanity), shop items (items shuffled per shop) and Business Scrubs. Item pool size and whether ammo chests need their bag |
 | **Dungeon Items** | Maps & Compasses (vanilla, own dungeon, removed or start with), small keys and boss keys |
 | **Hints** | Gossip Stone hints (none, balanced, strong or useless; strong and useless experimental) and whether stones need the Mask of Truth |
-| **Quality of Life** | Cutscenes (skip the opening movie, Saria's wake-up scene and the Great Deku Tree's talk, chests without cutscene; skip story scenes such as Rauru and the sages (experimental, needs additional testing; only Rauru and Saria's ocarina tested); all skippable, no area intros (experimental), skip Kaepora Gaebora); gameplay (bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina); minigames (Anju needs 1 cucco, Big Poe buyer needs 1 Big Poe (experimental)) |
+| **Quality of Life** | Cutscenes (skip the opening movie, Saria's wake-up scene and the Great Deku Tree's talk, chests without cutscene; skip story scenes such as Rauru and the sages (experimental, needs additional testing; only Rauru and Saria's ocarina tested); all skippable, no area intros (needs further testing), skip Kaepora Gaebora); gameplay (bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina, Gold Skulltulas day and night at any age, skip Ganon's trials (experimental)); minigames (Anju needs 1 cucco, Big Poe buyer needs 1 Big Poe (experimental)) |
 | **Exclusions** | Locations that only ever hold minor items |
 | **Not Supported** | Classic randomizer options the remake's data can't support yet, and why |
 
@@ -450,11 +460,11 @@ yet.
 | Refills Need Their Item | On | 0.2.1, 0.4.3 |
 | Anju Needs Only 1 Cucco | On | 0.2.1, 0.4.3 |
 | Skip Kaepora Gaebora | On | 0.4.3 |
-| Bombs Usable Without Goron Bracelet | On | 0.2.1, 0.4.3 |
+| Bag Bombs without Goron Bracelet (was Bombs Usable Without Goron Bracelet) | On | 0.2.1, 0.4.3 |
 | Hint Distribution | Balanced, Strong | 0.5.0 |
 | Gossip Stones | No Mask of Truth | 0.5.0 |
 | Skip Opening Movie | On | 0.5.0 |
-| Skip Saria's Wake-Up Scene | On | 0.5.0 |
+| Skip Saria's Wake-Up Scene (part of every seed since 0.6.0) | On | 0.5.0 |
 | Skip the Great Deku Tree's Talk | On (Kokiri Forest Closed) | 0.5.0 |
 | Chests Without Cutscene | On (big chests) | 0.5.0 |
 | Zora's Fountain | Open | 0.5.0 |
@@ -462,7 +472,10 @@ yet.
 | Items Shuffled Per Shop | 2 and 4 per shop, random prices | 0.5.0 |
 | Door of Time | Open | 0.5.0 |
 
-Skip Area Intro Cutscenes was only tested with the setting off, so it stays *experimental*. Shuffle Kokiri
+Skip Area Intro Cutscenes (0.6.0 test): the intros of Kakariko, Hyrule Field, Lake Hylia, Zora's River and
+Fountain, Gerudo Valley, and the Fire Temple, Spirit Temple and Bottom of the Well entrances no longer play.
+The intros that start a quest step (Deku Tree, Death Mountain, Goron City, Zora's Domain, Lon Lon Ranch,
+Dodongo's Cavern and others) are skipped since that test, so it *needs further testing*. Shuffle Kokiri
 Sword works both ways in 0.5.0: shuffled, the chest gives its random item; not shuffled, the chest still plays
 the Kokiri Sword scene even with Chests Without Cutscene (its story scene is kept), which is fine. Items
 Shuffled Per Shop (0.5.0 test seed 5): a bought shelf disappears and stays gone. Chests Without Cutscene
@@ -486,7 +499,6 @@ keep their own short opening).
 | Setting | Version | What happened |
 |---|---|---|
 | Load Saves at Dungeon Entrance | 0.2.1 | Never moved the restart point. Removed in 0.3.0. |
-| Skip Area Intro Cutscenes (experimental) | 0.2.0 | The intros still play. Off by default. |
 | Skip Epona Race (experimental, not working) | 0.5.0 | Test seeds 10 to 12: Epona never came to Epona's Song. Off by default. |
 
 How each setting is implemented, and what the remake makes impossible (keysanity, scrubsanity and others), is

@@ -87,10 +87,25 @@ SKIP_ZELDA_ITEMS = ["Pouch_Amiibo"]
 # HavePlayedEvent.SacredForestMeadow_Field_MelodyGet_Saria is set; talk only), missed until seed 3LETP69LQZ. Its
 # Goron City variant (Dm_LostWood_0000:EnterFromGoronCity) only plays while Dm_LostWood_0000 is unseen, so it's
 # covered by Dm_LostWood_0000.
+# 0.5.1 (checked against the ootdump decompile and Clawshot's data/fast_start.toml "kaepora"):
+# - Dm_HrlField_0000 and _0005 are the start of the same first Hyrule Field talk. Their own flag also matters:
+#   HavePlayedEvent.Dm_HrlField_0000 ends the field's BGM-off stretch before the panorama (Bootup
+#   BGMGeneralParam_Default SequenceRangeDisableBgm), so skipping only _0010 could leave Hyrule Field silent.
+# - Dm_HrlField_0050 is his talk on the way to Lake Hylia (HyruleField_Child_Prefab_b9db: plays unless seen or
+#   IsVisitLocation.LakeHylia), and Dm_HrlCastle_0000 his talk in front of Hyrule Castle (an entrance InitEvent
+#   on HavePlayedEvent.Dm_HrlCastle_0000; talk only). Both were still playing.
+# - His first talk also moves Goto_HyruleCastle to Step02, and the Market's entry event
+#   (Market_Child_Prefab_c061: HoldChallengeCurrentStepCheckOrder IsEqual Step02) only fires at exactly that step;
+#   it starts the chain that leads to Zelda's courtyard. So the skip now also sets Step02
+#   (KAEPORA_QUEST; Skip Child Zelda sets the quest to Complete instead).
 KAEPORA_SCENES = ["Dm_LostWood_0000",                      # outside Kokiri Forest (Lost Woods bridge)
                   "Dm_LostWood_0010",                      # Lost Woods, after Saria's Song
-                  "Dm_HrlField_0010", "Dm_HrlField_0030", "Dm_HrlField_0040",   # Hyrule Field (0040: near Gerudo Valley)
+                  "Dm_HrlField_0000", "Dm_HrlField_0005", "Dm_HrlField_0010",   # first Hyrule Field talk
+                  "Dm_HrlField_0030", "Dm_HrlField_0040",   # Hyrule Field (0040: near Gerudo Valley)
+                  "Dm_HrlField_0050",                      # Hyrule Field, on the way to Lake Hylia
+                  "Dm_HrlCastle_0000",                     # in front of Hyrule Castle
                   "Dm_ZoraRiver_0000", "Dm_ZoraRiver_0005"]
+KAEPORA_QUEST = ("Goto_HyruleCastle_IsCompleted_Exp", "Step02")
 # Owning an item: IsGet.<actor> plus, for pouch items, the count in PouchData.<actor> (a one-Int struct). Songs only
 # have the IsGet flag.
 # Skip Saria's Opening Scene (from Clawshot, data/fast_start.toml "saria"): Saria waking Link at his door and
@@ -120,7 +135,8 @@ OCARINA_FLAGS = ["IsGet.Item_Ocarina_Fairy", "IsGet.Item_Ocarina_Time"]
 # entrance's InitEventName in the stage data, or the shared Dm_SY_BancChangeArrive entry) does
 # nothing else: no quest step, flag or sub-flow. Their "played" flag only feeds the entrance check
 # (directly, or through InitDemo_* computed flags).
-# Left out on purpose because their arrival entry also advances a quest / sets flags:
+# Left out on purpose because their arrival entry also advances a quest / sets flags (since 0.6.0 most of these
+# are skipped inside their arrival flow instead: storyskip.AREA_SKIPS / AREA_STANDALONE):
 #   Dm_Deku_0000 (Get_StoneOfForest MeetBoss), Dm_DeathMtTrail_0000 (Get_StoneOfFire DeathMtTrailNpc),
 #   Dm_Zora_0000 (Get_StoneOfWater Step03), Dm_DesertColossus_0000 (SageOfSpirit Step04),
 #   Dm_HrlCastle_0005 (Goto_HyruleCastle EntryMarket), Dm_DeathMtCrater_0000(+_FromTop) (SageOfFire),
@@ -131,6 +147,22 @@ AREA_INTROS = ["Dm_LakeHrl_0000", "Dm_ZoraFountain_0000", "Dm_GanonCastle_0000",
                "Dm_Kakariko_0000", "Dm_Graveyard_0000", "Dm_HrlCastle_0000", "Dm_Gerudo_0000",
                "Dm_GerudoValley_0000", "Goto_ZoraRiver", "Goto_KakarikoWells", "Goto_FireTemple",
                "Goto_SpritTemple"]
+# The intros above are also where those areas are first "visited": each one opens its area's name banner
+# (UISystemActor.EventTriggerOpenLocationUI), and these locations show their banner only in that scene
+# (RSDB Location: IsShowLocationUIFirstTimeInDemo). Skipped, the visit flag the banner sets was never set, the
+# way Saria's skipped scene left Kokiri Forest unvisited (Clawshot "saria": IsVisitLocation.KokiriForest so the
+# pause map still works). So skipping them also marks their areas as visited.
+AREA_INTRO_VISITS = ["LakeHylia", "ZoraFountain", "GanonCastle", "KakarikoVillage", "Graveyard", "HyruleCastle",
+                     "GerudoFortress", "GerudoValley", "ZoraRiver", "BottomOfTheWell", "FireTemple", "SpiritTemple"]
+
+# Skip Ganon's Trials. Each trial's barrier scene (Defeat_Ganon:InsideGanonCastle_Dungeon_BarrierRemove_<trial>,
+# requested by an EventRequestActor in its sage room) sets InsideGanonCastle_Dungeon_BarrierRemove_<trial>, and the
+# barrier is gone while that flag is set; the scene's played flag shows the sage's light in the middle room
+# (EftLoc_InsideGanonCastle_SageRoom_*). Each one also counts InsideGanonCastle_Dungeon_Barrier_Count down from 6;
+# at 0 BarrierRemove_All removes the tower barrier and sets InsideGanonCastle_IsAllBarrierClear, which the middle
+# room's logic reads (InsideGanonCastle_Level_Room_01_Prefab). It then plays Dm_InsideGanonCastle_0090, whose played
+# flag enables the tower's lift, and moves the Defeat_Ganon quest to Step04 (qol.patch_ganon_trials).
+GANON_TRIALS = ["Forest", "Fire", "Water", "Shadow", "Spirit", "Light"]
 
 
 class GameDataPatcher:
@@ -159,6 +191,13 @@ class GameDataPatcher:
         row = self._get(name, "Bool")
         if row is not None and bool(row["DefaultValue"]) != value:
             row["DefaultValue"] = bool(value)
+            self.changed += 1
+        return row is not None
+
+    def set_int(self, name, value):
+        row = self._get(name, "Int")
+        if row is not None and row["DefaultValue"] != value:
+            row["DefaultValue"] = type(row["DefaultValue"])(value)
             self.changed += 1
         return row is not None
 
@@ -299,6 +338,13 @@ def planned_changes(st, ocarina_bridge_patched=True):
     if st["skip_area_intros"]:
         for ev in AREA_INTROS:
             out.append(("bool", "HavePlayedEvent." + ev, True, "skip_area_intros", "Intro %s counts as already seen" % ev))
+        # the Lake Hylia intros (Dm_LakeHrl_0003 / _0005, skipped through InitDemo_LakeHylia) are what put
+        # Kaepora on the lake for his optional ride
+        out.append(("bool", "Npc_Kaepora_LakeHrl_Appeared_FromValley", True, "skip_area_intros",
+                    "Kaepora waits at Lake Hylia (set by the skipped lake intro)"))
+        for loc in AREA_INTRO_VISITS:
+            out.append(("bool", "IsVisitLocation." + loc, True, "skip_area_intros",
+                        "%s counts as visited (its banner showed only in the skipped intro)" % loc))
     if st["maps_compasses"] == "start_with":
         for d in MAP_DUNGEONS:
             for f in ("IsGetMap", "IsGetCompass"):
@@ -329,6 +375,10 @@ def planned_changes(st, ocarina_bridge_patched=True):
             out.append(("bool", f, True, "skip_kaepora", "Set by Kaepora's first Hyrule Field talk"))
         for actor in SKIP_ZELDA_ITEMS:
             out.append(("item", actor, None, "skip_kaepora", "Given in Kaepora's first Hyrule Field talk"))
+        if not st["skip_child_zelda"]:
+            out.append(("quest", KAEPORA_QUEST[0], KAEPORA_QUEST[1], "skip_kaepora",
+                        "Goto_HyruleCastle starts at Step02, as Kaepora's first talk leaves it (the Market's entry "
+                        "event needs it)"))
     if st["open_forest"] in ("closed_deku", "open") or st["shuffle_ocarinas"] or st["skip_child_zelda"]:
         # Hyrule Field uses a "first visit" light table (MainField_Bluesky_First: IsForceMainLight, the sun pinned
         # at one angle) until this flag is set, which vanilla does in Saria's bridge goodbye after the Deku Tree.
@@ -337,14 +387,27 @@ def planned_changes(st, ocarina_bridge_patched=True):
                "shuffle_ocarinas" if st["shuffle_ocarinas"] else "skip_child_zelda")
         out.append(("bool", "HyruleField_ChangeENV", True, key,
                     "Hyrule Field uses its normal day/night lighting instead of the fixed first-visit sun"))
-    if st.get("skip_saria_intro"):
-        for f in SARIA_INTRO:
-            out.append(("bool", f, True, "skip_saria_intro", "Saria's wake-up scene state: %s" % f))
+    # every seed: a new game starts outside the shop (faststart.start_outside), Saria's wake-up already done
+    for f in SARIA_INTRO + ["HavePlayedEvent.Dm_Kokiri_0030"]:
+        out.append(("bool", f, True, "new_game", "New game starts outside: %s" % f))
     if st.get("skip_deku_talk") and st["open_forest"] == "open":
         for f in DEKU_TREE_TALK_FLAGS:
             out.append(("bool", f, True, "skip_deku_talk", "Great Deku Tree talk state: %s" % f))
         for name, value in DEKU_TREE_TALK_STEPS:
             out.append(("enum", name, value, "skip_deku_talk", "%s starts at %s" % (name, value)))
+    if st.get("skip_ganon_trials"):
+        for t in GANON_TRIALS:
+            for f in ("InsideGanonCastle_Dungeon_BarrierRemove_" + t,
+                      "HavePlayedEvent.InsideGanonCastle_Dungeon_BarrierRemove_" + t):
+                out.append(("bool", f, True, "skip_ganon_trials", "Ganon's %s Trial counts as done: %s" % (t, f)))
+        out.append(("int", "InsideGanonCastle_Dungeon_Barrier_Count", 0, "skip_ganon_trials",
+                    "No trial barriers left"))
+        out.append(("bool", "InsideGanonCastle_IsAllBarrierClear", True, "skip_ganon_trials",
+                    "The tower barrier is gone"))
+        # the barrier-dispel scene that follows the last trial: the tower's lift only works once it has played
+        # (InsideGanonCastle_Level_Room_01_Prefab_e183, Obj_InsideGanonCastle_ElevatedFloor_A_01)
+        out.append(("bool", "HavePlayedEvent.Dm_InsideGanonCastle_0090", True, "skip_ganon_trials",
+                    "The tower's lift works"))
     if st["saria_song_ocarina"]:
         out.append(("new_exp", SARIA_GATE_NEW, OCARINA_FLAGS, "saria_song_ocarina",
                     "True when you own the Fairy Ocarina or Ocarina of Time (replaces the met-Zelda check)"))
@@ -361,6 +424,8 @@ def apply(world, st, read, emit, progress, ocarina_bridge_patched=True, start_it
     for kind, flag, value, _, _ in planned_changes(st, ocarina_bridge_patched):
         if kind == "bool":
             gd.set_bool(flag, value)
+        elif kind == "int":
+            gd.set_int(flag, value)
         elif kind == "quest":
             gd.set_quest_step(flag, value)
         elif kind == "enum":

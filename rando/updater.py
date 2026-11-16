@@ -1,7 +1,7 @@
 """Update check at launch: pull the newest version from GitHub, then restart the randomizer.
 
-ootr_remake.pyw calls check() before the window opens. It only does something when the randomizer folder is a
-git clone (git clone https://github.com/AbyssDragonModding/OOTNS2-Rando) and git is installed. A downloaded zip
+goggles_of_truth_rando.pyw calls check() before the window opens. It only does something when the randomizer folder is a
+git clone (git clone https://github.com/AbyssDragonModding/Goggles-of-Truth) and git is installed. A downloaded zip
 has no .git folder, so it is never touched.
 
 What happens:
@@ -32,6 +32,8 @@ MAX_LOG_LINES = 15
 class _GitError(Exception):
     pass
 
+
+START_FILE = "goggles_of_truth_rando.pyw"   # the randomizer's start file (ootr_remake.pyw before 0.6.0)
 
 def _run(args, timeout=30):
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")     # never wait for a password prompt
@@ -106,7 +108,9 @@ def update():
 def restart():
     """Start the randomizer again from the updated files and return True, or False if that failed."""
     env = dict(os.environ, **{RESTARTED_ENV: "1"})
-    script = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else os.path.join(ROOT, "ootr_remake.pyw")
+    script = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+    if not os.path.isfile(script):         # the update renamed or removed the file this was started from
+        script = os.path.join(ROOT, START_FILE)
     try:
         subprocess.Popen([sys.executable, script, *sys.argv[1:]], cwd=ROOT, env=env)
         return True

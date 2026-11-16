@@ -1,6 +1,6 @@
 """user_settings.toml: the randomizer window's saved settings and paths.
 
-The file sits next to ootr_remake.pyw. The window loads it when it opens and saves it whenever something changes.
+The file sits next to goggles_of_truth_rando.pyw. The window loads it when it opens and saves it whenever something changes.
 Deleting it resets everything to the defaults. It's plain TOML, so it can also be edited by hand while the window
 is closed: every setting is listed with its allowed values, and an unknown or invalid value falls back to the
 default (the window's log says which).
@@ -21,7 +21,7 @@ PATH_KEYS = (("game", "romfs"), ("output", "out"))      # TOML key, the window's
 APP_DEFAULTS = {"auto_update": True}                     # [app]: options for the program itself, not the seed
 
 HEADER = """\
-# OoT Remake Randomizer: your settings.
+# Goggles of Truth Randomizer: your settings.
 #
 # The randomizer window loads this file when it opens and saves it whenever you change something.
 # Delete this file to reset everything to the defaults.
@@ -64,6 +64,9 @@ def validate(raw):
     """(settings, warnings): known keys with valid values on top of the defaults."""
     st, warnings = dict(S.DEFAULTS), []
     for key, value in (raw or {}).items():
+        key = S.RENAMED.get(key, key)
+        if key in S.BUILT_IN or key in S.REMOVED:
+            continue                    # now part of every seed, or removed
         if key not in S.SPEC:
             warnings.append("unknown setting %r ignored (removed in this version, or misspelled)" % key)
             continue

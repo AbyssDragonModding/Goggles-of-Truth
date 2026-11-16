@@ -1,59 +1,16 @@
 #!/usr/bin/env python3
-"""OoT Remake Randomizer - double-click this file to open the generator.
+"""Old start file, kept so shortcuts and pre-0.6.0 updates still work: opens goggles_of_truth_rando.pyw.
 
-First-time setup: double-click "Setup (Windows).bat" (Linux: bash setup_linux.sh). See README.md.
-A .pyw file runs without a console window, so problems are shown in a message box instead.
+Since 0.6.0 the randomizer starts from goggles_of_truth_rando.pyw. A 0.5.x copy restarts itself from this file
+after updating, and some people have shortcuts to it.
 """
 import os
+import runpy
 import sys
-import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-
-
-def _show_error(text):
-    """Message box on Windows (no console with pythonw); stderr everywhere else."""
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            ctypes.windll.user32.MessageBoxW(None, text, "OoT Remake Randomizer", 0x10)
-            return
-        except Exception:
-            pass
-    print(text, file=sys.stderr)
-
-
-def main():
-    if sys.version_info < (3, 14):
-        _show_error("Python 3.14 or newer is required (this is Python %d.%d).\n\n"
-                    "Install it from python.org, then double-click this file again." % sys.version_info[:2])
-        return 1
-    try:
-        import raven  # noqa: F401
-    except ImportError:
-        _show_error("The GUI library isn't installed yet.\n\n"
-                    "Double-click \"Setup (Windows).bat\" in this folder (Linux: bash setup_linux.sh),\n"
-                    "then open the randomizer again.")
-        return 1
-    try:
-        from rando import updater
-        if updater.check():         # pulled a newer version from GitHub and started it again
-            return 0
-    except Exception:
-        pass                        # an update problem must never keep the randomizer from opening
-    try:
-        from rando.gui_glass import run
-        run()
-    except Exception:
-        log = os.path.join(HERE, "error_log.txt")
-        with open(log, "w", encoding="utf-8") as fh:
-            fh.write(traceback.format_exc())
-        _show_error("The randomizer crashed. The details were saved to:\n%s\n\n"
-                    "Please attach that file when you report the problem." % log)
-        return 1
-    return 0
-
+NEW = os.path.join(HERE, "goggles_of_truth_rando.pyw")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.argv[0] = NEW
+    runpy.run_path(NEW, run_name="__main__")

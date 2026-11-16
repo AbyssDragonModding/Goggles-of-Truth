@@ -1,14 +1,14 @@
 @echo off
 setlocal EnableDelayedExpansion
 rem ===========================================================================================
-rem  OoT Remake Randomizer - start the generator on Windows
+rem  Goggles of Truth Randomizer - start the generator on Windows
 rem
 rem  Double-click this to open the randomizer. If a package it needs is missing (for example after
 rem  downloading a new version), it installs requirements.txt first. If Python itself is missing,
 rem  it runs "Setup (Windows).bat".
 rem ===========================================================================================
 cd /d "%~dp0"
-title OoT Remake Randomizer
+title Goggles of Truth Randomizer
 
 call :find_python
 if defined PY goto :check_packages
@@ -42,9 +42,9 @@ set "PYDIR="
 set /p PYDIR=<"%TEMP%\ootr_pydir.txt"
 del "%TEMP%\ootr_pydir.txt" >nul 2>nul
 if exist "!PYDIR!\pythonw.exe" (
-    start "" "!PYDIR!\pythonw.exe" "%~dp0ootr_remake.pyw"
+    start "" "!PYDIR!\pythonw.exe" "%~dp0goggles_of_truth_rando.pyw"
 ) else (
-    !PY! "%~dp0ootr_remake.pyw"
+    !PY! "%~dp0goggles_of_truth_rando.pyw"
     if errorlevel 1 pause
 )
 exit /b 0

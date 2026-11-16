@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableDelayedExpansion
 rem ===========================================================================================
-rem  OoT Remake Randomizer - first-time setup for Windows
+rem  Goggles of Truth Randomizer - first-time setup for Windows
 rem
 rem  Double-click this once. It:
 rem    1. installs Python 3.14 for your Windows user if you don't have Python 3.14 or newer
@@ -11,11 +11,11 @@ rem    3. makes double-clicking .py / .pyw files run them with Python (for your 
 rem  Nothing needs administrator rights. Run it again after downloading a new randomizer version.
 rem ===========================================================================================
 cd /d "%~dp0"
-title OoT Remake Randomizer setup
+title Goggles of Truth Randomizer setup
 set "PYVER=3.14.0"
 set "PYARGS=/quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 InstallLauncherAllUsers=0 AssociateFiles=1 Include_pip=1 Include_test=0"
 
-echo OoT Remake Randomizer setup
+echo Goggles of Truth Randomizer setup
 echo ===========================
 echo.
 
@@ -71,7 +71,7 @@ reg add "HKCU\Software\Classes\.py" /ve /d "Python.File" /f >nul
 reg add "HKCU\Software\Classes\.pyw" /ve /d "Python.NoConFile" /f >nul
 reg add "HKCU\Software\Classes\Python.File\shell\open\command" /ve /d "\"!PYDIR!\python.exe\" \"%%1\" %%*" /f >nul
 reg add "HKCU\Software\Classes\Python.NoConFile\shell\open\command" /ve /d "\"!PYDIR!\pythonw.exe\" \"%%1\" %%*" /f >nul
-echo Done. If double-clicking ootr_remake.pyw still opens another app, right-click it, choose
+echo Done. If double-clicking goggles_of_truth_rando.pyw still opens another app, right-click it, choose
 echo "Open with", then "Choose another app", pick Python and tick "Always".
 goto :finished
 
@@ -83,7 +83,7 @@ echo You can still start the randomizer with "Start Randomizer (Windows).bat".
 echo.
 echo ===========================================================================================
 echo  Setup finished. Start the randomizer by double-clicking "Start Randomizer (Windows).bat"
-echo  or ootr_remake.pyw.
+echo  or goggles_of_truth_rando.pyw.
 echo ===========================================================================================
 echo.
 pause

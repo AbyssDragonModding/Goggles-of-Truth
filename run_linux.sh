@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ===========================================================================================
-#  OoT Remake Randomizer - start the generator on Linux
+#  Goggles of Truth Randomizer - start the generator on Linux
 #
 #  Run:   ./run_linux.sh   (or: bash run_linux.sh)
 #  Uses the private environment that setup_linux.sh made in ".venv". If it's missing, or a package
@@ -22,4 +22,4 @@ if ! "$VENV/bin/python" -c 'import raven, openpyxl' >/dev/null 2>&1; then
         echo "Installing the packages failed. The messages above say why."; exit 1; }
 fi
 
-exec "$VENV/bin/python" ootr_remake.pyw "$@"
+exec "$VENV/bin/python" goggles_of_truth_rando.pyw "$@"

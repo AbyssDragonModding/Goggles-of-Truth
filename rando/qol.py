@@ -1,5 +1,6 @@
 """Quality-of-life patches that are not tied to item placement."""
 import copy
+from collections import defaultdict
 import os
 import struct
 
@@ -548,3 +549,99 @@ def patch_big_poe_one(world, emit, progress, read):
     emit(GHOST_SHOP_FLOW, data, ev.data(), dname)
     progress("Big Poe buyer: one Big Poe is enough")
     return True
+
+
+# --- Gold Skulltulas day and night, any age ----------------------------------------------------------
+# A night-only Gold Skulltula is an ordinary Enemy_Skulltula_Gold placement with the dynamic parameter
+# Enemy_Skulltula_Gold_Nocturnal = true (30 placements); without it the Skulltula is always there.
+# An adult-only one is placed only in the area's Adult stage file(s). The ones placed for both ages use the same
+# instance hash in both files (that hash is the Skulltula's save flag), so a copy with the same hash in the area's
+# Child_Static file is the same Skulltula for child Link. Copied only when the placement has no Links (a link
+# names another actor of its own file) and the area has a child stage file.
+GS_NOCTURNAL = "Enemy_Skulltula_Gold_Nocturnal"
+# Every night-only Skulltula is also in an AiGroup running Gimmick_Nighttime_Skulltula_Gold_Appear (its logic reads
+# the time of day, HoldWmGetTimeDiv, and drives the Skulltula's and its spider web's Logic_Delete). Lon Lon Ranch's
+# night Skulltulas stayed away by day with only the parameter removed (debug test 1), so these groups are dropped
+# too: the Skulltula is then an ordinary placement, like the copies for child Link. Its web stays after it's killed.
+GS_NIGHT_MODULE = "Gimmick_Nighttime_Skulltula_Gold_Appear"
+
+
+def patch_gs_any_time(world, emit, progress, read):
+    gs = [l for l in world.locations if l.kind == "gs"]
+    copies = defaultdict(list)                          # child rel -> actors to add
+    skipped = []
+    for loc in gs:
+        if loc.dungeon or loc.ages != {"adult"}:
+            continue
+        rel, h = loc.stage_refs[0]
+        child = "Banc/%s/%s_Child_Static.bcett.byml.zs" % (loc.region, loc.region)
+        actor = next((a for a in F.byml_load(read(rel)[0]).get("Actors", []) if int(a["Hash"]) == h), None)
+        if actor is None or actor.get("Links") or not world.files.exists(child):
+            skipped.append(loc.name)
+            continue
+        copies[child].append(copy.deepcopy(actor))      # after the item edits: carries the shuffled drop
+    rels = sorted({rel for loc in gs for rel, _ in loc.stage_refs} | set(copies))
+    night = added = groups_dropped = 0
+    for rel in rels:
+        orig, dname = read(rel)
+        root = F.byml_load(orig)
+        actors = root.setdefault("Actors", [])
+        have = {int(a["Hash"]) for a in actors}
+        for a in copies.get(rel, []):
+            if int(a["Hash"]) not in have:
+                actors.append(a)
+                added += 1
+        changed = rel in copies
+        groups = root.get("AiGroups") or []
+        keep = [g for g in groups if GS_NIGHT_MODULE not in str(g.get("Logic", ""))]
+        if len(keep) != len(groups):
+            root["AiGroups"] = keep
+            groups_dropped += len(groups) - len(keep)
+            changed = True
+        for a in actors:
+            dyn = a.get("Dynamic") or {}
+            if a.get("Gyaml") == "Enemy_Skulltula_Gold" and dyn.get(GS_NOCTURNAL):
+                del dyn[GS_NOCTURNAL]
+                night += 1
+                changed = True
+        if changed:
+            emit(rel, orig, F.byml_dump(root, version=F.BymlReader(orig).ver), dname)
+    progress("Gold Skulltulas any time: %d night-only placements now always there, %d adult-only Skulltulas "
+             "copied for child Link, %d night-time logic groups removed%s" % (night, added, groups_dropped, ("; not copied: " + ", ".join(skipped)) if skipped else ""))
+
+
+
+# --- Skip Ganon's Trials: the quest step the last barrier gives ---------------------------------------------
+# With every trial done in the save data (gamedata.GANON_TRIALS), the barrier-removal entries never run, and the last
+# one (Defeat_Ganon:InsideGanonCastle_Dungeon_BarrierRemove_All) is also what moves the Defeat_Ganon quest from Step03
+# to Step04 (then Ganondorf's room checks Step05). The quest can't start at Step04 in the save: Step01 and up is what
+# makes the rainbow bridge appear (GanonCastle_Level_Field_00_Prefab). So the two entries that give Step03 when you
+# first see the tower barrier (GanonCastle_Adult_Field_SeeTowerBarrier and its _FromDoor version, from the middle
+# room's door) go on to Step04 right after it.
+DEFEAT_GANON_FLOW = "Event/EventFlow/Defeat_Ganon.bfevfl.zs"
+
+
+def patch_ganon_trials(world, emit, progress, read):
+    from . import evfl
+    orig, dname = read(DEFEAT_GANON_FLOW)
+    document = evfl.read(orig)
+    fc = document.flowchart
+    hits = []
+    for i, e in enumerate(fc.events):
+        if isinstance(e, evfl.ActionEvent) and fc.actors[e.actor].name == "ChallengeSystemActor" \
+                and fc.actors[e.actor].actions[e.action] == "EventExecuteProgressChallengeStep" \
+                and (e.params or {}).get("ChallengeName") == "Defeat_Ganon" and e.params.get("StepName") == "Step03":
+            hits.append(i)
+    if len(hits) != 2:
+        raise ValueError("expected 2 Defeat_Ganon Step03 events, found %d" % len(hits))
+    for k, i in enumerate(hits):
+        old = fc.events[i]
+        new = evfl.ActionEvent("RandoTrials_Step04_%d" % k, old.actor, old.action, old.next,
+                               dict(old.params, StepName="Step04"))
+        fc.events.append(new)
+        old.next = len(fc.events) - 1
+    data = evfl.write(document)
+    if evfl.read(data) != document:
+        raise ValueError("Defeat_Ganon does not read back as changed")
+    emit(DEFEAT_GANON_FLOW, orig, data, dname)
+    progress("Skip Ganon's Trials: the Defeat_Ganon quest goes on to Step04 when you first see the tower barrier")
