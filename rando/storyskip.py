@@ -447,7 +447,9 @@ AREA_SKIPS = {
 }
 # Intros that are events of their own (started by an EventRequestActor in the stage, no arrival flow): their first
 # entry is cut down to the area's visit flag.
-AREA_STANDALONE = ["Dm_DodongoCave_0000", "Goto_WaterTemple"]
+# Temple of Time: Dm_TimeTemple_0000 is child Link's first entry, Dm_TimeTemple_0065 adult Link's first step out into
+# the ruined Castle Town (the adult Market's LocationArea only exists once it has played).
+AREA_STANDALONE = ["Dm_DodongoCave_0000", "Goto_WaterTemple", "Dm_TimeTemple_0000", "Dm_TimeTemple_0065"]
 
 
 def empty_intro(data, flag_exists):

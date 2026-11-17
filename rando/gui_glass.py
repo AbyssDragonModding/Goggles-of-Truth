@@ -17,7 +17,7 @@ import zlib
 import raven as r
 
 from . import settings as S
-from . import gamecheck, gamefiles, longshot, updater, usersettings
+from . import gamecheck, gamefiles, longshot, saves, updater, usersettings
 from .generator import VERSION, generate
 
 ACCENT = (0.36, 0.80, 0.56)          # Kokiri green
@@ -56,7 +56,23 @@ def _wallpaper_png(w=640, h=420):
 
 # --------------------------------------------------------------------------- XML layout
 UI_XML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "main.xml")
+WIDGETS_XML = os.path.join(os.path.dirname(UI_XML), "widgets.xml")
 GOLD_HEX, MUTED_HEX = "#F5CC61", "#C7D1DBD9"
+# Status badges (S.split_status): a pill with its name, in place of "(experimental)" in the label. The pills are
+# declared in rando/ui/widgets.xml, one widget per status.
+BADGE_TAGS = {S.STATUS_STABLE: "StableBadge", S.STATUS_TESTING: "TestingBadge",
+              S.STATUS_EXPERIMENTAL: "ExperimentalBadge"}
+
+
+def badge_styles():
+    """{status: (text, background, foreground)} as widgets.xml declares them (for recolouring a badge at runtime)."""
+    import xml.etree.ElementTree as ET
+    decl = {w.get("Name"): w for w in ET.parse(WIDGETS_XML).getroot().iter("Widget")}
+    out = {}
+    for status, tag in BADGE_TAGS.items():
+        b = decl[tag].find("Badge")
+        out[status] = (b.get("Text"), b.get("Background"), b.get("Foreground"))
+    return out
 
 
 def _attr(text):
@@ -71,6 +87,17 @@ def _card(title, body, top=0, bottom=0):
             % (top, bottom, _attr(title), GOLD_HEX, body))
 
 
+def _rgba(hex_color):
+    h = hex_color.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4)) + (1.0,)
+
+
+def badge_xml(status, name):
+    """The status badge of setting `name` (a widget of rando/ui/widgets.xml); badge_<name> is the pill,
+    badgelab_<name> its label."""
+    return '<%s Name="badge_%s" LabelName="badgelab_%s"/>' % (BADGE_TAGS[status], name, name)
+
+
 def settings_xml(tab):
     """The cards of one settings tab, from rando/settings.py: one card per group, a switch per on/off setting,
     a label and a drop-down per choice. Each control is named set_<key> and fires the action set.<key>."""
@@ -80,15 +107,23 @@ def settings_xml(tab):
             continue
         if not groups or groups[-1][0] != group:
             groups.append((group, []))
+        text, status = S.split_status(text)
         if typ == "bool":
-            groups[-1][1].append('<Checkbox Name="set_%s" Style="Switch" Text="%s" Tooltip="%s" OnChanged="set.%s"/>'
-                                 % (key, _attr(text), _attr(tip), key))
-        else:
-            items = "|".join(label.replace("|", "/") for _, label in opts)
+            groups[-1][1].append(
+                '<HBox Spacing="12"><Checkbox Name="set_%s" Style="Switch" Text="%s" Tooltip="%s" OnChanged="set.%s" '
+                'Slot.Fill="1"/>%s</HBox>' % (key, _attr(text), _attr(tip), key, badge_xml(status, key)))
+        elif typ == "int":
             groups[-1][1].append(
                 '<HBox Spacing="12"><Label Text="%s" TextSize="14" Tooltip="%s" Slot.Fill="1" Slot.VAlign="Center"/>'
-                '<ComboBox Name="set_%s" Items="%s" Tooltip="%s" OnChanged="set.%s" Slot.Fill="0.9"/></HBox>'
-                % (_attr(text), _attr(tip), key, _attr(items), _attr(tip), key))
+                '<SpinBox Name="set_%s" Tooltip="%s" OnChanged="set.%s" Slot.Fill="0.4"/>%s</HBox>'
+                % (_attr(text), _attr(tip), key, _attr(tip), key, badge_xml(status, key)))
+        else:
+            items = "|".join(S.split_status(label)[0].replace("|", "/") for _, label in opts)
+            groups[-1][1].append(
+                '<HBox Spacing="12"><Label Text="%s" TextSize="14" Tooltip="%s" Slot.Fill="1" Slot.VAlign="Center"/>'
+                '<ComboBox Name="set_%s" Items="%s" Tooltip="%s" OnChanged="set.%s" Slot.Fill="0.9"/>%s</HBox>'
+                % (_attr(text), _attr(tip), key, _attr(items), _attr(tip), key,
+                   badge_xml(S.setting_status(key, default), key)))
     return "".join(_card(g, "".join(rows), top=10 if i == 0 and tab != "ROM Options" else 0)
                    for i, (g, rows) in enumerate(groups))
 
@@ -128,6 +163,11 @@ class GlassApp:
         tex = r.Rtexture_create(_wallpaper_png())
         if tex != r.R_INVALID_ID:
             r.Rtheme_set_wallpaper(tex)
+        # the widgets main.xml uses (status badges): declared once in rando/ui/widgets.xml
+        if r.Rxml_register_widgets_from_file(WIDGETS_XML) < 1:
+            err = r.Rerror_get_last()
+            raise RuntimeError("rando/ui/widgets.xml could not be loaded: %s" % (err[1] or err[0]))
+        self.badge_styles = badge_styles()
 
         st, paths, self.load_messages = usersettings.load()
         self.st = S.normalize(st)
@@ -145,6 +185,7 @@ class GlassApp:
         self.filter = ""
         self.log_lines = []
         self.controls = {}           # setting key -> widget
+        self.badges = {}             # setting key -> (badge border, its label)
         self._phase = 0.0
 
         self.window = r.Rwindow_create_from_xml(window_xml())
@@ -165,7 +206,8 @@ class GlassApp:
     def _bind(self):
         """Find the named widgets of the XML layout, fill them in and bind its actions."""
         for name in ("romfs_in", "out_in", "name_in", "seed_in", "hash_lab", "game_lab", "filter_in",
-                     "excl_count", "excl_list", "sstr_in", "progress", "log", "preset_in", "preset_lab"):
+                     "excl_count", "excl_list", "sstr_in", "progress", "log", "preset_in", "preset_lab",
+                     "saves_lab", "seeds_list"):
             setattr(self, name, self._w(name))
         self.gen_btn = self._w("generate")
         r.Rlabel_set_text(self._w("subtitle"), "Switch 2 remake edition  \u00b7  v%s  \u00b7  your game, your mod" % VERSION)
@@ -191,6 +233,11 @@ class GlassApp:
                            self._path_changed(k, r.Rtext_input_get_text(sender) or ""))
         r.Raction_bind("rando.preset", lambda sender, action, ud: self._preset_chosen(r.Rcombo_box_get_selected(sender)))
         r.Raction_bind("rando.filter", lambda sender, action, ud: self._apply_filter(r.Rtext_input_get_text(sender)))
+        r.Raction_bind("rando.refresh_seeds", lambda sender, action, ud: self._fill_seeds())
+        r.Raction_bind("rando.play_selected",
+                       lambda sender, action, ud: self._play_seed(r.Rlist_view_get_selected(self.seeds_list)))
+        r.Raction_bind("rando.play_seed",
+                       lambda sender, action, ud: self._play_seed(r.Rlist_view_get_selected(sender)))
         r.Raction_bind("rando.toggle_excluded",
                        lambda sender, action, ud: self._toggle_excluded(r.Rlist_view_get_selected(sender)))
 
@@ -199,13 +246,23 @@ class GlassApp:
                 continue
             w = self._w("set_" + key)
             self.controls[key] = w
+            self.badges[key] = (self._w("badge_" + key), self._w("badgelab_" + key))
             if typ == "bool":
                 r.Rcheckbox_set_checked(w, 1 if self.st[key] else 0)
                 r.Raction_bind("set." + key, lambda sender, action, ud, k=key:
                                self._set(k, bool(r.Rcheckbox_is_checked(sender))))
+            elif typ == "int":
+                r.Rspin_box_set_range(w, opts[0], opts[1])
+                r.Rspin_box_set_step(w, 1)
+                r.Rspin_box_set_decimals(w, 0)
+                r.Rspin_box_set_value(w, self.st[key])
+                r.Raction_bind("set." + key, lambda sender, action, ud, k=key, o=opts:
+                               self._set(k, max(o[0], min(o[1], int(round(r.Rspin_box_get_value(sender)))))))
             else:
                 r.Rcombo_box_set_selected(w, next((i for i, o in enumerate(opts) if o[0] == self.st[key]), 0))
+                self._update_badge(key)
                 r.Raction_bind("set." + key, lambda sender, action, ud, k=key, o=opts: self._set_choice(k, o, sender))
+        self._update_dependent()
         self._update_excl_count()
         self._loaded = True
         self._refresh_string()
@@ -224,6 +281,7 @@ class GlassApp:
         if update_msg:
             self.write(update_msg)
         self._verify_game()
+        self._fill_seeds()
 
     def _set_choice(self, key, opts, combo):
         i = r.Rcombo_box_get_selected(combo)
@@ -233,7 +291,27 @@ class GlassApp:
     # ------------------------------------------------------------------ settings
     def _set(self, key, value):
         self.st[key] = value
+        self._update_badge(key)
+        self._update_dependent()
         self._refresh_string()
+
+    # settings that only mean something with another one's value: greyed out otherwise
+    DEPENDENT = {"bridge_medallions": ("rainbow_bridge", "medallions"), "bridge_tokens": ("rainbow_bridge", "tokens")}
+
+    def _update_dependent(self):
+        for key, (other, value) in self.DEPENDENT.items():
+            if key in self.controls:
+                r.Rwidget_set_enabled(self.controls[key], 1 if self.st.get(other) == value else 0)
+
+    def _update_badge(self, key):
+        """A choice setting's badge follows its chosen option ("Scarce" is Experimental, "Balanced" Stable)."""
+        if key not in self.badges or S.SPEC[key][4] != "choice":
+            return
+        text, bg, fg = self.badge_styles[S.setting_status(key, self.st[key])]
+        border, label = self.badges[key]
+        r.Rborder_set_background(border, *_rgba(bg))
+        r.Rlabel_set_text(label, text)
+        r.Rlabel_set_color(label, *_rgba(fg))
 
     def _preset_chosen(self, index):
         if self._syncing or not 0 < index < len(PRESET_ITEMS):
@@ -269,9 +347,13 @@ class GlassApp:
             spec = S.SPEC[key]
             if spec[4] == "bool":
                 r.Rcheckbox_set_checked(w, 1 if self.st[key] else 0)
+            elif spec[4] == "int":
+                r.Rspin_box_set_value(w, self.st[key])
             else:
                 idx = next((i for i, o in enumerate(spec[5]) if o[0] == self.st[key]), 0)
                 r.Rcombo_box_set_selected(w, idx)
+                self._update_badge(key)
+        self._update_dependent()
         self._fill_exclusions()
         self._refresh_string()
 
@@ -279,7 +361,31 @@ class GlassApp:
         """Every settings change ends here: the settings string, the preset and the saved file follow it."""
         if hasattr(self, "sstr_in"):
             r.Rtext_input_set_text(self.sstr_in, S.to_string(self.current_settings()))
+        self._reroll_used_seed()
         self._settings_changed()
+
+    def _seed_used(self, seed):
+        """Has a seed already been written with this seed number (this session, or a folder in the output folder)?"""
+        if seed == getattr(self, "_last_seed", None):
+            return True
+        out = (r.Rtext_input_get_text(self.out_in) or "").strip() if hasattr(self, "out_in") else ""
+        name = longshot.MOD_PREFIX + seed               # switched-off seeds are "_<name>" or "_<name> (2)"
+        for folder in (out, os.path.join(out, saves.EMU_OFF)):
+            try:
+                if any(n.lstrip("_").split(" (")[0] == name for n in os.listdir(folder)):
+                    return True
+            except OSError:
+                pass
+        return False
+
+    def _reroll_used_seed(self):
+        """Changed settings with an already-used seed number would overwrite that seed: roll a new number."""
+        if not self._loaded or not hasattr(self, "seed_in"):
+            return
+        seed = (r.Rtext_input_get_text(self.seed_in) or "").strip()
+        if seed and self._seed_used(seed):
+            self._random_seed()
+            self.write("Settings changed: new seed number %s (seed %s is already made)." % (self.paths["seed"], seed))
 
     def _import_string(self):
         try:
@@ -392,6 +498,8 @@ class GlassApp:
 
     def _path_changed(self, key, text):
         self.paths[key] = text
+        if key == "out":
+            self._fill_seeds()
         if key == "romfs":
             self._verify_game()
         if key in ("romfs", "out") and self._loaded:
@@ -536,10 +644,12 @@ class GlassApp:
                     self._fill_exclusions()
                 elif kind == "done":
                     r.Rtext_input_set_text(self.seed_in, val["seed"])
+                    self._last_seed = self.paths["seed"] = val["seed"]
                     r.Rprogress_bar_set_value(self.progress, 1.0)
                     self.write("Seed %s written to %s" % (val["seed"], val["mod_root"]))
                     r.Rmessage_box(self.window, "Mod created", "%s\n\nSettings string:\n%s" % (
                         val["mod_root"], val["settings_string"]), r.R_MESSAGE_OK)
+                    self._fill_seeds()
                 elif kind == "error":
                     self.write("ERROR: " + val.splitlines()[0])
                     r.Rprogress_bar_set_value(self.progress, 0.0)
@@ -549,6 +659,52 @@ class GlassApp:
                     r.Rwidget_set_enabled(self.gen_btn, 1)
         except queue.Empty:
             pass
+
+    # ------------------------------------------------------------------ seeds and saves (rando/saves.py)
+    def _fill_seeds(self):
+        if not hasattr(self, "seeds_list"):
+            return
+        r.Rlist_view_clear_items(self.seeds_list)
+        self.seed_rows = []
+        out = (self.paths.get("out") or "").strip()
+        target = saves.target_for(out) if out else None
+        if target is None:
+            r.Rlabel_set_text(self.saves_lab, "Choose a Longshot mods folder or an emulator's "
+                              "load/0400486024DEC000 folder as the output folder to see its seeds.")
+            return
+        owners = {saves.owner(d) for d in target.save_dirs}
+        where = ", ".join(target.save_dirs) if target.save_dirs else "none yet (the game hasn't saved)"
+        text = "%s seeds in %s.  Game saves: %s" % (target.kind, out, where)
+        r.Rlabel_set_text(self.saves_lab, ("WARNING: " + target.note + ".  " + text) if target.note else text)
+        for name, folder, on in saves.seeds(target):
+            mark = ("\u25b6 " if on else "    ") + ("\u2605 " if name in owners else "    ")
+            r.Rlist_view_add_item(self.seeds_list, mark + name)
+            self.seed_rows.append(name)
+
+    def _play_seed(self, index):
+        rows = getattr(self, "seed_rows", [])
+        if self.busy or not 0 <= index < len(rows):
+            return
+        target = saves.target_for((self.paths.get("out") or "").strip())
+        if target is None:
+            return
+        name = rows[index]
+        try:
+            if self.current_settings().get("per_seed_saves", True):
+                lines = saves.play(target, name)
+            else:
+                saves.switch_on(target, name)
+                lines = ["Per-Seed Saves is off: saves not changed"]
+        except (saves.SaveError, OSError) as e:
+            r.Rmessage_box(self.window, "Play This Seed", str(e), r.R_MESSAGE_OK)
+            self._fill_seeds()
+            return
+        self.write("Playing %s (every other seed switched off)" % name)
+        for line in lines:
+            self.write("Per-seed saves: " + line)
+        self._fill_seeds()
+        r.Rmessage_box(self.window, "Play This Seed", "%s is switched on.\n\n%s" % (name, "\n".join(lines)),
+                       r.R_MESSAGE_OK)
 
     def write(self, msg):
         self.log_lines.append(msg)

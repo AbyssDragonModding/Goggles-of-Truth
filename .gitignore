@@ -11,3 +11,6 @@ romfs/
 # your own settings (rando/usersettings.py)
 user_settings.toml
 user_settings.toml.tmp
+
+# per-seed saves: slots no seed owned (rando/saves.py)
+save_backups/

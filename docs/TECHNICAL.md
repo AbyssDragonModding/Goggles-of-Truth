@@ -15,7 +15,7 @@ before the public 0.1.0 release.
 | Open Door of Time | Closed / Open |
 | Open Death Mountain | New: the Kakariko gate starts open for child Link (off by default) |
 | Skip Child Zelda | New save already owns Zelda's, Malon's and Impa's items; castle quest complete; experimental (explained below) |
-| Skip Epona Race | Meant: adult Epona after playing Epona's Song once inside the Lon Lon Ranch fence. Experimental, not working (test seed 12) |
+| Skip Epona Race | Adult Epona's Song inside the Lon Lon Ranch fence counts Ingo's race as won; ride Epona out of the ranch and she's yours. Experimental |
 | Shuffle Kokiri Sword | Toggle (on by default) |
 | Shuffle Songs (Song Locations / Anywhere) | Same; *Anywhere* is experimental |
 | Shuffle Spiritual Stones/Medallions | Vanilla / Dungeon Reward Locations / Anywhere; experimental (explained below) |
@@ -208,7 +208,55 @@ other copies are in `Gimmick_AllDay_Skulltula` or night-time groups, which aren'
 The logic is unchanged: it still expects night or adult Link for these Skulltulas, so a seed never depends on them.
 Tested in-game (debug seed): night-only ones appear by day, adult-only ones as child.
 
-## Skip Ganon's Trials (experimental)
+## Rainbow Bridge Requirement
+
+The bridge is `Obj_GanonCastle_Bridge_A_01` in `Logic/GanonCastle_Level_Field_00_Prefab`. The dump showed its
+multi-input links only as `<-[65436]`; decoded from the file: an input whose node index is -100 or less reads
+entries of the multi-input table (8 bytes each: node, output, flags; at the end of the input tables, 0x1230 here),
+starting at entry -100 - index, with the parameter index as the count. So:
+- the trigger areas (`Area_2dac`, `Area_99ec`) and the appear point exist while
+  `Defeat_Ganon_IsAfter_Ready_Exp` AND NOT `Defeat_Ganon_IsAfter_Step01_Exp` (node 6's False output);
+- the bridge scene `GanonCastle_Adult_Field_Rainbow` (in `Defeat_Ganon`; it plays `Dm_InsideGanonCastle_0000`, the
+  sages' bridge) starts when Link is in both areas and in player state 2;
+- the bridge exists when that scene has played, or from its `EventBoolEX1` on.
+"IsAfter_X" means past step X. A new save is at `NotReady`; Zelda's Light Arrows scene (`AllSage`) sets Step01 (past
+Ready: the areas come), the bridge scene sets Step02 (past Step01: the areas go, the bridge stays). The fishing pond
+also reads the Ready flag for a line.
+
+Computed flags (`BoolExp`) are reverse Polish lists of `[opcode, value]` (survey of the game's 884): 0 reads a Bool,
+3 is AND, 4 OR, 5 NOT, 12 + 2 compare a quest step, 16 pushes a constant, and 15 / 18 / 19 read an Int and compare it
+with that constant: 15 is "equal" (`KakarikoVillage_GatheringTokenGold_Collect100Tokens` = token count, 100), 18 is
+"less than" (`MiniGame_DampeRace_IsClearLeastOnce` = NOT(clear count < 1)). So with a requirement other than
+Vanilla (`GameDataPatcher.rainbow_bridge`):
+- **Medallions N:** a chain of small computed flags, `Rando_Bridge_Medals_<k>_<i>` = "at least k of the first i
+  medallions" = `<k of i-1>` OR (`<k-1 of i-1>` AND medallion i), read with opcode 10 (reads another computed flag;
+  all 356 uses in the game do). The game's own computed flags are at most 26 entries long and need at most 9 stack
+  slots; 0.6.1's first version wrote 3 of 6 as one flag of 123 entries (every combination), and in-game the bridge
+  never appeared with 4 medallions, the Bow and the Light Arrows. Every flag now has at most 9 entries;
+- **Spiritual Stones:** AND of the three `IsGet.Item_Stone_*` (the items, not the dungeon quests);
+- **Tokens N:** NOT(`PouchData.Item_Token_Gold.StockNum` < N), the count the Skulltula House reads. Opcode 16's
+  number must be a plain signed Int, as in the game's own flags (the other entries are U64): written as a U64 it
+  wasn't read, and in-game the bridge was there with 0 tokens;
+- AND the Bow AND the Light Arrows for every option.
+
+"Owning" an item (each medallion, stone, the Bow, the Light Arrows) is `Rando_Have_<item>` = `IsGet.<item>` OR
+`PouchData.<item>.StockNum` > 0 (opcode 19 with constant 0, as `HaveDefeatedEnemy_*` write "at least one"). Every
+item has both, and a debug menu fills the pouch count without the flag: the first stones and tokens tests (Light
+Arrows added last from the debug menu) got no bridge with `IsGet` alone.
+That is `Rando_Bridge_Exp`, and `Defeat_Ganon_IsAfter_Ready_Exp` becomes its old value OR it; the Step01 flag
+stays the quest's own. (0.6.1's first version replaced the Step01 flag with the requirement instead, which keeps the
+areas switched off: no bridge in-game.)
+
+The bridge's event moves the castle quest to Step02, and the quest goes on in the castle (Step03, Step04 ...). If
+the bridge came before Zelda's scene, `AllSage` would set Step01 behind it. So `qol.bridge_quest_guard` puts a switch
+on `Defeat_Ganon_IsAfter_Step01_Exp` in front of AllSage's Step01: past Step01 already, the step is skipped.
+
+Logic (`logic.bridge`): adult, the requirement (medallion items, the three stone items, or `Token_Gold` count; Vanilla
+keeps the Shadow and Spirit quests), the Bow and the Light Arrows. Checked by generating every option with Beginner and Expert and evaluating the written flags (one medallion,
+stone or token short, or no Bow: no bridge). Confirmed in-game with 3 medallions, the Bow and the Light Arrows and no
+Zelda scene, then with the three Spiritual Stones (none without them). Then with Gold Skulltula Tokens (after the Int fix): all four options are stable.
+
+## Skip Ganon's Trials
 
 Each trial's sage room has an `EventRequestActor` for
 `Defeat_Ganon:InsideGanonCastle_Dungeon_BarrierRemove_<trial>` (Forest, Fire, Water, Shadow, Spirit, Light).
@@ -230,6 +278,8 @@ Step04 in the save: `GanonCastle_Level_Field_00_Prefab` makes the rainbow bridge
 Step01. So `qol.patch_ganon_trials` adds a Step04 progress right after each of the two Step03 progresses
 (`GanonCastle_Adult_Field_SeeTowerBarrier` and `_FromDoor`, the first look at the tower barrier from the middle
 room).
+
+Tested in-game (debug test 4): barriers gone, the lift there and working, the way up to Ganondorf works.
 
 Logic: `win` becomes `ganon_tower`, which with the setting on needs only the bridge, the Bow and the Light
 Arrows (Ganondorf; the Master Sword comes with adult Link). The trial rooms' locations keep the full
@@ -582,38 +632,36 @@ both: the whole token pack is the template, so its AI has everything it reads. N
 The earlier attempt at this (giving `Item_Arrow_*` packs the Boomerang's physics) didn't make anything
 collectible, and it has been removed.
 
-## Skip Epona Race (experimental, not working)
+## Skip Epona Race (experimental)
 
-Not working: in test seed 12 no Epona appears on Link any more, but Epona still never came to Epona's Song. What follows
-is the current approach, kept for a later fix.
+Epona's Song calls a horse only once one is registered as yours (`OwnedHorseList` in the save, a horse-stable
+struct like Tears of the Kingdom's: actor name, name, tack, body, stats). The game registers her itself: after
+Ingo's race the quest is at exactly `AfterWonGambleRace` (`LonLonRanch_AfterWonGambleRace`), and riding Epona out
+over a ranch fence (`Obj_LonLon_Fence_A_02`, `PlayEventName` `Get_Epona_EscapeRanch_EscapeFromA/B/C`) or through
+the main gate (`Sub_Get_Epona_EscapeRanch_EscapeFromMainGate`) runs `Sub_Get_Epona_EscapeRanch_*_Warp`:
+`Animal_Epona_Adult.EventCopyAndRegisterOwnedHorse`, `EventGoOffstageForUser`, then the challenge's Complete. The
+ranch's Epona stands in `HyruleField_Adult_Static` (Lon Lon Ranch is part of the Hyrule Field scene) while
+`Get_Epona_IsCompleted_Exp` is false.
 
-Epona's Song calls a horse only once one is registered as yours. That is engine state, not a save flag: the end
-of Ingo's race (`Get_Epona`) runs `Animal_Epona_Adult.EventCopyAndRegisterOwnedHorse` on the ranch's Epona, sends
-her offstage (`EventGoOffstageForUser`) and completes the `Get_Epona` challenge. The ranch's Epona is placed in
-`HyruleField_Adult_Static` (Lon Lon Ranch is part of the Hyrule Field scene) with the presence condition
-`Get_Epona_IsCompleted_Exp` negated, so she stands there until the quest is complete.
+`Dm_SY_Ocarina_EponaSong:EponaSong`, for adult Link, asks `GameSystemActor.EventQueryHasOwnedHorse`. With no horse,
+inside the ranch fence (`LonLonRanch_GambleRace_IsInsideFence`) it calls the ranch horses over
+(`EponaSong_CallHorseAround`). That branch now first checks, in order: not riding a rented horse
+(`LonLonRanch_PlayingHorseRiding`), not racing (`LonLonRanch_PlayingGambleRace`), the quest not past
+`GambleRacePlaying` yet, and the quest past `ReadyForGetEponaSong`. Then `ChallengeSystemActor.
+EventExecuteProgressChallengeStep` moves `Get_Epona` to `AfterWonGambleRace`, and the flow goes on to the horse call
+as before. Any other case calls the horses unchanged. In these flows a query's case 0 is true.
 
-The first version rewrote `Get_Epona_IsCompleted_Exp` to "owns Epona's Song". That registered nothing, and it
-removed the ranch Epona as soon as the song was owned (test seed 10: the song did nothing).
+The quest steps: NotReady, Ready, GuideToLonLonRanch, GuideToLonLonRanchAdult, ReadyForGetEponaSong,
+AfterGetEponaSong, ReadyForGambleRace, AfterTalkMalon, GambleRacePlaying, AfterWonGambleRace, Complete. Only child
+Malon's song scene (`Dm_MelodyGet_Epona`, the Song from Malon check) moves it past ReadyForGetEponaSong, and child
+Malon's flow picks that scene by step, so the quest isn't moved on earlier (nor set in the new save): that would
+lose the check. The logic's `epona` has the same need (Song from Malon's rule) for the race and for this skip.
 
-`Dm_SY_Ocarina_EponaSong:EponaSong`, for adult Link, asks `GameSystemActor.EventQueryHasOwnedHorse`. With no
-horse, inside the ranch fence (`LonLonRanch_GambleRace_IsInsideFence`) it calls the ranch horses over
-(`EponaSong_CallHorseAround`). That branch now first checks that Link isn't riding a rented horse
-(`LonLonRanch_PlayingHorseRiding`) or racing (`LonLonRanch_PlayingGambleRace`). If neither, it registers the ranch
-Epona, sends her offstage and completes `Get_Epona`, the same three steps as the race's end. Then it goes on to the
-owned-horse call (`EventQueryIsCurrentSceneEnableRide`, then `EventCreateAndCallOwnedHorse`). Only that branch is
-changed: the ranch is the one place where the ranch Epona is guaranteed to be in the scene. No sub flow is added, so
-the event table needs nothing.
-
-A flow's actors are set up when the flow starts, and taking out the ocarina already starts this one
-(`StartToPrepareCallOwnedHorse`). So the added `Animal_Epona_Adult` actor uses `EventMemberCreateMethod` 3: it is
-used if she's in the scene and never created. The game's own flows that name Epona where she may be absent
-(`Dm_SY_BancChangeArrive`, `GimmickFlow_Common`, `Npc_Gerudo_004`, `Npc_Hylia_012_Adult`) use 3 as well. With 0, the
-method for actors an event may create, an Epona appeared on Link whenever the ocarina came out, at any age,
-except in the ranch, where the existing one was used (test seed 11).
-
-In these flows a query's case 0 is true. Ingo's "first talk" checks (`HaveTalked_Special...`) go to their
-set-to-true step on case 1.
+Earlier versions, which didn't work in-game: 0.5.0 rewrote `Get_Epona_IsCompleted_Exp` to "owns Epona's Song"
+(that registered nothing and removed the ranch Epona; test seed 10). 0.5.0 - 0.6.1 registered the ranch's Epona
+inside the song's flow (an added `Animal_Epona_Adult` actor with `EventMemberCreateMethod` 3, then register,
+offstage, Complete, call): Epona never came (test seeds 11, 12 and a 0.6.1 seed). With method 0 an Epona appeared on
+Link whenever the ocarina came out, at any age.
 
 ## Big Poe buyer needs only 1 Big Poe (experimental)
 
@@ -733,6 +781,54 @@ in test seeds 3 and 4 small chests could not be opened at all.
 - **Auto-skip all cutscenes.** Items, songs and story flags are handed out inside the cutscene flows, so
   removing cutscenes wholesale would lose them. Every cutscene can be skipped with the button, and the
   side-effect-free area intros are skipped automatically.
+
+## Per-seed saves
+
+`rando/saves.py`. The game keeps one save folder per account, the same files everywhere:
+- Longshot: `%APPDATA%\Longshot\save\<account id>\` (Linux: `$XDG_DATA_HOME/Longshot/save`, `~/.config/Longshot/save`);
+- yuzu-family emulators: `<NAND>/user/save/0000000000000000/<profile>/0400486024DEC000/`, found from the output
+  folder `<user>/load/0400486024DEC000`. `<NAND>` is `<user>/nand` unless the emulator's `<user>/config/qt-config.ini`
+  sets `nand_directory` (Fritchii's points at Lichii's NAND, and its `load_directory` at Lichii's `load`: a seed in
+  Fritchii's own `load` folder wouldn't be read, so the log and the Seeds card warn when `load_directory` is
+  another folder). Checked on Lichii and Fritchii; a copy of Lichii's real save went through two seeds and came
+  back byte for byte, and its save folder holds nothing but the game's files and the marker.
+
+Contents: `option.sav` (options, 42 KB), `account.sav` (320 bytes: a table of 32 entries plus a flag that changed
+during play), and `slot_00` ... `slot_05`, each `caption.sav` + `progress.sav`. Longshot also writes
+`temp/TemporaryGame.sav` while saving; it isn't touched.
+
+Everything but `option.sav` belongs to a seed. A marker file in the save folder (`goggles_of_truth_seed.txt`)
+names the seed whose files are there. `switch_saves(target, seed)`:
+1. copies the current files into the owner's folder, `<seed folder>/saves/<account>/`, with the seed's
+   `settings.txt` as `seed_settings.txt`; with no owner (or its folder gone), and any slot not empty, into
+   `save_backups/<time> unassigned <account>/` instead;
+2. removes the live `slot_*` (and `account.sav` if the new seed has one stored) and copies the new seed's stored
+   files in. A seed with nothing stored starts with no slot folders (the game makes them, as on a new account)
+   and keeps the current `account.sav`. Stored files whose `seed_settings.txt` differs from the seed folder's
+   `settings.txt` (a folder name used again for another seed) are moved to `save_backups/` instead;
+3. writes the marker.
+It refuses while the game runs (Longshot: a `longshot*` process other than the launcher; emulators: any `.exe` of
+a portable emulator's own folder, or a known emulator name), since the game keeps its saves open.
+
+Switching seeds: Longshot skips mod folders starting with `.`, `-` or `_` (`_<seed>`, as before). The yuzu family
+loads every folder in `load/<title id>/` that isn't disabled in its own configuration, so seeds there are moved to
+`load/GogglesOfTruth_off/` (not a title id, so it isn't read). Other mods are left alone.
+
+The generator switches after writing a seed (`per_seed_saves`, left out of the settings string: it doesn't change
+the seed). If the game is running, the seed is still written and the log says to use **Play This Seed** later.
+Tested on fake save folders (store, restore, backups, reused names, emulator moves), then in Longshot and in Lichii.
+
+## Status badges
+
+Each setting's status comes from its label (`settings.split_status`): "needs ... testing" is In Testing, "experimental"
+or "not working" is Experimental, anything else Stable; for a drop-down, the chosen option's own note counts first
+(`setting_status`). The window shows it as a badge instead of the text. The badges are Raven XML widgets declared in
+`rando/ui/widgets.xml` (a `<Widget Name="...">` with its parameters and their defaults as attributes, `{Parameter}`
+inside): `Badge` (the pill: a `Border` with corner radius 11 and a centred `Label`) and `StableBadge`, `TestingBadge`,
+`ExperimentalBadge` (text and colours). `gui_glass.py` registers the file (`Rxml_register_widgets_from_file`) before
+it creates the window from `main.xml`, writes `<StableBadge Name="badge_<key>" LabelName="badgelab_<key>"/>` into
+each generated settings row, and reads the three badges' colours from the same file to recolour a drop-down's badge
+at runtime (`Rborder_set_background`, `Rlabel_set_text`).
 
 ## Reading the game from a .nup
 

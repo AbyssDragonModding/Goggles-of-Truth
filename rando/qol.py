@@ -645,3 +645,41 @@ def patch_ganon_trials(world, emit, progress, read):
         raise ValueError("Defeat_Ganon does not read back as changed")
     emit(DEFEAT_GANON_FLOW, orig, data, dname)
     progress("Skip Ganon's Trials: the Defeat_Ganon quest goes on to Step04 when you first see the tower barrier")
+
+
+# --- Rainbow Bridge Requirement: keep the castle quest from going back -------------------------------------
+# The bridge's own event (Defeat_Ganon:GanonCastle_Adult_Field_Rainbow) moves the castle quest to Step02, and the
+# quest goes on inside the castle (Step03 when you first see the tower barrier, Step04, ...). With a bridge
+# requirement other than vanilla, the bridge can appear before Zelda's Light Arrows scene, and that scene
+# (AllSage) then sets the quest to Step01, behind where it already is. So AllSage now sets Step01 only while the quest
+# is still before it: a switch on the quest's own Step01 check (gamedata.BRIDGE_QUEST_EXP).
+ALLSAGE_FLOW = "Event/EventFlow/AllSage.bfevfl.zs"
+
+
+def bridge_quest_guard(data):
+    from . import evfl
+    from .gamedata import BRIDGE_QUEST_EXP
+    document = evfl.read(data)
+    fc = document.flowchart
+    hits = [i for i, e in enumerate(fc.events)
+            if isinstance(e, evfl.ActionEvent) and fc.actors[e.actor].name == "ChallengeSystemActor"
+            and fc.actors[e.actor].actions[e.action] == "EventExecuteProgressChallengeStep"
+            and (e.params or {}).get("ChallengeName") == "Defeat_Ganon" and e.params.get("StepName") == "Step01"]
+    if len(hits) != 1:
+        raise ValueError("expected 1 Defeat_Ganon Step01 event in AllSage, found %d" % len(hits))
+    i = hits[0]
+    actor = next((k for k, a in enumerate(fc.actors) if a.name == "GameDataActor" and not a.secondary_name), None)
+    if actor is None:
+        raise ValueError("AllSage has no GameDataActor")
+    if "EventQueryIsGameDataBoolExp" not in fc.actors[actor].queries:
+        fc.actors[actor].queries.append("EventQueryIsGameDataBoolExp")
+    query = fc.actors[actor].queries.index("EventQueryIsGameDataBoolExp")
+    step = fc.events[i]
+    fc.events.append(step)                          # the step moves to the end; the switch takes its place
+    moved = len(fc.events) - 1
+    fc.events[i] = evfl.SwitchEvent("RandoBridge_QuestPastStep01", actor, query,
+                                    [(0, moved), (1, step.next)], {"GameDataName": BRIDGE_QUEST_EXP})
+    new = evfl.write(document)
+    if evfl.read(new) != document:
+        raise ValueError("AllSage does not read back as changed")
+    return new

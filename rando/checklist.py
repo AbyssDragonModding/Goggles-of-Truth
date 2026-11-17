@@ -45,9 +45,10 @@ SETTING_TESTS = {
         "reward": ("Bosses give a shuffled Spiritual Stone / Medallion", "Beat a boss; compare with the spoiler"),
         "anywhere": ("Bosses give random items; stones/medallions are found in other checks; the Door of Time "
                      "still opens after the three child dungeons", "Beat a boss; open a check holding a stone or medallion")}[v],
-    "skip_epona_race": lambda v: ("Not working yet (Epona doesn't come). Meant: playing Epona's Song as adult inside "
-                                  "the Lon Lon Ranch fence makes Epona yours, without Ingo's race",
-                                  "As adult with Epona's Song, play it inside the ranch fence, then in Hyrule Field")
+    "skip_epona_race": lambda v: ("As adult, Epona's Song inside the Lon Lon Ranch fence counts Ingo's race as won and "
+                                  "calls the ranch horses; riding Epona out of the ranch makes her yours",
+                                  "Do the Song from Malon check as child; as adult with Epona's Song, play it inside "
+                                  "the ranch fence, ride Epona over the fence, then play it in Hyrule Field")
                                  if v else None,
     "saria_song_ocarina": lambda v: ("Saria teaches her song in Sacred Forest Meadow with just an ocarina",
                                      "With an ocarina and before meeting Zelda, walk up to Saria on the stump") if v else

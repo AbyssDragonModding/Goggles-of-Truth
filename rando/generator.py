@@ -21,9 +21,10 @@ from .qol import (patch_anju, patch_dodongo_bag_bombs, patch_egg_hatch_guard,
 from .world import World, JUNK, EVENT_LOCATIONS
 from . import scrubtext
 from . import storyskip
+from . import saves
 from .door import patch_open_door
 
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 NAME = "Goggles of Truth Randomizer"   # an OoT (2026 remake) randomizer mod
 BOMB_LIFT_PARAM = "Component/LiftableParam/Item_Bomb.game__component__LiftableParam.bgyml"
 BOMB_PACKS = ["Pack/Actor/Item_Bomb.pack.zs", "Pack/Actor/Npc_Hylia_ImperialSoldier_Bomb.pack.zs",
@@ -175,6 +176,14 @@ class Plan:
         self._grantable = {}
         self.pool = [l.vanilla for l in self.shuffled]
         self._adjust_pool()
+        # An excluded spot that can only take a song or a boss reward (Shuffle Songs: Song Locations, rewards at the
+        # reward spots) can never be free of progression: excluding even one made every seed fail. Such a spot keeps
+        # its exclusion off (generate() logs which).
+        junk = {i for i in self.pool if i not in L.PROGRESSION and not _dungeon_item_type(i) and i not in REWARDS}
+        stuck = [l for l in self.shuffled if l.id in self.excluded and junk and not any(self.allowed(l, j) for j in junk)]
+        self.exclusion_ignored = [l.name for l in stuck]
+        self.excluded -= {l.id for l in stuck}
+        self.user_excluded = set(self.excluded)      # chosen by the player (out-of-logic spots are added later)
 
     def _choose_shop_slots(self, seed_key):
         """Items Shuffled Per Shop (OotrR): N shelves per shop (1 to 4 at random with "random"), 10 rupees each,
@@ -359,7 +368,9 @@ class Plan:
     # which shuffled locations may receive `item`
     def allowed(self, loc, item):
         st = self.st
-        if loc.id in self.excluded and (item in L.PROGRESSION or _dungeon_item_type(item) or item in REWARDS):
+        # excluded: never progression, keys or boss rewards (maps and compasses only show the map, so they may)
+        if loc.id in self.excluded and (item in L.PROGRESSION or item in REWARDS
+                                        or _dungeon_item_type(item) in ("small_keys", "boss_keys")):
             return False
         if loc.id in self.start_locs and not self.grantable(item):
             return False
@@ -594,6 +605,11 @@ def generate(romfs, out_dir, settings, seed=None, mod_name=None, progress=print,
     world = world or World(romfs, progress)
     progress("Building item pool...")
     plan = Plan(world, st, seed_key="%s|%s|%s" % (VERSION, seed, sstr))
+    if plan.exclusion_ignored:
+        progress("note: %d excluded location(s) can only hold a song or a boss reward with these settings, so they "
+                 "aren't excluded: %s" % (len(plan.exclusion_ignored), ", ".join(plan.exclusion_ignored)))
+    if plan.user_excluded:
+        progress("Excluded locations: %d of the shuffled locations only get junk" % len(plan.user_excluded))
 
     # locations no item set can reach are treated as excluded (they only get junk)
     filler = Filler(plan, random.Random(0))
@@ -627,7 +643,12 @@ def generate(romfs, out_dir, settings, seed=None, mod_name=None, progress=print,
                 continue
         break
     else:
-        raise GenerationError("could not place items after 40 attempts: %s" % last_err)
+        why = ""
+        if plan.user_excluded:
+            why = (" - %d locations are excluded; the items that have to be placed (progression, dungeon items) may "
+                   "not fit in the rest, or not where they can be reached in time. Exclude fewer locations."
+                   % len(plan.user_excluded))
+        raise GenerationError("could not place items after 40 attempts: %s%s" % (last_err, why))
 
     plan.hints = []
     if st["hint_distribution"] != "none":
@@ -664,6 +685,25 @@ def generate(romfs, out_dir, settings, seed=None, mod_name=None, progress=print,
         if left:
             progress("WARNING: Longshot would load these seeds too, and they couldn't be renamed (close the game "
                      "first, then put _ in front of their names): %s" % ", ".join(left))
+    target = saves.target_for(out_dir)
+    if target is not None and target.note:
+        progress("WARNING: " + target.note)
+    if target is not None and target.kind == "emulator":
+        # the emulator loads every mod folder in load/<title id>: move the other seeds out (rando/saves.py)
+        before = {n for n, _, on in saves.seeds(target) if on and n != mod_name}
+        failed = saves.switch_off_emulator_seeds(target, mod_name)
+        for n in sorted(before - set(failed)):
+            progress("Emulator: switched off the older seed %s (moved to %s)" % (n, target.off))
+        if failed:
+            progress("WARNING: the emulator would load these seeds too, and they couldn't be moved (close the "
+                     "emulator first): %s" % ", ".join(failed))
+    if target is not None and st.get("per_seed_saves", True):
+        try:
+            for line in saves.switch_saves(target, mod_name, progress):
+                progress("Per-seed saves: " + line)
+        except (saves.SaveError, OSError) as e:
+            progress("WARNING: per-seed saves not switched (%s). Your saves weren't changed; once the game is "
+                     "closed, use Play This Seed on the ROM Options tab." % e)
     progress("Done in %.1fs: %d files written to %s" % (time.time() - t0, len(written), mod_root))
     return {"seed": seed, "settings_string": sstr, "mod_root": mod_root, "files": written,
             "placements": filler.placed}
@@ -811,6 +851,9 @@ def write_patches(world, plan, placed, out_romfs, progress=print):
         flow_edits.append(("Skip Opening Movie", faststart.OPENING_FLOW, faststart.opening_without_movie))
     # every seed: a new game starts outside the Kokiri Shop, without Navi's flight and wake-up scene
     flow_edits.append(("New game start", faststart.OPENING_FLOW, faststart.start_outside))
+    if plan.st.get("rainbow_bridge", "vanilla") != "vanilla":
+        from .qol import ALLSAGE_FLOW, bridge_quest_guard
+        flow_edits.append(("Rainbow Bridge", ALLSAGE_FLOW, bridge_quest_guard))
     if plan.st.get("skip_deku_talk") and plan.st["open_forest"] != "open":
         flow_edits.append(("Skip the Great Deku Tree's Talk", faststart.MIDO_FLOW, faststart.complete_deku_meeting))
     if plan.st.get("quick_chests"):

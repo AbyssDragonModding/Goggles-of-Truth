@@ -57,6 +57,9 @@ def _check(key, value):
         return value if isinstance(value, str) and value in {o[0] for o in spec[5]} else None
     if kind == "list":
         return list(value) if isinstance(value, list) and all(isinstance(x, str) for x in value) else None
+    if kind == "int":
+        lo, hi = spec[5]
+        return value if isinstance(value, int) and not isinstance(value, bool) and lo <= value <= hi else None
     return value
 
 

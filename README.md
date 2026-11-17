@@ -1,6 +1,6 @@
 # Goggles of Truth
 ### An OoT26 randomizer mod
-## Current Version: 0.6.0 (PUBLIC BETA RELEASE)
+## Current Version: 0.6.1 (PUBLIC BETA RELEASE)
 **Goggles of Truth** is an item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time*
 (OoT26); the **Goggles of Truth Randomizer** is the program that makes the seeds. It shuffles chests,
 songs, dungeon rewards, NPC rewards, shop items, Gold Skulltulas and more, and checks that every seed can be
@@ -43,6 +43,7 @@ and `exefs`) and writes only the files it changes into a new mod folder. Share s
 - [Making a seed](#making-a-seed)
 - [Installing the seed in your emulator](#installing-the-seed-in-your-emulator)
   - [Playing with Longshot (PC)](#playing-with-longshot-pc)
+  - [Per-seed saves](#per-seed-saves)
 - [Testing and reporting problems](#testing-and-reporting-problems)
 - [Settings](#settings)
 - [Tools](#tools)
@@ -265,7 +266,9 @@ and loaded when the window opens. The game and output folders are saved there to
 3. Make sure only one randomizer seed is enabled at a time (most emulators list mods in the game's
    **Properties** > **Add-Ons** page).
 4. **Start a new save file** for every seed. Old saves keep the previous seed's progress flags. A new save
-   starts outside, in front of the Kokiri Shop (no Navi wake-up or Saria at the door).
+   starts outside, in front of the Kokiri Shop (no Navi wake-up or Saria at the door). Or let the randomizer
+   keep each seed's saves apart: see [Per-seed saves](#per-seed-saves). For that, set the output
+   folder to the emulator's mod folder for this game (`<emulator user folder>/load/0400486024DEC000`).
 
 ### Playing with Longshot (PC)
 
@@ -289,7 +292,32 @@ randomizer can write seeds straight into it:
    which Longshot skips. They aren't deleted: to play one again, remove the `_` (and add it to the newer
    one). Other mods, like a HUD mod, are left alone. If a seed can't be renamed (the game, or another program,
    has a file in it open), the log says so; rename it by hand.
-5. **Start a new save file** for every seed.
+5. **Start a new save file** for every seed (with Per-Seed Saves the new seed starts with empty slots).
+
+### Per-seed saves
+
+With **Per-Seed Saves** on (ROM Options > Output, on by default), every seed keeps its own six save slots, so
+switching seeds never mixes their progress. It works when the output folder is:
+- Longshot's `mods` folder (saves in `%APPDATA%\Longshot\save\<account>`; on Linux
+  `~/.local/share/Longshot/save`);
+- or an emulator's `load/0400486024DEC000` folder (Eden, Citron, Sudachi, Lichii and the other yuzu-family
+  emulators; saves in `<emulator user folder>/nand/user/save/0000000000000000/<profile>/0400486024DEC000`).
+  The randomizer then also switches older seeds off for you, by moving them into `load/GogglesOfTruth_off`.
+  It reads the emulator's own settings (`config/qt-config.ini`) for where its saves are, and warns you if the
+  emulator reads its mods from another folder than the one you chose.
+
+**Close the game first.** Then:
+- **Generating a seed** stores the slots you have now with the seed they belong to, and gives the new seed
+  empty slots: start a new file.
+- **Play This Seed** (the Seeds and saves card on the ROM Options tab, or double-click a seed) switches that
+  seed on, every other seed off, and brings its slots back. ▶ marks the seed that's switched on, ★ the one
+  whose saves are in the game.
+
+A seed's slots are kept in its own folder, in `<seed folder>/saves/` (the game doesn't read it). Slots that no
+seed owns, like the saves you had before using this, are copied to `save_backups/` next to the randomizer
+first. Nothing is deleted before it's been copied. The game's options (`option.sav`) are shared by all seeds.
+A mod folder name used again for a different seed doesn't get the old seed's saves back (they go to
+`save_backups/`).
 
 ## Testing and reporting problems
 
@@ -376,16 +404,19 @@ Search existing issues first; if your problem is already there, add your details
 
 ## Settings
 
-The GUI explains every option when you hover over it. In short:
+The GUI explains every option when you hover over it. Each option has a badge on the right showing how far it's
+been tested: **Stable** (green, confirmed in-game), **In Testing** (yellow, partly confirmed) or **Experimental**
+(red, not confirmed yet). For a drop-down, the badge follows the option you've chosen (Item Pool "Scarce" is
+Experimental, "Balanced" Stable). In short:
 
 | Tab | What you can change |
 |---|---|
 | **ROM Options** | Game folders, output folder, mod name, seed and whether to write the spoiler log |
-| **World** | Logic (glitchless or none); open Kokiri Forest, the Door of Time, Zora's Fountain and Death Mountain; skip child Zelda; skip Epona's race (experimental, not working yet) |
+| **World** | Logic (glitchless or none); open Kokiri Forest, the Door of Time, Zora's Fountain and Death Mountain; the rainbow bridge requirement (vanilla, a number of medallions, the three Spiritual Stones or a number of Gold Skulltula tokens; always with the Bow and Light Arrows); skip child Zelda; skip Epona's race (experimental) |
 | **Items** | Quest items: songs, Spiritual Stones and Medallions (in boss rewards or anywhere), ocarinas, Kokiri Sword, Weird Egg. Shuffled locations: freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards (Zelda's Letter, Light Arrows, Biggoron), Great Fairies, Skulltula House rewards, Gold Skulltula tokens (Tokensanity), shop items (items shuffled per shop) and Business Scrubs. Item pool size and whether ammo chests need their bag |
 | **Dungeon Items** | Maps & Compasses (vanilla, own dungeon, removed or start with), small keys and boss keys |
 | **Hints** | Gossip Stone hints (none, balanced, strong or useless; strong and useless experimental) and whether stones need the Mask of Truth |
-| **Quality of Life** | Cutscenes (skip the opening movie, Saria's wake-up scene and the Great Deku Tree's talk, chests without cutscene; skip story scenes such as Rauru and the sages (experimental, needs additional testing; only Rauru and Saria's ocarina tested); all skippable, no area intros (needs further testing), skip Kaepora Gaebora); gameplay (bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina, Gold Skulltulas day and night at any age, skip Ganon's trials (experimental)); minigames (Anju needs 1 cucco, Big Poe buyer needs 1 Big Poe (experimental)) |
+| **Quality of Life** | Cutscenes (skip the opening movie, Saria's wake-up scene and the Great Deku Tree's talk, chests without cutscene; skip story scenes such as Rauru and the sages (experimental, needs additional testing; only Rauru and Saria's ocarina tested); all skippable, no area intros (needs further testing), skip Kaepora Gaebora); gameplay (bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina, Gold Skulltulas day and night at any age, skip Ganon's trials); minigames (Anju needs 1 cucco, Big Poe buyer needs 1 Big Poe (experimental)) |
 | **Exclusions** | Locations that only ever hold minor items |
 | **Not Supported** | Classic randomizer options the remake's data can't support yet, and why |
 
@@ -499,7 +530,6 @@ keep their own short opening).
 | Setting | Version | What happened |
 |---|---|---|
 | Load Saves at Dungeon Entrance | 0.2.1 | Never moved the restart point. Removed in 0.3.0. |
-| Skip Epona Race (experimental, not working) | 0.5.0 | Test seeds 10 to 12: Epona never came to Epona's Song. Off by default. |
 
 How each setting is implemented, and what the remake makes impossible (keysanity, scrubsanity and others), is
 described in [docs/TECHNICAL.md](docs/TECHNICAL.md).

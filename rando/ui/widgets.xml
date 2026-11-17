@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Reusable widgets for the randomizer's window, in Raven's XML layout (https://github.com/oscar-soirey/Raven).
+  rando/gui_glass.py registers these (Rxml_register_widgets_from_file) before it loads main.xml, so main.xml and the
+  generated settings rows can use the tags declared here. A <Widget>'s attributes are its parameters, with their
+  defaults; {Parameter} in the element it stands for is replaced by the value given where the tag is used. Name and
+  Slot.* given where it's used go to that element itself.
+
+  Status badges: a pill (rounded rectangle) with the status name centred on its colour. Every setting row has one
+  (rando/settings.py split_status). gui_glass.py also reads Text / Background / Foreground of the three status
+  badges below to recolour a drop-down's badge when another option is chosen, so the colours live only here.
+-->
+<Widgets>
+
+  <!-- The pill itself. LabelName names the label inside, so the window can change its text. -->
+  <Widget Name="Badge" Text="Badge" Background="#2E9E5B" Foreground="#FFFFFF" LabelName="">
+    <Border Background="{Background}" CornerRadius="11" Padding="12,3,12,3" Slot.Auto="true" Slot.VAlign="Center">
+      <Label Name="{LabelName}" Text="{Text}" TextSize="12" Color="{Foreground}" TextAlign="Center"/>
+    </Border>
+  </Widget>
+
+  <!-- Confirmed in-game -->
+  <Widget Name="StableBadge" LabelName="">
+    <Badge LabelName="{LabelName}" Text="Stable" Background="#2E9E5B" Foreground="#FFFFFF"/>
+  </Widget>
+
+  <!-- Partly confirmed in-game -->
+  <Widget Name="TestingBadge" LabelName="">
+    <Badge LabelName="{LabelName}" Text="In Testing" Background="#E3B230" Foreground="#1E1E1E"/>
+  </Widget>
+
+  <!-- Not confirmed yet -->
+  <Widget Name="ExperimentalBadge" LabelName="">
+    <Badge LabelName="{LabelName}" Text="Experimental" Background="#D64545" Foreground="#FFFFFF"/>
+  </Widget>
+
+</Widgets>

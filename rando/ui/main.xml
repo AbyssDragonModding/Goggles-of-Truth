@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Main window of the randomizer, in Raven's XML layout (https://github.com/oscar-soirey/Raven).
+  Status badges (<StableBadge/>, <TestingBadge/>, <ExperimentalBadge/>) are declared in widgets.xml, which
+  rando/gui_glass.py registers first.
   rando/gui_glass.py loads this file, fills in the parts marked <!-@@ ... @@-> from rando/settings.py
   (the settings cards and the Not Supported list), creates the window from it, then finds the widgets by Name
   and binds the actions (OnClicked / OnChanged / OnActivated) to Python.
@@ -70,6 +72,21 @@
             </VBox>
           </Border>
 
+          <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+            <VBox Spacing="10">
+              <Label Text="Seeds and saves" TextSize="16" Color="#F5CC61"/>
+              <Label Name="saves_lab" Text="Choose a Longshot mods folder or an emulator's load/0400486024DEC000 folder as the output folder to see its seeds."
+                     TextSize="13" Color="#C7D1DBD9" Wrap="true"/>
+              <ListView Name="seeds_list" OnActivated="rando.play_seed" Slot.Fill="1" Slot.MaxSize="150"/>
+              <HBox Spacing="10">
+                <Button Text="  Play This Seed  " OnClicked="rando.play_selected" Slot.Auto="true"
+                        Tooltip="Switch the selected seed on (every other seed off) and, with Per-Seed Saves, put its own save slots into the game. Close the game first. Double-clicking a seed does the same."/>
+                <Button Text="Refresh" Style="Flat" OnClicked="rando.refresh_seeds" Slot.Auto="true"/>
+                <Label Text="▶ = switched on   ★ = its saves are in the game" TextSize="12" Color="#C7D1DBD9" Slot.Fill="1" Slot.VAlign="Center"/>
+              </HBox>
+            </VBox>
+          </Border>
+
           <!--@@settings ROM Options@@-->
 
           <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,10">
@@ -92,9 +109,12 @@
       <VBox Spacing="12" Slot.Title="Exclusions">
         <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Fill="1" Slot.Padding="6,10,6,10">
           <VBox Spacing="10">
-            <Label Text="Excluded locations" TextSize="16" Color="#F5CC61"/>
+            <HBox Spacing="12">
+              <Label Text="Excluded locations" TextSize="16" Color="#F5CC61" Slot.Fill="1" Slot.VAlign="Center"/>
+              <StableBadge/>
+            </HBox>
             <Label TextSize="13" Color="#C7D1DBD9" Wrap="true"
-                   Text="Excluded locations never hold progression or dungeon items (only rupees, ammo, hearts). Double-click a location to toggle it. Scan the game on the ROM Options tab to fill this list."/>
+                   Text="Excluded locations never hold progression items, keys or boss rewards: only rupees, ammo, hearts and the like (a map or compass may land there). A song or boss reward spot that can only hold a song or reward with your settings stays included (the log says so). Excluding very many locations can leave too little room for the required items; the error then says to exclude fewer. Double-click a location to toggle it. Scan the game on the ROM Options tab to fill this list."/>
             <HBox Spacing="10">
               <TextInput Name="filter_in" Placeholder="Filter locations..." OnChanged="rando.filter" Slot.Fill="1"/>
               <Label Name="excl_count" Text="0 excluded" TextSize="13" Color="#C7D1DBD9" Slot.Auto="true" Slot.VAlign="Center"/>

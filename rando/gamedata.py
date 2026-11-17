@@ -155,6 +155,15 @@ AREA_INTROS = ["Dm_LakeHrl_0000", "Dm_ZoraFountain_0000", "Dm_GanonCastle_0000",
 AREA_INTRO_VISITS = ["LakeHylia", "ZoraFountain", "GanonCastle", "KakarikoVillage", "Graveyard", "HyruleCastle",
                      "GerudoFortress", "GerudoValley", "ZoraRiver", "BottomOfTheWell", "FireTemple", "SpiritTemple"]
 
+# Rainbow Bridge Requirement (GameDataPatcher.rainbow_bridge)
+BRIDGE_MEDALLIONS = ["IsGet.Item_Medal_" + m for m in ("Forest", "Fire", "Water", "Shadow", "Spirit", "Light")]
+BRIDGE_STONES = ["IsGet.Item_Stone_" + m for m in ("Forest", "Fire", "Water")]
+BRIDGE_BOW, BRIDGE_LIGHT_ARROWS = "IsGet.Weapon_Range_Bow", "IsGet.Item_Arrow_Light"
+TOKEN_COUNT = "PouchData.Item_Token_Gold.StockNum"
+BRIDGE_QUEST_EXP = "Defeat_Ganon_IsAfter_Step01_Exp"          # the castle quest's own "past Step01" check
+BRIDGE_EXP = "Rando_Bridge_Exp"                                 # the requirement + Bow + Light Arrows
+BRIDGE_MAX_ENTRIES = 26                                         # the longest computed flag in the game
+
 # Skip Ganon's Trials. Each trial's barrier scene (Defeat_Ganon:InsideGanonCastle_Dungeon_BarrierRemove_<trial>,
 # requested by an EventRequestActor in its sage room) sets InsideGanonCastle_Dungeon_BarrierRemove_<trial>, and the
 # barrier is gone while that flag is set; the scene's played flag shows the sage's light in the middle room
@@ -200,6 +209,109 @@ class GameDataPatcher:
             row["DefaultValue"] = type(row["DefaultValue"])(value)
             self.changed += 1
         return row is not None
+
+    def rainbow_bridge(self, mode, medallions=6, tokens=100):
+        """Rainbow Bridge Requirement. Logic/GanonCastle_Level_Field_00_Prefab (its multi-input links decoded: entries
+        of 8 bytes at the end of the input tables; node index -100-start, parameter index = count):
+            areas Area_2dac / Area_99ec and the appear point exist while  Ready_Exp AND NOT Step01_Exp
+            the bridge scene (GanonCastle_Adult_Field_Rainbow) starts when Link is in both areas (and in state 2)
+            the bridge exists when that scene has played, or once it sets its EventBoolEX1
+        "IsAfter_X" means past step X. Zelda's Light Arrows scene (AllSage) sets Step01, so Ready_Exp (past Ready)
+        turns on; the bridge scene sets Step02, so Step01_Exp (past Step01) turns the areas off again.
+        So the requirement is OR-ed into Ready_Exp only; Step01_Exp stays the quest's own (0.6.1's first version
+        replaced it, which kept the areas off for good: no bridge in-game).
+
+        Computed flags are reverse Polish over [opcode, value]: 0 reads a Bool, 10 reads another computed flag (all 356
+        uses in the game do), 3 AND, 4 OR, 5 NOT, 18 reads an Int and compares it "less than" the next constant (16),
+        so "at least N" is NOT(Int < N), as MiniGame_DampeRace_IsClearLeastOnce writes "at least once".
+        The game's own computed flags are at most 26 entries long. 0.6.1's first "3 of 6 medallions" was one flag of 123
+        entries and never came true in-game (debug test: 4 medallions, Bow and Light Arrows, no bridge). So every flag
+        here stays short, and the count is a chain of small flags:
+            Rando_Bridge_Medals_<k>_<i> = at least k of the first i medallions
+                                       = <k of i-1> OR (<k-1 of i-1> AND medallion i)          (5 entries)
+            Rando_Bridge_Exp            = requirement AND Bow AND Light Arrows
+            Defeat_Ganon_IsAfter_Ready_Exp = its old value OR Rando_Bridge_Exp
+        AllSage's guard (qol.bridge_quest_guard) reads Step01_Exp (BRIDGE_QUEST_EXP), the quest's own."""
+        step01 = self._get("Defeat_Ganon_IsAfter_Step01_Exp", "BoolExp")
+        ready = self._get("Defeat_Ganon_IsAfter_Ready_Exp", "BoolExp")
+        if step01 is None or ready is None:
+            return False
+        if mode not in ("medallions", "stones", "tokens"):
+            return True
+        u = type(step01["Values"][0][0])
+        need = [BRIDGE_BOW, BRIDGE_LIGHT_ARROWS] + (BRIDGE_MEDALLIONS if mode == "medallions" else
+                                                     BRIDGE_STONES if mode == "stones" else [])
+        missing = [f for f in need if self._get(f, "Bool") is None]
+        if mode == "tokens" and self._get(TOKEN_COUNT, "Int") is None:
+            missing.append(TOKEN_COUNT)
+        if missing:
+            self.progress("warning: Rainbow Bridge: save flags not found (%s); the bridge is left as it is"
+                          % ", ".join(missing))
+            return False
+
+        def const(n):
+            """Opcode 16's number is a plain signed Int in the game's own flags ([16, 1] in
+            MiniGame_DampeRace_IsClearLeastOnce, [16, 100] in ..._Collect100Tokens), not the U64 of the other entries.
+            0.6.1's token bridge wrote a U64 and the bridge was there with 0 tokens (the game read no number)."""
+            return int(n)
+
+        def flag(name):
+            return [u(0), u(mm3(name))]
+
+        def exp(name):
+            return [u(10), u(mm3(name))]
+
+        def put(name, values):
+            """Add (or replace) computed flag `name`, shaped like the game's own."""
+            h = mm3(name)
+            hit = self.index.get(h)
+            if hit is None:
+                row = {"Hash": type(step01["Hash"])(h), "ResetTypeValue": step01["ResetTypeValue"],
+                       "SaveFileIndex": step01["SaveFileIndex"], "Values": values}
+                self.root["Data"]["BoolExp"].append(row)
+                self.index[h] = ("BoolExp", row)
+            else:
+                hit[1]["Values"] = values
+            assert len(values) <= BRIDGE_MAX_ENTRIES, (name, len(values))
+
+        def have(name):
+            """Owning item `IsGet.<item>`: its "got it" flag OR its pouch count above 0. Items given by a debug menu
+            fill the pouch (PouchData.<item>.StockNum) without the flag, which is how the 0.6.1 stones and tokens tests
+            missed the Light Arrows; the game's own "at least one" reads are `Int > 0` (opcode 19, as
+            HaveDefeatedEnemy_* write it). One small computed flag per item, read with opcode 10."""
+            item = name.split(".", 1)[1]
+            count = "PouchData.%s.StockNum" % item
+            if self._get(count, "Int") is None:
+                return flag(name)
+            helper = "Rando_Have_" + item
+            put(helper, [flag(name), [u(19), u(mm3(count))], [u(16), const(0)], [u(4)]])
+            return exp(helper)
+
+        if mode == "medallions":
+            n = max(1, min(6, int(medallions)))
+            ref = {}                                  # (k, i) -> computed flag holding "k of the first i"
+            for i in range(1, 7):
+                m = have(BRIDGE_MEDALLIONS[i - 1])
+                for k in range(1, min(i, n) + 1):
+                    name = "Rando_Bridge_Medals_%d_%d" % (k, i)
+                    if k == i:                        # all of the first i
+                        values = ([ref[(k - 1, i - 1)], m, [u(3)]] if k > 1 else [m])
+                    elif k == 1:                      # any of the first i
+                        values = [ref[(1, i - 1)], m, [u(4)]]
+                    else:
+                        values = [ref[(k, i - 1)], ref[(k - 1, i - 1)], m, [u(3)], [u(4)]]
+                    put(name, values)
+                    ref[(k, i)] = exp(name)
+            cond = [ref[(n, 6)]]
+        elif mode == "stones":
+            a, b, c = (have(x) for x in BRIDGE_STONES)
+            cond = [a, b, [u(3)], c, [u(3)]]
+        else:
+            cond = [[u(18), u(mm3(TOKEN_COUNT))], [u(16), const(tokens)], [u(5)]]
+        put(BRIDGE_EXP, cond + [have(BRIDGE_BOW), [u(3)], have(BRIDGE_LIGHT_ARROWS), [u(3)]])
+        ready["Values"] = [list(v) for v in ready["Values"]] + [exp(BRIDGE_EXP), [u(4)]]
+        self.changed += 1
+        return True
 
     def set_bool_exp_to_flag(self, name, flag):
         """Make computed flag `name` equal to plain Bool `flag`."""
@@ -436,5 +548,8 @@ def apply(world, st, read, emit, progress, ocarina_bridge_patched=True, start_it
             gd.set_bool_exp_to_flag(flag, value)
         elif kind == "new_exp":
             ok = gd.add_bool_exp_any(flag, value) or mm3(flag) in gd.index
+    if st.get("rainbow_bridge", "vanilla") != "vanilla":
+        if not gd.rainbow_bridge(st["rainbow_bridge"], st.get("bridge_medallions", 6), st.get("bridge_tokens", 100)):
+            ok = False
     gd.finish()
     return ok

@@ -72,7 +72,8 @@ def _all(*xs):
 # Generation options the rules depend on (set by the generator before filling).
 OPTIONS = {"bag_bombs_no_bracelet": True, "open_forest": "closed", "open_zora": "closed", "open_door": "closed",
            "saria_song_ocarina": True, "dodongo_bag_bombs": False,
-           "shuffle_ocarinas": False, "open_dmt": False, "skip_child_zelda": False, "skip_ganon_trials": False}
+           "shuffle_ocarinas": False, "open_dmt": False, "skip_child_zelda": False, "skip_ganon_trials": False,
+           "rainbow_bridge": "vanilla", "bridge_medallions": 6, "bridge_tokens": 100}
 
 
 def set_options(st):
@@ -80,7 +81,9 @@ def set_options(st):
                    open_door=st["open_door"], saria_song_ocarina=bool(st["saria_song_ocarina"]),
                    dodongo_bag_bombs=bool(st["dodongo_bag_bombs"]),
                    shuffle_ocarinas=bool(st["shuffle_ocarinas"]), open_dmt=bool(st["open_dmt"]),
-                   skip_child_zelda=bool(st["skip_child_zelda"]), skip_ganon_trials=bool(st.get("skip_ganon_trials")))
+                   skip_child_zelda=bool(st["skip_child_zelda"]), skip_ganon_trials=bool(st.get("skip_ganon_trials")),
+                   rainbow_bridge=st.get("rainbow_bridge", "vanilla"), bridge_medallions=int(st.get("bridge_medallions", 6)),
+                   bridge_tokens=int(st.get("bridge_tokens", 100)))
 
 
 def bombs(s):
@@ -139,7 +142,9 @@ def adult(s):
     # they are in hand before the door, as in the original.
     return moat(s) and song(s, "TimeSong") and all(s.has(x) for x in CHILD_STONES)
 @rule
-def epona(s): return s.adult and song(s, "EponaSong")
+# Epona: Ingo's race (or Skip Epona Race) needs the Get_Epona quest past ReadyForGetEponaSong, which only child
+# Malon's song scene does (the "Song from Malon" check, whatever it holds); then Epona's Song as adult.
+def epona(s): return s.adult and song(s, "EponaSong") and s.hf_child and ocarina(s)
 @rule
 def hf_child(s): return s.child_out
 @rule
@@ -209,8 +214,23 @@ def ice_done(s): return s.zf_adult and bottle(s)
 @rule
 def gtg_done(s): return _all(s.gf_adult, s.card, bow(s), hookshot(s), lens(s), s.has("HeavyBoot"), s.has("Hammer"),
                              str2(s), song(s, "TimeSong"), bombs(s))
+MEDALLIONS = ("Medal_Forest", "Medal_Fire", "Medal_Water", "Medal_Shadow", "Medal_Spirit", "Medal_Light")
+
+
 @rule
-def bridge(s): return s.adult and s.shadow_done and s.spirit_done     # the two sage quests (see stones)
+def bridge(s):
+    """The rainbow bridge (Rainbow Bridge Requirement). Every option also needs the Bow and the Light Arrows: the
+    bridge checks them in the game too (gamedata.GameDataPatcher.rainbow_bridge), and Ganon needs them."""
+    mode = OPTIONS["rainbow_bridge"]
+    if mode == "medallions":
+        need = sum(1 for m in MEDALLIONS if s.has(m)) >= OPTIONS["bridge_medallions"]
+    elif mode == "stones":
+        need = all(s.has(x) for x in CHILD_STONES)        # the items themselves (IsGet), not the dungeon quests
+    elif mode == "tokens":
+        need = tokens(s, OPTIONS["bridge_tokens"])
+    else:
+        need = s.shadow_done and s.spirit_done           # vanilla: Zelda's Light Arrows scene (the two sage quests)
+    return s.adult and need and bow(s) and s.has("Arrow_Light")
 @rule
 def ganon_done(s): return _all(s.bridge, hookshot(s), lens(s), s.has("Hammer"), str3(s), s.has("HoverBoot"),
                                bombs(s), s.has("Arrow_Fire"), s.has("Arrow_Light"), bow(s), bottle(s),
@@ -358,6 +378,11 @@ def location_rule(loc):
         return lambda s: (s.zd_child and scale(s)) or (s.zd_adult and s.has("HeavyBoot"))
     if is_deku_slingshot_chest(loc):
         return lambda s: s.has("Sword_Kokiri")          # reached before the Slingshot is needed
+    if loc.region == "GanonCastle" and loc.kind == "gs":
+        # The castle grounds' Gold Skulltula is on the Castle Town side of the rainbow bridge, by the Great Fairy
+        # (stage data: entrance z 375, Skulltula z 328, bridge z 315), as in the original game: adult Link only.
+        # Before 0.6.1 it needed all of Ganon's Castle, so 100 tokens could never open a token bridge.
+        return lambda s: s.adult
     if loc.dungeon:
         base = RULES[DUNGEON_RULE[loc.dungeon]]
         if loc.kind == "gs":

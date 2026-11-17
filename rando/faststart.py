@@ -419,20 +419,21 @@ def quick_small_chest(data):
 
 
 # --- Skip Epona Race --------------------------------------------------------------------------------------
-# Epona comes to Epona's Song only once she is your horse: the race's end (Get_Epona) runs
-# Animal_Epona_Adult.EventCopyAndRegisterOwnedHorse on the ranch's Epona, sends her offstage and completes the
-# Get_Epona challenge. Dm_SY_Ocarina_EponaSong:EponaSong asks EventQueryHasOwnedHorse; without a horse, an adult
-# inside the Lon Lon Ranch fence (LonLonRanch_GambleRace_IsInsideFence) calls the ranch horses over
-# (EponaSong_CallHorseAround). There the ranch's Epona is in the scene (Lon Lon Ranch is part of HyruleField_Adult,
-# where she stands while Get_Epona isn't complete), so that branch now does what the race's end does, then calls
-# her the way an owned horse is called. Not while riding a rented horse or racing. Switch cases: 0 = true.
-# A flow's actors are set up when the flow starts (taking out the ocarina already starts this one), so Epona is
-# declared with EventMemberCreateMethod 3: use her if she's in the scene, never create her.
+# Epona comes to Epona's Song only once she is your horse. The game registers her (Get_Epona's
+# Sub_Get_Epona_EscapeRanch_*_Warp: Animal_Epona_Adult.EventCopyAndRegisterOwnedHorse, then the challenge's Complete)
+# when you ride her out over a ranch fence or through the main gate while the quest is at exactly AfterWonGambleRace
+# (LonLonRanch_AfterWonGambleRace; the fences' and gate's PlayEventName starts it).
+# Dm_SY_Ocarina_EponaSong:EponaSong asks EventQueryHasOwnedHorse; without a horse, an adult inside the Lon Lon Ranch
+# fence (LonLonRanch_GambleRace_IsInsideFence) calls the ranch horses over (EponaSong_CallHorseAround). That branch
+# now first moves Get_Epona to AfterWonGambleRace (as if Ingo's race was won), then calls the horses as usual: ride
+# Epona out of the ranch and the game makes her yours. Only once Malon's song scene has played (the quest is then past
+# ReadyForGetEponaSong, which child Malon's scene needs: moving it on earlier would lose that check), not while
+# riding a rented horse or racing, and not when the quest is already that far. Switch cases: 0 = true.
+# (0.5.0 - 0.6.1 registered the ranch's Epona inside this flow instead; in-game she never came.)
 EPONA_SONG_FLOW = "Event/EventFlow/Dm_SY_Ocarina_EponaSong.bfevfl.zs"
 EPONA_FENCE_FLAG = "LonLonRanch_GambleRace_IsInsideFence"
-EPONA_EQUIPMENT = {"EquipmentUser_%s" % k: "" for k in ("Weapon", "SubWeapon", "Shield", "Bow", "Tool", "SubTool",
-                                                        "Accessory1", "Accessory2", "Accessory3", "Accessory4")}
-EPONA_EQUIPMENT.update({"EquipmentUser_%s_EquipmentState" % k: 0 for k in ("Weapon", "SubWeapon", "Shield", "Bow")})
+EPONA_MALON_SCENE = "Get_Epona_IsAfter_ReadyForGetEponaSong_Exp"   # child Malon's song scene moves the quest past it
+EPONA_STEP = "AfterWonGambleRace"
 
 
 def _query(fc, actor_name, query):
@@ -469,37 +470,29 @@ def epona_without_race(data):
         raise FastStartError("the no-horse branch of Epona's Song is not as expected")
     fence = fc.events[fences[0]]
     around = dict(fence.cases).get(0)
-    call = dict(owned[0].cases).get(0)
     if (around is None or not isinstance(fc.events[around], evfl.SubFlowEvent)
-            or fc.events[around].entry_point != "EponaSong_CallHorseAround"
-            or call is None or not is_query(fc.events[call], "GameSystemActor", "EventQueryIsCurrentSceneEnableRide")):
+            or fc.events[around].entry_point != "EponaSong_CallHorseAround"):
         raise FastStartError("Epona's Song calls are not as expected")
 
     data_actor = next(a for a in fc.actors if a.name == "GameDataActor" and not a.secondary_name)
-    base = copy.deepcopy(data_actor.params or {})
-    # bind the ranch's Epona only if she's there: method 0 creates a missing actor, so with 0 an Epona appeared on
-    # Link whenever the ocarina came out, at any age (test seed 11). The game's own flows that name Epona where
-    # she may be absent (Dm_SY_BancChangeArrive, GimmickFlow_Common, Npc_Gerudo_004) use 3.
-    _new_actor(fc, "Animal_Epona_Adult", {**copy.deepcopy(base), **EPONA_EQUIPMENT,
-                                          "EventMemberCreateMethod": type(base["EventMemberCreateMethod"])(3)})
-    _new_actor(fc, "ChallengeSystemActor", copy.deepcopy(base))
+    _new_actor(fc, "ChallengeSystemActor", copy.deepcopy(data_actor.params or {}))
 
     def add(event):
         fc.events.append(event)
         return len(fc.events) - 1
 
     a, act = _action(fc, "ChallengeSystemActor", "EventExecuteProgressChallengeStep")
-    complete = add(evfl.ActionEvent("RandoEpona_Complete", a, act, call, {
-        "ChallengeName": "Get_Epona", "StepName": "Complete", "IsWaitEnd": True,
-        "IsIgnoreCompletedChallenge": False, "IsIgnoreChallengeProgressUI": False}))
-    a, act = _action(fc, "Animal_Epona_Adult", "EventGoOffstageForUser")
-    offstage = add(evfl.ActionEvent("RandoEpona_Offstage", a, act, complete, {
-        "IsWaitEnd": True, "IsSleepXLink": True, "ExecuteSetSpeedZeroEveryFrame": False,
-        "IsRidingTargetGoOffstage": False}))
-    a, act = _action(fc, "Animal_Epona_Adult", "EventCopyAndRegisterOwnedHorse")
-    register = add(evfl.ActionEvent("RandoEpona_Register", a, act, offstage, {"IsWaitEnd": True}))
+    won = add(evfl.ActionEvent("RandoEpona_RaceWon", a, act, around, {
+        "ChallengeName": "Get_Epona", "StepName": EPONA_STEP, "IsWaitEnd": True,
+        "IsIgnoreCompletedChallenge": False, "IsIgnoreChallengeProgressUI": True}))
+    a, q = _query(fc, "GameDataActor", "EventQueryIsGameDataBoolExp")
+    malon = add(evfl.SwitchEvent("RandoEpona_MalonSceneSeen", a, q, [(0, won), (1, around)],
+                                 {"GameDataName": EPONA_MALON_SCENE}))
+    a, q = _query(fc, "GameDataActor", "EventQueryIsGameDataBoolExp")
+    far = add(evfl.SwitchEvent("RandoEpona_AlreadyWon", a, q, [(0, around), (1, malon)],
+                               {"GameDataName": "Get_Epona_IsAfter_GambleRacePlaying_Exp"}))
     a, q = _query(fc, "GameDataActor", "EventQueryIsGameDataBool")
-    racing = add(evfl.SwitchEvent("RandoEpona_IsRacing", a, q, [(0, around), (1, register)],
+    racing = add(evfl.SwitchEvent("RandoEpona_IsRacing", a, q, [(0, around), (1, far)],
                                   {"GameDataName": "LonLonRanch_PlayingGambleRace", "Index": -1}))
     a, q = _query(fc, "GameDataActor", "EventQueryIsGameDataBoolExp")
     riding = add(evfl.SwitchEvent("RandoEpona_IsRiding", a, q, [(0, around), (1, racing)],

@@ -1,6 +1,7 @@
 """Setting definitions (shared by the GUI, the CLI and the settings string)."""
 import base64
 import json
+import re
 import zlib
 
 # (key, tab, group, label, type, options or None, default, tooltip)
@@ -35,16 +36,37 @@ SETTINGS = [
      "The gate from Kakariko to Death Mountain is open for child Link from the start, so you don't need\n"
      "to show Zelda's Letter to the soldier. The Happy Mask Shop opens too. Zelda's Letter is then only\n"
      "needed for the soldier's mask trade."),
+    ("rainbow_bridge", "World", "Rainbow Bridge", "Rainbow Bridge Requirement", "choice",
+     [("vanilla", "Vanilla"), ("medallions", "Medallions"), ("stones", "Spiritual Stones"),
+      ("tokens", "Gold Skulltula Tokens")], "vanilla",
+     "What makes the rainbow bridge to Ganon's Castle appear when you walk up to the castle as adult.\n"
+     "Every option also needs the Bow and the Light Arrows, since Ganon can't be beaten without them.\n"
+     "Vanilla: as in the original. Beat the Shadow and Spirit Temples, get the Light Arrows from Zelda\n"
+     "in the Temple of Time, then the sages build the bridge.\n"
+     "Medallions: own the number of medallions set in Medallions Needed (any of the six), plus the Bow\n"
+     "and the Light Arrows. Zelda's scene isn't needed.\n"
+     "Spiritual Stones: own all three Spiritual Stones (Kokiri Emerald, Goron Ruby, Zora Sapphire),\n"
+     "plus the Bow and the Light Arrows. Zelda's scene isn't needed.\n"
+     "Gold Skulltula Tokens: own the number of tokens set in Gold Skulltula Tokens Needed, plus the Bow\n"
+     "and the Light Arrows. Zelda's scene isn't needed.\n"
+     "Once the bridge has appeared it stays."),
+    ("bridge_medallions", "World", "Rainbow Bridge", "Medallions Needed", "int", (1, 6), 6,
+     "For Rainbow Bridge Requirement: Medallions. How many medallions you need for the bridge, out of\n"
+     "the six; any of them count."),
+    ("bridge_tokens", "World", "Rainbow Bridge", "Gold Skulltula Tokens Needed", "int", (1, 100), 100,
+     "For Rainbow Bridge Requirement: Gold Skulltula Tokens. How many Gold Skulltula Tokens you need\n"
+     "for the bridge (1 to 100)."),
     ("skip_child_zelda", "World", "Story Skips", "Skip Child Zelda", "bool", None, False,
      "A new save starts as if you had already been through Hyrule Castle as a child. You already own\n"
      "the items from Zelda (HC Zeldas Letter), Malon (HC Malon Egg) and Impa (Song from Impa), Malon and\n"
      "Talon are at Lon Lon Ranch, and Hyrule Field has day and night from the start. Those three checks\n"
      "only hold items a save can start with (songs and single items, no ammo or upgrades)."),
-    ("skip_epona_race", "World", "Story Skips", "Skip Epona Race (experimental, not working)", "bool", None, False,
-     "Not working yet: in testing, Epona doesn't come to Epona's Song with this on. Leave it off and\n"
-     "win Ingo's race as usual.\n"
-     "Meant to work like this: as adult, play Epona's Song once inside the Lon Lon Ranch fence and\n"
-     "Epona becomes your horse without the race."),
+    ("skip_epona_race", "World", "Story Skips", "Skip Epona Race (experimental)", "bool", None, False,
+     "Epona becomes yours without racing Ingo. As adult, play Epona's Song inside the Lon Lon Ranch\n"
+     "fence: the race counts as won and the ranch horses come. Ride Epona out over the fence and\n"
+     "she is your horse; from then on Epona's Song calls her in Hyrule Field.\n"
+     "Needs Malon's song scene at the ranch as child first (the Song from Malon check). Don't pay Ingo\n"
+     "to ride: during a paid ride the song only calls the horses."),
     # ---- Items
     ("shuffle_songs", "Items", "Quest Items", "Shuffle Songs", "choice",
      [("vanilla", "Vanilla"), ("song", "Song Locations"), ("anywhere", "Anywhere")], "song",
@@ -95,10 +117,10 @@ SETTINGS = [
      "Zelda's Letter, the Light Arrows (Temple of Time) and Biggoron's reward give random items.\n"
      "The ocarinas are Shuffle Ocarinas, Malon's egg is Shuffle Weird Egg."),
     ("shuffle_scrubs", "Items", "Shuffled Locations", "Business Scrubs", "bool", None, False,
-     "The Business Scrubs that sell one thing once sell a random item instead (from OotrR): the Deku Stick\n"
+     "The Business Scrubs that sell one thing once sell a random item instead: the Deku Stick\n"
      "upgrade (Lost Woods bridge), the Deku Nut upgrade (Lost Woods), and the Pieces of Heart in Hyrule\n"
      "Field and Death Mountain Crater. The scrub names the item it sells. Refill scrubs are unchanged.\n"
-     "Their price is Business Scrub Prices."),
+     "Their price is set by Business Scrub Prices."),
     ("scrub_prices", "Items", "Shuffled Locations", "Business Scrub Prices", "choice",
      [("low", "10 Rupees"), ("regular", "Game's Price (40 / 100 Rupees)"), ("random", "Random (10-99 Rupees)"),
       ("random_wallet", "Random (10-200 Rupees)")], "low",
@@ -121,12 +143,12 @@ SETTINGS = [
     ("shopsanity", "Items", "Shuffled Locations", "Items Shuffled Per Shop", "choice",
      [("off", "Off"), ("1", "1 Item"), ("2", "2 Items"), ("3", "3 Items"), ("4", "4 Items"),
       ("random", "1 to 4 Items (Random)")], "off",
-     "Shelves in every shop sell random items (from OotrR): Kokiri, Goron and Zora shops, the Market's\n"
+     "Shelves in every shop sell random items: Kokiri, Goron and Zora shops, the Market's\n"
      "bazaar, potion shop and Bombchu shop, and Kakariko's bazaar and potion shop. Each can be bought\n"
      "once: a bought shelf is gone for good, also after reloading. One shelf of every purchase you\n"
      "need (Deku and Hylian Shields, tunics, Blue Fire, bugs, fish, fairies) stays on sale. Masks\n"
      "aren't shuffled. A shelf that rolls junk keeps its goods.\n"
-     "Their price is Shop Prices."),
+     "Their price is set by Shop Prices."),
     ("shop_prices", "Items", "Shuffled Locations", "Shop Prices", "choice",
      [("low", "10 Rupees"), ("random", "Random (10-99 Rupees)"), ("random_wallet", "Random (10-200 Rupees)")], "low",
      "What the shuffled shop shelves charge. Random prices are rounded to 5 rupees. A price above 99\n"
@@ -145,8 +167,8 @@ SETTINGS = [
     ("maps_compasses", "Dungeon Items", "Dungeon Items", "Maps & Compasses", "choice",
      [("vanilla", "Vanilla"), ("own", "Own Dungeon"), ("remove", "Remove (replaced by junk, experimental)"),
       ("start_with", "Start With")], "own",
-     "Own Dungeon: maps and compasses go in a chest of their own dungeon. The remake decides a key's dungeon\n"
-     "from the dungeon the chest is in, so 'Anywhere' (keysanity) is not possible.\n"
+     "Vanilla: maps and compasses stay in their usual chests.\n"
+     "Own Dungeon: maps and compasses are shuffled among the chests of their own dungeon.\n"
      "Remove: their checks hold a Blue Rupee and you never get them.\n"
      "Start With: a new save already has every dungeon's map and compass, and the chests that held them\n"
      "give a random bonus instead (rupees up to Gold, Bombchus, ammo, sometimes a Piece of Heart)."),
@@ -167,7 +189,7 @@ SETTINGS = [
      "Strong: more Way of the Hero and waste-of-time clues, fewer item clues, no joke lines.\n"
      "Useless: every stone tells a joke.\n"
      "A clue that names a location is only put on a stone you can read without that location's item.\n"
-     "Hints are listed in the spoiler log. (Clawshot's hint system.)"),
+     "Hints are listed in the spoiler log."),
     ("gossip_stones", "Hints", "Gossip Stones", "Gossip Stones", "choice",
      [("mask", "Mask of Truth Required"), ("no_mask", "No Mask of Truth")], "mask",
      "Mask of Truth Required: as in the original game, a stone only speaks to child Link wearing the\n"
@@ -202,7 +224,8 @@ SETTINGS = [
      "Also skipped, keeping the quest step they start (not yet tested): inside the Deku Tree, Dodongo's\n"
      "Cavern, Death Mountain Trail from Kakariko, Goron City, Death Mountain Crater, Zora's Domain,\n"
      "Lon Lon Ranch, Castle Town, Sacred Forest Meadow, Desert Colossus, Ice Cavern, Shadow Temple,\n"
-     "Gerudo Training Ground, the Water Temple and inside Ganon's Castle."),
+     "Gerudo Training Ground, the Water Temple, inside Ganon's Castle and the Temple of Time\n"
+     "(first entry, and first step out as adult)."),
     ("skip_kaepora", "Quality of Life", "Cutscenes", "Skip Kaepora Gaebora", "bool", None, True,
      "Kaepora Gaebora doesn't stop you to talk when you leave Kokiri Forest, in the Lost Woods after\n"
      "Saria's Song, in Hyrule Field (also on the way to Lake Hylia), in front of Hyrule Castle or at\n"
@@ -211,16 +234,16 @@ SETTINGS = [
      "and Death Mountain are unchanged."),
     ("skip_opening", "Quality of Life", "Cutscenes", "Skip Opening Movie", "bool", None, True,
      "A new game doesn't play the opening movie (the narrated prologue and the Great Deku Tree's dream).\n"
-     "The game still waits for Kokiri Forest to load. (From Clawshot.)\n"
+     "The game still waits for Kokiri Forest to load.\n"
      "Whatever this is set to, every seed starts outside in front of the Kokiri Shop, without Navi's\n"
      "flight, Navi waking Link or Saria at the door."),
     ("skip_deku_talk", "Quality of Life", "Cutscenes", "Skip the Great Deku Tree's Talk", "bool", None, True,
      "The Great Deku Tree's speech when you first reach him doesn't play: his mouth is open and you can\n"
      "walk straight in. With Mido still blocking (Kokiri Forest not Open), this happens when Mido steps\n"
-     "aside after seeing your sword and shield. (From Clawshot.)"),
+     "aside after seeing your sword and shield."),
     ("quick_chests", "Quality of Life", "Cutscenes", "Chests Without Cutscene", "bool", None, True,
      "Big chests open without the camera move and Link's opening animation: the lid opens, Link holds\n"
-     "the item up and its message shows. The fanfare starts at once. (From OotrR.) Small chests keep\n"
+     "the item up and its message shows. The fanfare starts at once. Small chests keep\n"
      "their own short opening. A chest that starts a story scene (such as the vanilla Kokiri Sword)\n"
      "keeps it."),
     ("bag_bombs_no_bracelet", "Quality of Life", "Gameplay", "Bag Bombs without Goron Bracelet", "bool", None, True,
@@ -236,12 +259,12 @@ SETTINGS = [
      "only appear for adult Link (Kakariko, Death Mountain Trail, Zora's River and others) are there for\n"
      "child Link too, at the same spot; it's the same Skulltula, so it counts once. Not copied: the ones\n"
      "tied to another object (Lake Hylia, Zora's Domain) and Gerudo's Fortress (child can't go there).\n"
-     "The logic doesn't count on this: it still expects night or adult Link for them. Tested in-game."),
-    ("skip_ganon_trials", "Quality of Life", "Gameplay", "Skip Ganon's Trials (experimental)", "bool", None, False,
+     "The logic doesn't count on this: it still expects night or adult Link for them."),
+    ("skip_ganon_trials", "Quality of Life", "Gameplay", "Skip Ganon's Trials", "bool", None, False,
      "The six trials inside Ganon's Castle count as done from the start: the barriers are gone and the\n"
      "way up the tower is open. The trial rooms and their chests are still there. The logic then only\n"
      "needs the rainbow bridge, the Bow and the Light Arrows to beat Ganon (the trial rooms' own\n"
-     "checks still expect what the trials need). Not yet tested in-game."),
+     "checks still expect what the trials need)."),
     ("saria_song_ocarina", "Quality of Life", "Gameplay", "Saria's Song With Just an Ocarina", "bool", None, True,
      "Saria teaches her song in Sacred Forest Meadow as soon as you own an ocarina (either one);\n"
      "you don't need to meet Zelda first. Works with any Kokiri Forest setting."),
@@ -251,11 +274,22 @@ SETTINGS = [
      "Sell a single Big Poe to the ghost shop in the adult Market to get his reward (normally ten,\n"
      "1000 points), so your first sale is the last one. Not yet confirmed in-game."),
     # ---- Exclusions
-    ("excluded_locations", "Exclusions", "Excluded", "Excluded Locations (experimental)", "list", None, [],
-     "Locations that never hold progression or dungeon items (only rupees, ammo, hearts)."),
+    ("excluded_locations", "Exclusions", "Excluded", "Excluded Locations", "list", None, [],
+     "Checks you exclude never hold anything you need: no progression items, keys or boss rewards,\n"
+     "only rupees, ammo, hearts and the like (a map or compass may land there).\n"
+     "A song or boss reward spot that can only hold a song or reward with your settings stays included\n"
+     "(the log says which). Excluding a great many checks can leave too little room for the required\n"
+     "items; generation then fails and says to exclude fewer."),
     # ---- ROM Options
     ("create_spoiler", "ROM Options", "Output", "Create Spoiler Log", "bool", None, True,
-     "Write spoiler.txt / spoiler.json next to the mod."),
+     "Writes spoiler.txt and spoiler.json next to the mod: where every item is, the hints and the\n"
+     "settings."),
+    ("per_seed_saves", "ROM Options", "Output", "Per-Seed Saves", "bool", None, True,
+     "Each seed keeps its own save slots, in Longshot and in Switch emulators (Eden, Citron, Lichii and\n"
+     "other yuzu-family emulators: set the output folder to the emulator's load/0400486024DEC000 folder).\n"
+     "Generating a seed, or Play This Seed on the ROM Options tab, stores the slots you have now with their\n"
+     "seed and brings in the new seed's (empty slots for a new one). Slots no seed owns are copied to\n"
+     "save_backups first. The game's options are shared. Close the game before switching."),
 ]
 
 DEFAULTS = {s[0]: s[6] for s in SETTINGS}
@@ -267,7 +301,8 @@ _PRESET_QOL = {
     "skip_cutscenes": True, "skip_story_scenes": False, "skip_area_intros": False, "skip_kaepora": True,
     "skip_opening": True, "skip_deku_talk": True, "quick_chests": True,
     "dodongo_bag_bombs": True, "saria_song_ocarina": True, "anju_one_cucco": True, "big_poe_one": False,
-    "gs_any_time": False, "skip_ganon_trials": False,
+    "gs_any_time": True, "skip_ganon_trials": True,
+    "rainbow_bridge": "vanilla", "bridge_medallions": 6, "bridge_tokens": 100,
     "skip_epona_race": False, "logic_rules": "glitchless", "reachable_locations": "all",
     "small_keys": "vanilla", "boss_keys": "vanilla", "item_pool": "balanced", "refill_needs_item": True,
     "shuffle_freestanding": True, "shuffle_heart_containers": True, "shuffle_npc": True, "shuffle_quest": True,
@@ -305,7 +340,7 @@ PRESET_TIPS = {
               "shop shuffled at random prices, vanilla maps and compasses, and bombs need the Goron Bracelet.",
 }
 for _name, _p in PRESETS.items():
-    assert set(_p) == set(DEFAULTS) - {"excluded_locations", "create_spoiler"}, (_name, set(DEFAULTS) ^ set(_p))
+    assert set(_p) == set(DEFAULTS) - {"excluded_locations", "create_spoiler", "per_seed_saves"}, (_name, set(DEFAULTS) ^ set(_p))
     for _k, _v in _p.items():
         assert SPEC[_k][4] != "choice" or _v in {o[0] for o in SPEC[_k][5]}, (_name, _k, _v)
 
@@ -354,6 +389,43 @@ UNSUPPORTED = [
 ]
 
 
+# Test status, shown as a badge in the window instead of the label's "(experimental)" text. The labels keep the
+# text (the spoiler log, settings.txt and the checklist show it); the window strips it with split_status.
+STATUS_STABLE, STATUS_TESTING, STATUS_EXPERIMENTAL = "stable", "testing", "experimental"
+_STATUS_PAREN = re.compile(r"\s*\(([^()]*(?:experimental|testing|not working)[^()]*)\)", re.I)
+
+
+def split_status(text):
+    """("Skip Area Intro Cutscenes", "testing") for "Skip Area Intro Cutscenes (needs further testing)".
+    "needs ... testing" anywhere means In Testing (partly confirmed in-game); otherwise "experimental" or "not working"
+    means Experimental; no such note means Stable. A note inside other text ("Remove (replaced by junk,
+    experimental)") keeps the rest: "Remove (replaced by junk)"."""
+    status = STATUS_STABLE
+    out = text
+    for m in _STATUS_PAREN.finditer(text):
+        note = m.group(1).lower()
+        if "testing" in note:
+            status = STATUS_TESTING
+        elif status == STATUS_STABLE:
+            status = STATUS_EXPERIMENTAL
+        rest = [p.strip() for p in m.group(1).split(",")
+                if not re.search(r"experimental|testing|not working", p, re.I)]
+        out = out.replace(m.group(0), (" (%s)" % ", ".join(rest)) if rest else "", 1)
+    return out.strip(), status
+
+
+def setting_status(key, value=None):
+    """Status of setting `key`; for a choice setting, of its option `value` (or the setting's own note)."""
+    spec = SPEC[key]
+    status = split_status(spec[3])[1]
+    if spec[4] == "choice" and value is not None:
+        label = next((lab for v, lab in spec[5] if v == value), "")
+        opt = split_status(label)[1]
+        if opt != STATUS_STABLE:
+            return opt
+    return status
+
+
 # Settings that were renamed, and settings that are now part of every seed (no longer a choice).
 RENAMED = {"free_bombs": "bag_bombs_no_bracelet"}
 BUILT_IN = {"skip_saria_intro"}
@@ -379,8 +451,12 @@ def normalize(settings):
     return out
 
 
+# Settings that only decide where things are written, not what the seed is: left out of the settings string
+NOT_IN_STRING = {"per_seed_saves"}
+
+
 def to_string(settings):
-    diff = {k: v for k, v in normalize(settings).items() if v != DEFAULTS[k]}
+    diff = {k: v for k, v in normalize(settings).items() if v != DEFAULTS[k] and k not in NOT_IN_STRING}
     raw = zlib.compress(json.dumps(diff, sort_keys=True, separators=(",", ":")).encode(), 9)
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 

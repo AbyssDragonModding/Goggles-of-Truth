@@ -4,6 +4,105 @@ All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new s
 minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
 different version.
 
+## 0.6.1 - 2026-11-16
+
+### Added
+- **Rainbow Bridge Requirement** (World > Rainbow Bridge, Vanilla by default): what makes the rainbow
+  bridge to Ganon's Castle appear. **Vanilla** (after Zelda's Light Arrows scene), **Medallions** (any 1 to 6 of the
+  six, set with Medallions Needed), **Spiritual Stones** (all three) or **Gold Skulltula Tokens** (1 to 100, set
+  with Gold Skulltula Tokens Needed). Every option also needs the Bow and the Light Arrows, in the game and in the
+  logic, since Ganon can't be beaten without them. How the bridge works (`Logic/GanonCastle_Level_Field_00_Prefab`,
+  its multi-input links decoded): its two trigger areas exist while the castle quest is past Ready and not past
+  Step01 (`Defeat_Ganon_IsAfter_Ready_Exp` AND NOT `..._Step01_Exp`), that is after Zelda's Light Arrows scene
+  (`AllSage` sets Step01) and before the bridge scene (`GanonCastle_Adult_Field_Rainbow`, which sets Step02 and makes
+  the bridge stay). The chosen requirement is OR-ed into the Ready flag, so the areas, and the bridge scene, come
+  once it's met. Zelda's scene no longer sets the quest back to Step01 when the bridge came first. Two first
+  versions failed in-game (no bridge): one replaced the Step01 flag (which switches the areas off), and its "3 of 6
+  medallions" was one computed flag of 123 entries where the game's own are at most 26; the count is now a chain of
+  small flags (at most 9 entries). Checked on 16 seeds (every option, 1/3/5/6 medallions, Beginner and Expert):
+  each requirement is exact (one medallion, stone or token short, or no Bow, keeps it away). Confirmed in-game
+  with Medallions (3, with the Bow and Light Arrows, no Zelda scene: the bridge appeared). Spiritual Stones and
+  Gold Skulltula Tokens go through the same flags (only the requirement part differs: three stone flags, or the
+  token count) and are marked In Testing until seen in-game. The fishing pond owner also reads the Ready flag for one line, so that line may change once the
+  requirement is met.
+  In-game tests of Spiritual Stones and Gold Skulltula Tokens (both with the Light Arrows added last from the
+  debug menu) showed no bridge. Every item has two records: its "got it" flag (`IsGet.<item>`) and its pouch
+  count (`PouchData.<item>.StockNum`); items given by a debug menu fill the pouch only. Each bridge item (medallions,
+  stones, Bow, Light Arrows) now counts as owned when either is set: a small computed flag per item,
+  `Rando_Have_<item>` = flag OR count > 0 (opcode 19, the game's own "more than" as `HaveDefeatedEnemy_*` use it).
+  Checked offline with items given either way. **Spiritual Stones** then worked in-game (no bridge without the
+  stones, the bridge scene once all three and the Bow and Light Arrows were there) and is now stable; Medallions
+  was rechecked in-game and works as intended.
+  **Gold Skulltula Tokens** then gave the bridge with 0 tokens. The token count's number (opcode 16) was written as
+  a U64, like the other entries; the game's own flags write it as a plain signed Int (`[16, 1]` in
+  `MiniGame_DampeRace_IsClearLeastOnce`, `[16, 100]` in the 100-token check), so the game most likely read no
+  number and "not fewer than 0 tokens" was always true. It's now an Int, also in the pouch-count checks
+  (`count > 0`, which only worked by luck). Checked by writing and reading the file back, then in-game: no
+  bridge without the tokens, the bridge with them. All four options (Vanilla, Medallions, Spiritual Stones, Gold
+  Skulltula Tokens) are now stable, and their tooltips say what each one needs.
+- **Number fields in the window** (a SpinBox, for the two counts above); a count is greyed out unless its option
+  is chosen.
+- **Per-Seed Saves** (ROM Options > Output, on by default; tested in Longshot and in Lichii). Each seed keeps its own save slots,
+  in Longshot and in yuzu-family emulators (output folder = the emulator's `load/0400486024DEC000`). Generating
+  a seed stores the current slots with the seed they belong to (in `<seed folder>/saves/`) and starts the new
+  one with empty slots; **Play This Seed** (new Seeds and saves card on the ROM Options tab) switches a seed
+  back on, every other one off, and restores its slots. Slots no seed owns go to `save_backups/` first;
+  nothing is deleted before it's copied; `option.sav` is shared. With an emulator, older seeds are switched
+  off by moving them to `load/GogglesOfTruth_off`. The game must be closed. Checked on copies of the save
+  folders, then confirmed in Longshot and in Lichii: stable.
+- **Status badges in the window.** Every option shows a pill-shaped badge instead of "(experimental)" or
+  "(needs further testing)" in its name: Stable (green), In Testing (yellow), Experimental (red). A drop-down's
+  badge follows the chosen option. The spoiler log, settings.txt and the checklist keep the written status.
+  The badges are XML widgets (`rando/ui/widgets.xml`: `Badge`, `StableBadge`, `TestingBadge`,
+  `ExperimentalBadge`), registered before the window loads, so their look and colours are defined in one place.
+
+### Fixed
+- **Skip Epona Race** works a new way (still experimental). In-game, Epona's Song inside the Lon Lon Ranch fence
+  did nothing: the old edit tried to register the ranch's Epona as your horse inside the song's own flow. The
+  game does that itself when you ride Epona out over a ranch fence or through the main gate while the Get_Epona
+  quest is at exactly AfterWonGambleRace (`Get_Epona`'s `Sub_Get_Epona_EscapeRanch_*_Warp`:
+  `EventCopyAndRegisterOwnedHorse`, then the quest's Complete). So the song, as adult inside the fence with no horse
+  of your own, now moves the quest to AfterWonGambleRace (as if Ingo's race was won) and then calls the ranch horses
+  as usual; ride Epona out of the ranch and she's yours, and from then on Epona's Song calls her. Only once child
+  Malon's song scene has played (the quest is then past ReadyForGetEponaSong, which child Malon's scene needs; moving
+  the quest on earlier would lose the Song from Malon check), not while riding or racing. A first in-game try paid
+  Ingo for a ride (that counts as riding, so the song only called the horses) and Epona didn't come in Hyrule
+  Field afterwards; the tooltip now says not to pay for a ride. Still to be tested in a full seed.
+- **Epona in the logic** needed only adult Link and Epona's Song. Ingo's race (and Skip Epona Race) also needs the
+  Get_Epona quest past ReadyForGetEponaSong, which only child Malon's song scene does (the Song from Malon check,
+  whatever it holds), so Epona now also needs that check's rule (child in Hyrule Field with an ocarina).
+- **The seed number** in the window stayed the same after changing a setting, so the next seed could overwrite the
+  one made before with other settings. Changing any setting now rolls a new seed number when the one in the box was
+  already used (made this session, or its folder is in the output folder); a number you typed and haven't used stays.
+- **Skip Area Intros** also skips the Temple of Time's first-entry scene (`Dm_TimeTemple_0000`) and adult Link's first
+  step out into the ruined Castle Town (`Dm_TimeTemple_0065`; the adult Market's location area waits for it). Both
+  are events of their own, emptied down to their visited flags. Not yet tested in-game.
+- **Excluded Locations** is now stable. Checked with 12 seeds across the three presets and a maximum-shuffle
+  setup, with 25% to 60% of all locations excluded at random: no excluded spot got progression, a key or a
+  boss reward, and every seed generated was beatable. Fixed along the way:
+  - excluding a song spot with Shuffle Songs: Song Locations (or a boss reward spot with rewards at reward
+    spots) made every seed fail, since that spot can only hold a song; such a spot now stays included and
+    the log names it;
+  - maps and compasses may now go on excluded spots (they're optional), so excluding most of a dungeon
+    with Own Dungeon maps and compasses works;
+  - when too many locations are excluded to fit the required items, the error now says so.
+- **The Gold Skulltula on Ganon's Castle's grounds** was only in logic once all of Ganon's Castle was done. It's on
+  the Castle Town side of the rainbow bridge, by the Great Fairy (as in the original game), so it now needs only
+  adult Link. That made 100 tokens impossible for a token bridge; it also puts that Skulltula in logic earlier in
+  every seed.
+
+### Changed
+- **Presets:** Beginner, Standard and Expert now turn on Gold Skulltulas Day and Night, Any Age and Skip Ganon's
+  Trials (both confirmed in-game).
+- **Skip Ganon's Trials** and **Gold Skulltulas Day and Night, Any Age** are confirmed in-game (the barriers are gone,
+  the tower's lift works and the way up to Ganondorf works; night-only Skulltulas appear by day, adult-only ones as
+  child) and are no longer marked experimental.
+- The **0.6.0 Rainbow Bridge logic** (Shadow and Spirit Medallion quests) is the Vanilla option and now also asks for
+  the Bow and the Light Arrows, which Ganon needs anyway.
+- **Tooltips of stable settings** say only what the setting does: test notes ("Tested in-game", "confirmed
+  in-game"), internal remarks and source credits are gone (the README's Credits list them). Maps & Compasses
+  describes Vanilla, Excluded Locations is wrapped like the others, Create Spoiler Log says what the log holds.
+
 ## 0.6.0 - 2026-11-15
 
 The randomizer is now called **Goggles of Truth** (an OoT26 randomizer mod); the generator is the **Goggles of
