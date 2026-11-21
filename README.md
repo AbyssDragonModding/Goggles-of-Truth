@@ -1,433 +1,290 @@
 # Goggles of Truth
-### An OoT26 randomizer mod
-## Zig rewrite in progress and testing, Why?: On average a seed generation is about ~2-3x faster than the python version, easier cross platform compilation, lower binary size.
 
-## Current Version: 0.6.1 (PUBLIC BETA RELEASE)
-**Goggles of Truth** is an item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time*
-(OoT26); the **Goggles of Truth Randomizer** is the program that makes the seeds. It shuffles chests,
-songs, dungeon rewards, NPC rewards, shop items, Gold Skulltulas and more, and checks that every seed can be
-beaten. The settings follow the classic [OoT Randomizer](https://ootrandomizer.com), adjusted to what the
-remake allows.
+**An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26).**
 
-**No game files are included.** The randomizer reads your own game files (a `.nup` package, or the extracted `romfs`
-and `exefs`) and writes only the files it changes into a new mod folder. Share seeds and settings strings, never mod folders.
+Version **0.7.0** (public beta) · [Discord](https://discord.gg/adSV8cWfBY) ·
+[Source](https://github.com/AbyssDragonModding/Goggles-of-Truth)
 
-><span style="display: flex; justify-content: center; color: red;">[WARNING]</span>
-> **This randomizer is extremely early in development.** Expect bugs and broken logic: items that don't
-> appear or can't be picked up, seeds that softlock or can't be finished, and settings that don't do what
-> they say. Settings marked *experimental* are the least reliable. Don't play a seed you can't afford to
-> abandon, and keep the spoiler log handy.
->
-> Your test reports are what makes it better; see [Testing and reporting problems](#testing-and-reporting-problems).
+Goggles of Truth shuffles chests, songs, dungeon rewards, NPC gifts, shop items, Gold Skulltulas and more, and
+checks that every seed can be beaten. Its settings follow the classic [OoT Randomizer](https://ootrandomizer.com),
+adjusted to what the remake allows. The **Goggles of Truth Randomizer** is the program that makes the seeds.
 
+**No game files are included.** The randomizer reads your own game files (a `.nup` package or an extracted `romfs`
+and `exefs`) and writes only the files it changes into a new mod folder. Share seeds and settings strings, never
+mod folders.
 
-> **Get automatic updates: clone the repository instead of downloading the ZIP.** Install
-> [git](https://git-scm.com/downloads), open a terminal (Windows: right-click inside the folder you want it in
-> and choose *Open in Terminal*), and run:
->
-> ```bash
-> git clone https://github.com/AbyssDragonModding/Goggles-of-Truth
-> ```
->
-> Then run the setup in the new `Goggles-of-Truth` folder as usual ([Setup](#setup)). From then on, every time you open
-> the randomizer it checks GitHub, pulls the newest version, installs any new packages and restarts itself,
-> and the log lists what changed. A ZIP download doesn't update itself; you have to download each new version
-> by hand. Already have the ZIP? Clone into a new folder and copy your `user_settings.toml` over. More in
-> [Updating to a new version](#updating-to-a-new-version).
+> [!WARNING]
+> **This randomizer is early in development.** Expect bugs and broken logic: items that don't appear or can't be
+> picked up, seeds that softlock, settings that don't do what they say. Settings marked *Experimental* are the least
+> reliable. Don't play a seed you can't afford to abandon, and keep the spoiler log handy.
+> Your test reports make it better: see [Testing and reporting problems](#testing-and-reporting-problems).
 
-[Disclamer] Yes claude was used with the production of this. It accelerates development a ton. Most settings are manually tested in game manually
-=======
+*Disclaimer: Claude was used to help build this; it speeds development up a lot. Settings are tested in-game by hand.*
 
 ## Contents
 
+- [Why Zig?](#why-zig)
 - [What you need](#what-you-need)
-- [Setup](#setup)
+- [Getting the randomizer](#getting-the-randomizer)
 - [Making a seed](#making-a-seed)
-- [Installing the seed in your emulator](#installing-the-seed-in-your-emulator)
-  - [Playing with Longshot (PC)](#playing-with-longshot-pc)
-  - [Per-seed saves](#per-seed-saves)
+- [Installing a seed](#installing-a-seed)
 - [Testing and reporting problems](#testing-and-reporting-problems)
 - [Settings](#settings)
-- [Tools](#tools)
+- [Command-line tool](#command-line-tool)
+- [For developers](#for-developers)
 - [Supported game versions](#supported-game-versions)
 - [Known issues](#known-issues)
 - [Versions](#versions)
 - [Credits](#credits)
 
+## Why Zig?
+
+Up to 0.6.2 the randomizer was a Python program. It is now written in [Zig](https://ziglang.org): one small program
+per system, with nothing to install, that opens straight away and makes seeds 2.3–3.4× faster.
+
+The Python version is deprecated and no longer updated. Its last state is kept under the tag
+[`python-legacy`](https://github.com/AbyssDragonModding/Goggles-of-Truth/tree/python-legacy).
+
+### Benchmark
+
+The same settings, the same game files and the same machine, both generators making a complete mod folder
+(including the spoiler log and checklist). Three runs per case; times are wall-clock from start to exit, averaged.
+
+| Game files | Settings | Python 0.6.2 | Zig 0.6.2 | Faster by |
+|---|---|---|---|---|
+| Extracted romfs | Defaults | 10.9 s | **3.6 s** | **3.0×** |
+| Extracted romfs | Expert preset | 15.1 s | **4.4 s** | **3.4×** |
+| `.nup` package | Defaults | 17.3 s | **7.7 s** | **2.3×** |
+| `.nup` package | Expert preset | 23.2 s | **8.5 s** | **2.7×** |
+
+The Zig times barely varied between runs (±0.1 s); Python's varied by up to ±1 s. The more a setting changes, the
+bigger the gap: the Expert preset adds about 4–6 s to a Python seed but under 1 s to a Zig one. Most of the Zig
+version's time goes to reading and decompressing the game's files, which with a `.nup` means unpacking them from the
+package first.
+
+Peak memory use (RAM) is about the same for both:
+
+| Game files | Settings | Python | Zig |
+|---|---|---|---|
+| Extracted romfs | Defaults / Expert | 186 / 214 MB | 173 / 235 MB |
+| `.nup` package | Defaults / Expert | 379 / 415 MB | 326 / 440 MB |
+
+<sub>Test machine: AMD Ryzen 9 9950X, 64 GB RAM, Windows 11, game files on a local drive. Python 3.15.0 with the
+0.6.2 Python randomizer; Zig 0.17.1 `ReleaseFast` build of `goggles_cli generate`. Seeds `BENCH1`–`BENCH3`.
+Python 0.6.2 crashes in its small-chest patch (`qol.py`), so the Python runs used an in-memory fix of that one
+function (the same fix the Zig version has). The game files and the Python source were not changed.</sub>
+
+### What else changed for players
+
+| | Python version | Zig version |
+|---|---|---|
+| Install | Python 3.14+, four pip packages, a setup script | Nothing. Unzip and run. |
+| Download | Python (~100 MB installed) + packages | About 5.7 MB on Windows (the program and `raven.dll`) |
+| Start | A script checks Python and packages first | Opens straight away |
+| Systems | Windows, Linux (macOS untested) | Windows, Linux, macOS (Intel and Apple Silicon) |
+| Settings strings | | Work in both versions, in both directions |
+
+The same version, seed and settings string still always makes the same mod, but the Zig version picks items with a
+different random number generator, so **a seed number makes a different seed than it did in the Python version**.
+
 ## What you need
 
-- A PC with a graphics driver that supports **Vulkan** (any recent NVIDIA, AMD or Intel driver).
-- **Python 3.14 or newer.** The setup script installs it for you (see [Setup](#setup)).
-- **Your own game files**: either the game's **`.nup` file** (nothing to extract), or the
-  **extracted romfs and exefs**. The romfs is the folder that contains `Banc`, `Event`,
-  `Pack`, `RSDB`, `System` and so on; the exefs contains `main` and `main.npdm`. Most Switch emulators can
-  extract both: right-click the game in the game list and choose the *Extract RomFS* / *Dump RomFS* and
-  *Extract ExeFS* / *Dump ExeFS* options. Keep them side by side (`<game>/romfs` and `<game>/exefs`): the
-  randomizer finds the exefs next to the romfs.
-- **A supported game version.** See [Supported game versions](#supported-game-versions).
+- A PC with a **Vulkan** graphics driver (any recent NVIDIA, AMD or Intel driver).
+- **Your own game files**, either:
+  - the game's **`.nup` file** (nothing to extract; it is only read, never changed), or
+  - the **extracted romfs and exefs**, side by side:
+    ```
+    D:\Games\OoT Remake\romfs\     <- folders like Banc, Event, Pack, RSDB, System
+    D:\Games\OoT Remake\exefs\     <- the files main and main.npdm
+    ```
+    Most Switch emulators extract both: right-click the game and choose **Extract RomFS** / **Dump RomFS**, then
+    **Extract ExeFS** / **Dump ExeFS**.
+- **A supported game version** (see [Supported game versions](#supported-game-versions)).
 
-## Setup
+## Getting the randomizer
 
-You only do this once, and you don't need to know anything about programming. The randomizer is a Python
-program: **Python** is the free program that runs it, and the setup script installs Python and everything
-else for you.
+1. Download the build for your system from the project's **Releases** page, or [build it yourself](#building).
+2. Extract the ZIP somewhere easy to find (not inside your romfs folder).
+3. Start it:
 
-**What you'll end up with:** a randomizer folder you double-click to open, plus your own game files
-(romfs and exefs) that you choose inside the randomizer.
-
-### Step 1: Get your game files ready
-
-The randomizer reads the game from your own dump; it never comes with any game files.
-
-**If you have the game as a `.nup` file**, you're done: you'll choose that file in the randomizer with
-**Browse .nup** (see [Making a seed](#making-a-seed)). It is only read, never changed, and its own exefs is used for the version check.
-
-**Otherwise, extract the romfs and exefs:**
-
-1. In your Switch emulator, right-click the game in the game list.
-2. Choose **Extract RomFS** (some emulators call it **Dump RomFS**) and save it to a folder.
-3. Do the same with **Extract ExeFS** / **Dump ExeFS**.
-4. Keep both next to each other, for example:
-   ```
-   D:\Games\OoT Remake\romfs\     <- has folders like Banc, Event, Pack, RSDB, System
-   D:\Games\OoT Remake\exefs\     <- has the files main and main.npdm
-   ```
-
-### Step 2: Download the randomizer
-
-1. Open this project's GitHub page and click the green **Code** button, then **Download ZIP**.
-2. Find the ZIP in your Downloads folder, **right-click it and choose Extract All...** (on Linux: right-click >
-   *Extract Here*). Put the extracted folder somewhere easy to find, like your Desktop or Documents.
-   - Don't put it inside your romfs folder.
-   - Don't run anything straight from inside the ZIP. Always extract it first.
-
-**Or, if you have [git](https://git-scm.com/downloads): clone it instead, and it keeps itself up to date.**
-
-```bash
-git clone https://github.com/AbyssDragonModding/Goggles-of-Truth
-```
-
-A cloned randomizer checks GitHub each time it opens. If there's a newer version, it pulls it, installs any
-new packages, and opens again on the new version, and the log lists what changed. A ZIP download is never
-changed. See [Updating to a new version](#updating-to-a-new-version).
-
-The extracted folder looks like this. These are the files you'll use:
-
-| File | What it's for |
+| System | Program |
 |---|---|
-| `Setup (Windows).bat` | **Windows:** installs everything. Run it once. |
-| `Start Randomizer (Windows).bat` | **Windows:** opens the randomizer. |
-| `setup_linux.sh` | **Linux:** installs everything. Run it once. |
-| `run_linux.sh` | **Linux:** opens the randomizer. |
-| `goggles_of_truth_rando.pyw` | The randomizer itself. Double-clicking it also works once setup is done. |
-| `ootr_remake.pyw` | The old start file (before 0.6.0). It only opens `goggles_of_truth_rando.pyw`, so old shortcuts still work. |
+| Windows | `goggles_of_truth_rando.exe` (keep `raven.dll` next to it) |
+| Linux | `goggles_of_truth_rando` (keep `libraven.so.0` next to it) |
+| macOS (Intel or Apple Silicon) | `Goggles of Truth Randomizer.app` |
 
-### Step 3 (Windows): Run the setup
+If Windows shows **"Windows protected your PC"**, click **More info**, then **Run anyway**.
 
-1. Open the randomizer folder and **double-click `Setup (Windows).bat`**.
-2. If Windows shows a blue box saying **"Windows protected your PC"**, click **More info**, then **Run
-   anyway**. This shows up for any script downloaded from the internet. The file is plain text: right-click it
-   and choose **Edit** if you want to read what it does first.
-3. A black window opens and works through three steps:
-   1. **Python:** if you don't have Python 3.14 or newer, it installs Python 3.14 just for your Windows user
-      (no administrator password). It uses *winget* (built into Windows 10 and 11) or downloads the
-      official installer from python.org. This can take a minute or two, and no installer window appears.
-   2. **Packages:** it installs the extra pieces the randomizer needs, listed in `requirements.txt`. These
-      are the window (`raven-gui`), the checklist spreadsheet (`openpyxl`) and the item tracker's icons
-      (`texture2ddecoder`, `pillow`).
-   3. **File association:** it makes `.py` and `.pyw` files open with Python when you double-click them.
-      This only changes your own user's settings.
-4. When it says **"Setup finished"**, press any key to close the window.
+If macOS says the app **can't be opened** because it's from an unidentified developer, right-click it, choose
+**Open**, then **Open** again (once). Move it out of your Downloads folder first: macOS runs apps opened from there
+from a read-only copy, where your settings can't be saved.
 
-If it says *"Python was installed, but this window can't see it yet"*, close the window and double-click
-`Setup (Windows).bat` again. Windows only notices a new program in newly opened windows.
-
-### Step 3 (Linux): Run the setup
-
-1. Open the randomizer folder in your file manager, right-click an empty spot and choose **Open in
-   Terminal** (or open a terminal and `cd` into the folder).
-2. Type this and press Enter:
-   ```bash
-   bash setup_linux.sh
-   ```
-3. If Python 3.14 isn't installed, it asks before installing it. It uses your package manager (apt, dnf,
-   pacman or zypper), which asks for your password (`sudo`). If your distribution doesn't have 3.14 yet, it
-   offers to use [uv](https://docs.astral.sh/uv/) instead, which installs Python into your home folder
-   without a password.
-4. It then makes a private Python environment in a `.venv` folder inside the randomizer folder and
-   installs the packages there. Nothing goes into your system Python.
-5. Finally it adds **Goggles of Truth Randomizer** to your application menu and makes `.pyw` files open with
-   Python. It doesn't do this for `.py` files, so they still open in your text editor.
-
-You also need a **Vulkan graphics driver**. Most distributions already have one; the setup warns you if it
-can't find `vulkaninfo`.
-
-### Step 4: Start the randomizer
-
-- **Windows:** double-click **`Start Randomizer (Windows).bat`** (or `goggles_of_truth_rando.pyw`).
-- **Linux:** open **Goggles of Truth Randomizer** from your application menu, double-click `goggles_of_truth_rando.pyw`, or run
-  `./run_linux.sh` in a terminal.
-
-The start scripts check that everything is still installed and fix it if not, for example after you download
-a new version. If Python is missing entirely, they run the setup for you.
-
-**Desktop shortcut (Windows):** right-click `Start Randomizer (Windows).bat` > **Show more options** > **Send
-to** > **Desktop (create shortcut)**.
-
-### Updating to a new version
-
-**A git clone updates itself** when you open the randomizer (Step 2). It only uses `git pull --ff-only`, so
-it never overwrites anything: if you changed one of the randomizer's own files, or made commits of your own,
-the update is skipped and the log says why. With no internet the check is skipped after 15 seconds at most.
-To turn it off, set `auto_update = false` under `[app]` in `user_settings.toml` (or set the environment
-variable `OOTR_NO_UPDATE=1`).
-
-**A ZIP download:** download and extract the new ZIP the same way. You can delete the old folder, but keep your output folder
-with your seeds. Then just start the randomizer. The start script installs any new packages automatically,
-and running the setup again is never harmful.
+**Updating:** download the new build and copy your `user_settings.toml` into the new folder. Keep your output folder
+with your seeds. (The Python version's git auto-updater isn't part of the Zig version.)
 
 ### If something goes wrong
 
 | What you see | What to do |
 |---|---|
-| "Windows protected your PC" | Click **More info**, then **Run anyway**. |
-| `goggles_of_truth_rando.pyw` opens in Notepad, or Windows asks which app to use | Use `Start Randomizer (Windows).bat` instead, or right-click the file > **Open with** > **Choose another app** > **Python** > tick **Always**. |
-| "Python 3.14 or newer is required" | Run the setup again. If you installed Python yourself, make sure it's 3.14 or newer. |
-| "The GUI library isn't installed yet" | Run the setup again (it needs an internet connection). |
-| The window doesn't open, or closes straight away | Your graphics driver may not support Vulkan. Update it from NVIDIA, AMD or Intel. |
-| "The randomizer crashed" | It names an `error_log.txt` file in the randomizer folder. Attach that file when you [open an issue](#opening-an-issue). |
-| The setup says the download failed | Check your internet connection. You can also install Python 3.14 yourself from [python.org/downloads](https://www.python.org/downloads/) (tick **"Add python.exe to PATH"**) and run the setup again. |
-
-### Doing it by hand (for those who prefer to)
-
-Install Python 3.14 or newer from [python.org](https://www.python.org/downloads/) (Windows: tick **Add
-python.exe to PATH**), then in a terminal in the randomizer folder:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-```bash
-python goggles_of_truth_rando.pyw
-```
-
-On Linux use `python3.14` (or a virtual environment) in place of `python`. macOS isn't tested, but the same
-two commands should work with Python 3.14 from python.org.
+| "Raven could not start (a Vulkan driver is required)" | Update your graphics driver from NVIDIA, AMD or Intel. |
+| "The randomizer couldn't open" | It names an `error_log.txt` next to the program. Attach it when you [open an issue](#opening-an-issue). |
+| The game line on ROM Options is red | Your game version isn't supported: see [Supported game versions](#supported-game-versions). |
 
 ## Making a seed
 
-1. **ROM Options** tab: choose your game and an **output folder** for the finished mod.
-   - **Browse .nup** picks your game's `.nup` file; its own exefs is used.
-   - **Browse folder** picks the extracted romfs folder (or the game folder holding `romfs` and `exefs`). The
-     exefs must be next to the romfs (`<game>/romfs` and `<game>/exefs`). The output folder can't be inside the
-     romfs.
-   - **Playing on PC with [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot)?** Click **Longshot** next
-     to the output folder. See [Playing with Longshot](#playing-with-longshot-pc).
-   - The line under it turns **green** when your game version is supported. If it's red, the randomizer won't
-     generate; see [Supported game versions](#supported-game-versions).
-2. Optional: click **Scan game** to check the game files. This also fills the **Exclusions** tab, where you can
-   double-click a location so it never holds an important item.
-3. Pick your settings on the **World**, **Items**, **Dungeon Items**, **Hints** and **Quality of Life** tabs. Hover over any option to see
-   what it does. Or start from a **Seed preset** (bottom of the window): **Beginner**, **Standard** or **Expert**
-   (see [Seed presets](#seed-presets)), then change what you like.
-4. Click **Generate Mod**. Click **Open Folder** (next to it) to open your output folder. Each seed
-   gets its own folder there:
+1. **ROM Options** tab: choose your game and an **output folder**.
+   - **Browse .nup** picks the game's `.nup` file (its own exefs is used for the version check).
+   - **Browse folder** picks the extracted romfs folder (or the folder holding `romfs` and `exefs`). The output
+     folder can't be inside the romfs.
+   - **Playing on PC with [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot)?** Click **Longshot**. See
+     [Playing with Longshot](#playing-with-longshot-pc).
+   - The line under the game turns **green** when your version is supported.
+2. Optional: **Scan game** checks your files and fills the **Exclusions** tab, where you can double-click a location
+   so it never holds an important item.
+3. Pick settings on the **World**, **Items**, **Dungeon Items**, **Hints** and **Quality of Life** tabs (hover over an
+   option to see what it does), or start from a [seed preset](#seed-presets).
+4. Click **Generate Mod**. **Open Folder** opens the output folder. Each seed gets its own folder:
 
 ```
 <output folder>/GogglesOfTruth_<seed>/
-    romfs/            <- the mod itself; this is what goes into the emulator
+    romfs/            <- the mod itself; this goes into the emulator
     settings.txt      <- version, seed and settings string
     spoiler.txt       <- where every item is, plus a playthrough
     spoiler.json      <- the same, for tools
-    checklist.xlsx    <- test checklist with Pass/Partial/Fail dropdowns and colours
+    checklist.xlsx    <- test checklist (see below)
 ```
 
-The spoiler and checklist files are only written when **Create Spoiler Log** (ROM Options tab) is on, because they
-show every item's location.
+The spoiler and checklist are only written with **Create Spoiler Log** on (ROM Options tab).
 
-**Sharing a seed:** the same **version + seed + settings string** always makes exactly the same mod. Copy the
-settings string from the GUI (or `settings.txt`) and send it with the seed, so others can make the seed
-themselves from their own game files.
+**Sharing a seed:** the same **version + seed + settings string** always makes the same mod. Send the seed and the
+settings string (copy it from the window or `settings.txt`) so others can make it from their own game files.
 
-**Your settings are saved** in `user_settings.toml`, next to `goggles_of_truth_rando.pyw`, every time you change something,
-and loaded when the window opens. The game and output folders are saved there too.
-- **To reset everything**, close the randomizer and delete `user_settings.toml`. To reset only the settings and
-  keep your folders, press **Reset** next to the settings string.
-- **To change settings by hand**, close the randomizer and open the file in any text editor. Every setting is
-  listed with its allowed values and its default. A value that isn't allowed is ignored (the default is used)
-  and the window's log says so. The file is rewritten when the window opens, so edits made while it's open are lost.
-- Versions before 0.5.0 kept this in `.ootr_remake.json` in your user folder. It is read once if
-  `user_settings.toml` doesn't exist yet and is left alone; you can delete it.
+### Your saved settings
 
-## Installing the seed in your emulator
+Everything you change is saved to `user_settings.toml` next to the program, including the game and output folders.
+On macOS it's next to `Goggles of Truth Randomizer.app`, not inside it (as are `save_backups` and `error_log.txt`).
 
-1. In your emulator, right-click the game and choose **Open Mod Data Location** (the name varies a little
-   between emulators).
-2. Copy the whole `GogglesOfTruth_<seed>` folder into that location, so the result looks like
-   `<mod data location>/GogglesOfTruth_<seed>/romfs/...`.
-3. Make sure only one randomizer seed is enabled at a time (most emulators list mods in the game's
-   **Properties** > **Add-Ons** page).
-4. **Start a new save file** for every seed. Old saves keep the previous seed's progress flags. A new save
-   starts outside, in front of the Kokiri Shop (no Navi wake-up or Saria at the door). Or let the randomizer
-   keep each seed's saves apart: see [Per-seed saves](#per-seed-saves). For that, set the output
-   folder to the emulator's mod folder for this game (`<emulator user folder>/load/0400486024DEC000`).
+- **Reset everything:** close the randomizer and delete `user_settings.toml`. **Reset** (next to the settings
+  string) resets only the settings.
+- **Edit by hand:** close the randomizer first; every setting is listed with its allowed values and default. An
+  invalid value is ignored and the log says so.
+- Versions before 0.5.0 kept settings in `.ootr_remake.json` in your user folder. It is read once if
+  `user_settings.toml` doesn't exist yet.
+
+## Installing a seed
+
+### Emulator
+
+1. Right-click the game in your emulator and choose **Open Mod Data Location**.
+2. Copy the whole `GogglesOfTruth_<seed>` folder there, so you get `<mod data location>/GogglesOfTruth_<seed>/romfs/...`.
+3. Enable only one randomizer seed at a time (usually the game's **Properties** > **Add-Ons**).
+4. **Start a new save file** for every seed, or use [per-seed saves](#per-seed-saves). A new save starts in front
+   of the Kokiri Shop.
+
+Tip: set the output folder to the emulator's mod folder for this game (`<emulator user folder>/load/0400486024DEC000`)
+and the randomizer installs seeds and manages saves for you.
 
 ### Playing with Longshot (PC)
 
-[Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) runs the game natively on Windows and Linux. The
-randomizer can write seeds straight into it:
+[Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) runs the game natively on Windows and Linux.
 
 1. Build the game with the Longshot launcher first.
-2. In the randomizer, click **Longshot** next to the output folder (ROM Options tab). It finds the game the
-   launcher made (its default build, in `Games\Longshot\<version>` in your user folder by default) and sets the
-   output folder to that game's `mods` folder. If the game field is empty, it also fills in the `.nup` you gave
-   the launcher. On the first start, with no output folder chosen yet, this happens by itself.
-   - A Longshot game somewhere else: choose its `mods` folder (next to `longshot.exe`) with **Browse**. It's
-     recognized as Longshot all the same.
-3. Generate. Close the game before you do: Longshot reads its mods only when it starts.
-   - Each Longshot update goes into a new folder (`Games\Longshot\<new version>`) with its own `mods` folder.
-     When the randomizer opens after an update, it switches to the new version's `mods` folder by itself (the
-     log says so). Seeds in the old version's folder aren't loaded any more; generate again, or move the one
-     you're playing into the new `mods` folder.
-4. Longshot loads every mod in that folder, so the randomizer **switches off the older seeds** there by putting
-   `_` in front of their names (`_GogglesOfTruth_<seed>`; seeds from before 0.6.0 were called `OoTR_Remake_<seed>`),
-   which Longshot skips. They aren't deleted: to play one again, remove the `_` (and add it to the newer
-   one). Other mods, like a HUD mod, are left alone. If a seed can't be renamed (the game, or another program,
-   has a file in it open), the log says so; rename it by hand.
-5. **Start a new save file** for every seed (with Per-Seed Saves the new seed starts with empty slots).
+2. Click **Longshot** next to the output folder. It finds the launcher's game (by default in
+   `Games\Longshot\<version>` in your user folder), sets the output folder to its `mods` folder, and fills in the
+   launcher's `.nup` if the game field is empty. On the first start this happens by itself.
+   A Longshot game somewhere else: choose its `mods` folder (next to `longshot.exe`) with **Browse**.
+3. **Close the game, then generate.** Longshot reads mods only when it starts.
+4. Longshot loads every mod in `mods`, so older seeds are **switched off** by renaming them to
+   `_GogglesOfTruth_<seed>` (seeds before 0.6.0 were `OoTR_Remake_<seed>`). Nothing is deleted; remove the `_` to
+   play one again. Other mods are left alone.
+5. After a Longshot update (a new `Games\Longshot\<version>` folder), the randomizer switches to the new `mods`
+   folder by itself. Seeds in the old folder aren't loaded any more.
 
 ### Per-seed saves
 
-With **Per-Seed Saves** on (ROM Options > Output, on by default), every seed keeps its own six save slots, so
-switching seeds never mixes their progress. It works when the output folder is:
-- Longshot's `mods` folder (saves in `%APPDATA%\Longshot\save\<account>`; on Linux
-  `~/.local/share/Longshot/save`);
-- or an emulator's `load/0400486024DEC000` folder (Eden, Citron, Sudachi, Lichii and the other yuzu-family
-  emulators; saves in `<emulator user folder>/nand/user/save/0000000000000000/<profile>/0400486024DEC000`).
-  The randomizer then also switches older seeds off for you, by moving them into `load/GogglesOfTruth_off`.
-  It reads the emulator's own settings (`config/qt-config.ini`) for where its saves are, and warns you if the
-  emulator reads its mods from another folder than the one you chose.
+With **Per-Seed Saves** on (ROM Options > Output, on by default), every seed keeps its own six save slots. It works
+when the output folder is:
+
+- Longshot's `mods` folder (saves in `%APPDATA%\Longshot\save\<account>`, on Linux `~/.local/share/Longshot/save`), or
+- an emulator's `load/0400486024DEC000` folder (Eden, Citron, Sudachi, Lichii and other yuzu-family emulators). Older
+  seeds are then switched off by moving them to `load/GogglesOfTruth_off`. The emulator's `config/qt-config.ini` says
+  where its saves are, and you're warned if it reads mods from somewhere else.
 
 **Close the game first.** Then:
-- **Generating a seed** stores the slots you have now with the seed they belong to, and gives the new seed
-  empty slots: start a new file.
-- **Play This Seed** (the Seeds and saves card on the ROM Options tab, or double-click a seed) switches that
-  seed on, every other seed off, and brings its slots back. ▶ marks the seed that's switched on, ★ the one
-  whose saves are in the game.
 
-A seed's slots are kept in its own folder, in `<seed folder>/saves/` (the game doesn't read it). Slots that no
-seed owns, like the saves you had before using this, are copied to `save_backups/` next to the randomizer
-first. Nothing is deleted before it's been copied. The game's options (`option.sav`) are shared by all seeds.
-A mod folder name used again for a different seed doesn't get the old seed's saves back (they go to
-`save_backups/`).
+- **Generating** stores your current slots with the seed they belong to and gives the new seed empty slots.
+- **Play This Seed** (ROM Options > Seeds and saves, or double-click a seed) switches that seed on, all others off,
+  and brings its slots back. ▶ marks the seed that's on, ★ the one whose saves are in the game.
+
+A seed's slots live in `<seed folder>/saves/`. Slots no seed owns (like saves from before) are copied to
+`save_backups/` next to the randomizer first; nothing is deleted before it's copied. `option.sav` is shared by all
+seeds.
 
 ## Testing and reporting problems
 
 ### The checklist
 
-Every seed with a spoiler log comes with a test checklist, `checklist.xlsx`. It has two blocks side by
-side.
+Every seed with a spoiler log comes with `checklist.xlsx`. It opens in Excel, LibreOffice or Google Sheets
+(**File** > **Import** > **Upload** > **Replace spreadsheet**), with its dropdowns, colours and totals.
 
-**Left block (columns A–G): the seed and its settings**
+**Left block (A–G): the settings.** Version, seed and settings string at the top (copy these into bug reports), a
+place for your emulator and name, then every setting with **Expected In-Game**, **How to Test**, **Result** and
+**Notes**.
 
-| Rows / column | What it is |
-|---|---|
-| Version, Seed, Settings String | The seed's identity. Copy these into bug reports. |
-| Emulator / Tester | Fill this in yourself: emulator name and version, and your name if you like |
-| Settings, Passed, Partial, Failed, Untested | Running totals for the settings, next to the seed info; they update as you fill in Result |
-| **Category**, **Setting**, **Value** | Every setting this seed uses, grouped by tab |
-| **Expected In-Game** | What the setting should do in the game (blank when there's nothing to see) |
-| **How to Test** | A quick way to check it |
-| **Result** | `Pass`, `Partial`, `Fail`, or empty if you haven't tested it |
-| **Notes** | What you saw, especially for anything that failed |
+**Right block (J–O): the checks.** Every location by **Region** (roughly in visiting order), with its **Vanilla
+Item**, **Randomized Item** (shop items show their price), **Result** and **Notes**.
 
-**Right block (columns J–O): the checks**
-
-| Rows / column | What it is |
-|---|---|
-| Checks, Passed, Partial, Failed, Untested | Running totals; they update as you fill in Result |
-| **Region** | The area, e.g. Kokiri Forest. Checks are grouped by region in roughly the order you visit them. |
-| **Location** | The check's name (the same name as in the spoiler) |
-| **Vanilla Item** | What's there in the normal game |
-| **Randomized Item** | What should be there in this seed. Shop items show their price. Ammo chests note when they give a Blue Rupee instead because you don't have the matching bag yet. |
-| **Result** | `Pass`, `Partial`, `Fail`, or empty |
-| **Notes** | What happened |
-
-**Result** is a dropdown rather than a checkbox, because a checkbox can't tell "not tested yet" from
-"failed":
+**Result** is a dropdown, so "not tested yet" and "failed" look different:
 
 | Result | Colour | Use it when |
 |---|---|---|
 | **Pass** | green | It works as described |
-| **Partial** | orange | It mostly works, but something is off. Say what in **Notes**. |
+| **Partial** | orange | Mostly works, something is off (say what in Notes) |
 | **Fail** | red | It doesn't work |
-| *(empty)* | none | You haven't tested it yet |
+| *(empty)* | none | Not tested yet |
 
-### Opening the checklist in Google Sheets
+Tips:
+- **Data** > **Create a filter** lets you show one region, or only failures.
+- You don't have to test everything. A few checks per region and every setting you can see in-game already help.
+- For anything that fails, write what happened: didn't appear, couldn't be picked up, wrong item or text, came back
+  after reloading, softlock, crash. Mention what you were doing and which items you had.
 
-1. Go to [sheets.google.com](https://sheets.google.com) and open a **Blank spreadsheet**.
-2. Choose **File** > **Import** > **Upload**, and drop in `checklist.xlsx`.
-3. Set **Import location** to **Replace spreadsheet** and click **Import data**.
-4. Rename the spreadsheet (top left) to the seed, e.g. `OoTR 0.3.1 U5R6C3SVEJ`.
-
-The dropdowns, colours and totals come along with the import. Excel and LibreOffice open the file directly
-as well.
-
-Tips while playing:
-- **Data** > **Create a filter** on the checks block lets you show one region, or only failed checks.
-- You don't have to test everything. A few checks in each region you visit, and every setting you can see
-  in-game, already help a lot.
-- For anything that fails or partly works, write what happened in **Notes**: the item didn't appear, couldn't be picked up,
-  wrong item or text, came back after leaving or reloading, softlock, or crash. Mention what you were doing
-  and which items you had, if it seems relevant.
-
-### Exporting your results
-
-When you're done (or when something breaks):
-
-1. In Google Sheets, choose **File** > **Download** > **Comma Separated Values (.csv)**. This downloads the
-   checklist with your results and notes as a `.csv` file, which is what bug reports use. In Excel, use
-   **File** > **Save As** > **CSV UTF-8**.
-2. Keep the layout as it is: don't move columns or delete the top rows. The exported file then lines up with
-   the original checklist, so the results can be matched check by check.
+**Exporting:** Google Sheets **File** > **Download** > **CSV**, or Excel **Save As** > **CSV UTF-8**. Don't move
+columns or delete the top rows, so results can be matched check by check.
 
 ### Opening an issue
 
-Open an issue on this repository's **Issues** tab and include:
+Open an issue on the repository's **Issues** tab (search existing ones first) and include:
 
-- **Version, seed and settings string.** They're at the top of the checklist and in `settings.txt`.
-- **Your emulator and its version**, and the game's version/update.
-- **What went wrong and where**: the check's Location name from the checklist or spoiler, what you expected
-  and what happened.
-- **Attachments:** your exported checklist `.csv`, and `error_log.txt` if the randomizer itself crashed. Add
-  `spoiler.txt` if you have it. You can drag files straight into the issue text box.
-
-Search existing issues first; if your problem is already there, add your details to it.
+- **Version, seed and settings string** (top of the checklist, or `settings.txt`)
+- **Your emulator and its version**, and the game's version
+- **What went wrong and where:** the location name, what you expected, what happened
+- **Attachments:** the exported checklist `.csv`, `error_log.txt` if the randomizer crashed, and `spoiler.txt` if
+  you have it
 
 ## Settings
 
-The GUI explains every option when you hover over it. Each option has a badge on the right showing how far it's
-been tested: **Stable** (green, confirmed in-game), **In Testing** (yellow, partly confirmed) or **Experimental**
-(red, not confirmed yet). For a drop-down, the badge follows the option you've chosen (Item Pool "Scarce" is
-Experimental, "Balanced" Stable). In short:
+Hover over any option in the window for a full explanation. Each option has a badge showing how far it's been
+tested: **Stable** (green, confirmed in-game), **In Testing** (yellow, partly confirmed) or **Experimental** (red,
+not confirmed). For a drop-down, the badge follows the chosen option (Item Pool "Scarce" is Experimental,
+"Balanced" Stable).
 
 | Tab | What you can change |
 |---|---|
-| **ROM Options** | Game folders, output folder, mod name, seed and whether to write the spoiler log |
-| **World** | Logic (glitchless or none); open Kokiri Forest, the Door of Time, Zora's Fountain and Death Mountain; the rainbow bridge requirement (vanilla, a number of medallions, the three Spiritual Stones or a number of Gold Skulltula tokens; always with the Bow and Light Arrows); skip child Zelda; skip Epona's race (experimental) |
-| **Items** | Quest items: songs, Spiritual Stones and Medallions (in boss rewards or anywhere), ocarinas, Kokiri Sword, Weird Egg. Shuffled locations: freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards (Zelda's Letter, Light Arrows, Biggoron), Great Fairies, Skulltula House rewards, Gold Skulltula tokens (Tokensanity), shop items (items shuffled per shop) and Business Scrubs. Item pool size and whether ammo chests need their bag |
-| **Dungeon Items** | Maps & Compasses (vanilla, own dungeon, removed or start with), small keys and boss keys |
-| **Hints** | Gossip Stone hints (none, balanced, strong or useless; strong and useless experimental) and whether stones need the Mask of Truth |
-| **Quality of Life** | Cutscenes (skip the opening movie, Saria's wake-up scene and the Great Deku Tree's talk, chests without cutscene; skip story scenes such as Rauru and the sages (experimental, needs additional testing; only Rauru and Saria's ocarina tested); all skippable, no area intros (needs further testing), skip Kaepora Gaebora); gameplay (bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina, Gold Skulltulas day and night at any age, skip Ganon's trials); minigames (Anju needs 1 cucco, Big Poe buyer needs 1 Big Poe (experimental)) |
+| **ROM Options** | Game and output folders, mod name, seed, spoiler log, per-seed saves |
+| **World** | Logic (glitchless or none); open Kokiri Forest, Door of Time, Zora's Fountain and Death Mountain; the Rainbow Bridge requirement (vanilla, medallions, Spiritual Stones or Gold Skulltula tokens, shown at the Temple of Time altar); skip child Zelda; skip Epona's race |
+| **Items** | Songs, Spiritual Stones and Medallions, ocarinas, Kokiri Sword, Weird Egg; freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards, Great Fairies, Skulltula House, Tokensanity, items shuffled per shop, Business Scrubs; item pool size; ammo chests needing their bag |
+| **Dungeon Items** | Maps & Compasses, small keys, boss keys |
+| **Hints** | Gossip Stone hints (none, balanced, strong, useless) and whether stones need the Mask of Truth |
+| **Quality of Life** | Cutscene skips, bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina, Gold Skulltulas at any time, skip Ganon's trials, easier minigames |
 | **Exclusions** | Locations that only ever hold minor items |
-| **Not Supported** | Classic randomizer options the remake's data can't support yet, and why |
+| **Not Supported** | Classic randomizer options the remake can't support yet, and why |
 
 ### Seed presets
 
-The **Seed preset** drop-down (bottom of the window) sets every gameplay setting at once. Excluded Locations and
-Create Spoiler Log are kept. Presets only use options confirmed in-game, so nothing experimental is switched on.
-Change any setting afterwards and the drop-down shows **Custom**; it shows a preset's name again whenever your
-settings match it.
+The **Seed preset** drop-down (bottom of the window) sets every gameplay setting at once; Excluded Locations and
+Create Spoiler Log are kept. Presets only use options confirmed in-game. Change anything afterwards and it shows
+**Custom** (it shows the preset's name again whenever your settings match one).
 
 | | Beginner | Standard | Expert |
 |---|---|---|---|
@@ -442,27 +299,19 @@ settings match it.
 | Tokensanity | Off | Dungeons Only | All Tokens |
 | Items Shuffled Per Shop | Off | Off | 4 items, random prices |
 | Maps & Compasses | Start With | Start With | Vanilla |
-| Hints | Balanced, no Mask of Truth needed | Balanced | Balanced |
+| Hints | Balanced, no Mask of Truth | Balanced | Balanced |
 | Bombs without the Goron Bracelet | On | On | Off |
 
-All three: glitchless logic with every location reachable, the balanced item pool, freestanding items, boss
-Heart Containers, character gifts, quest rewards, Great Fairies and the Skulltula House shuffled, vanilla keys,
-refills need their item, and every confirmed cutscene skip and Quality of Life option on.
-
-Labels in the randomizer show how far each setting has been tested in-game:
-- **(experimental):** works in offline checks but hasn't been tried in-game yet.
-- **(needs further testing):** partly confirmed in-game; see the **Partly working** table below.
-- **No label:** confirmed working (the **Working** table). Vanilla and Off choices leave that part of the
-  game unchanged.
-These are the ones most worth testing.
+All three: glitchless logic with every location reachable, balanced item pool, freestanding items, boss Heart
+Containers, character gifts, quest rewards, Great Fairies and Skulltula House shuffled, vanilla keys, refills need
+their item, and every confirmed cutscene skip and Quality of Life option on.
 
 ### Test results
 
-Results from in-game test runs, taken from the testers' exported checklists. A setting loses its
-*experimental* tag once a test confirms it fully works. Settings that aren't listed haven't been confirmed
-yet.
+From testers' exported checklists. A setting loses its *Experimental* tag once a test confirms it.
 
-**Working**
+<details>
+<summary><b>Working</b> (confirmed in-game)</summary>
 
 | Setting | Value tested | Version |
 |---|---|---|
@@ -470,6 +319,8 @@ yet.
 | Guarantee Reachable Locations | All | 0.4.3 |
 | Kokiri Forest | Open, Closed | 0.2.1, 0.4.3, 0.5.0 |
 | Open Death Mountain | Off, On | 0.3.1, 0.4.0, 0.4.3 |
+| Door of Time | Open | 0.5.0 |
+| Zora's Fountain | Open | 0.5.0 |
 | Skip Child Zelda | On | 0.4.3, 0.4.4 |
 | Saria's Song With Just an Ocarina | On | 0.2.1, 0.4.3 |
 | Shuffle Songs | Song Locations, Anywhere | 0.3.1, 0.4.3, 0.5.0 |
@@ -480,52 +331,47 @@ yet.
 | Shuffle Ocarinas | On | 0.4.3 |
 | Shuffle Freestanding Rupees | On, Off | 0.2.1, 0.3.1, 0.4.3 |
 | Shuffle Boss Heart Containers | On | 0.3.1, 0.4.3 |
-| Shuffle NPC & Minigame Rewards (now Character Gifts and Minigames) | On | 0.4.2, 0.4.3 |
+| Character Gifts and Minigames (was NPC & Minigame Rewards) | On | 0.4.2, 0.4.3 |
 | Shuffle Great Fairy Rewards | On | 0.4.3 |
 | Shuffle Skulltula House Rewards | On | 0.4.3 |
-| Tokensanity | All Tokens, Dungeons Only, Overworld Only | 0.2.1, 0.3.1, 0.4.0, 0.4.3, 0.5.0 |
+| Tokensanity | All Tokens, Dungeons Only, Overworld Only | 0.2.1–0.5.0 |
+| Business Scrubs | On | 0.5.0 |
+| Items Shuffled Per Shop | 2 and 4 per shop, random prices | 0.5.0 |
 | Maps & Compasses | Start With | 0.4.3 |
-| Small Keys | Vanilla | 0.4.3 |
-| Boss Keys | Vanilla | 0.4.3 |
+| Small Keys / Boss Keys | Vanilla | 0.4.3 |
 | Item Pool | Balanced | 0.4.3 |
-| Make All Cutscenes Skippable | On | 0.2.1, 0.4.3 |
-| Bag Bombs Open Dodongo's Cavern | On | 0.3.1, 0.4.3 |
-| Refills Need Their Item | On | 0.2.1, 0.4.3 |
-| Anju Needs Only 1 Cucco | On | 0.2.1, 0.4.3 |
-| Skip Kaepora Gaebora | On | 0.4.3 |
-| Bag Bombs without Goron Bracelet (was Bombs Usable Without Goron Bracelet) | On | 0.2.1, 0.4.3 |
 | Hint Distribution | Balanced, Strong | 0.5.0 |
 | Gossip Stones | No Mask of Truth | 0.5.0 |
+| Make All Cutscenes Skippable | On | 0.2.1, 0.4.3 |
 | Skip Opening Movie | On | 0.5.0 |
-| Skip Saria's Wake-Up Scene (part of every seed since 0.6.0) | On | 0.5.0 |
+| Skip Saria's Wake-Up Scene (always on since 0.6.0) | On | 0.5.0 |
 | Skip the Great Deku Tree's Talk | On (Kokiri Forest Closed) | 0.5.0 |
 | Chests Without Cutscene | On (big chests) | 0.5.0 |
-| Zora's Fountain | Open | 0.5.0 |
-| Business Scrubs | On (with the item named in the scrub's line) | 0.5.0 |
-| Items Shuffled Per Shop | 2 and 4 per shop, random prices | 0.5.0 |
-| Door of Time | Open | 0.5.0 |
+| Skip Kaepora Gaebora | On | 0.4.3 |
+| Bag Bombs Open Dodongo's Cavern | On | 0.3.1, 0.4.3 |
+| Bag Bombs without Goron Bracelet | On | 0.2.1, 0.4.3 |
+| Refills Need Their Item | On | 0.2.1, 0.4.3 |
+| Anju Needs Only 1 Cucco | On | 0.2.1, 0.4.3 |
 
-Skip Area Intro Cutscenes (0.6.0 test): the intros of Kakariko, Hyrule Field, Lake Hylia, Zora's River and
-Fountain, Gerudo Valley, and the Fire Temple, Spirit Temple and Bottom of the Well entrances no longer play.
-The intros that start a quest step (Deku Tree, Death Mountain, Goron City, Zora's Domain, Lon Lon Ranch,
-Dodongo's Cavern and others) are skipped since that test, so it *needs further testing*. Shuffle Kokiri
-Sword works both ways in 0.5.0: shuffled, the chest gives its random item; not shuffled, the chest still plays
-the Kokiri Sword scene even with Chests Without Cutscene (its story scene is kept), which is fine. Items
-Shuffled Per Shop (0.5.0 test seed 5): a bought shelf disappears and stays gone. Chests Without Cutscene
-(test seed 5): big chests skip their animation and small chests open normally. Zora's Fountain Open (0.5.0): King Zora stays moved through
-every load from Zora's Fountain and Lake Hylia, and Ruto's Jabu-Jabu reward is given; the quest log stays
-empty, which doesn't matter. Hint Distribution, Gossip Stones, Songs Anywhere (the harp shows on the ground,
-in big chests, on Gold Skulltulas and on shelves) and Business Scrubs passed in 0.5.0. Character Gifts and Minigames replaced Shuffle NPC & Minigame Rewards in 0.5.0 (OotrR's gift list, two new
-Deku Theater checks), so it needs further testing. Tokensanity in 0.5.0: Gold Skulltula drops float and are collected by touch, and a Skulltula
-whose drop you didn't collect comes back when the area reloads (issue #2). Small Chests Only (working in
-0.4.3) was removed in 0.5.0: Chests Without Cutscene does what it was for, for big chests only (small chests
-keep their own short opening).
+Notes from the tests:
+- **Skip Area Intro Cutscenes** (0.6.0): the Kakariko, Hyrule Field, Lake Hylia, Zora's River and Fountain, Gerudo
+  Valley, Fire Temple, Spirit Temple and Bottom of the Well intros no longer play. Intros that start a quest step
+  (Deku Tree, Death Mountain, Goron City, and others) have been skipped since, so it *needs further testing*.
+- **Shuffle Kokiri Sword** off: the chest still plays the sword scene even with Chests Without Cutscene, which is fine.
+- **Items Shuffled Per Shop:** a bought shelf disappears and stays gone.
+- **Chests Without Cutscene:** big chests skip their animation; small chests keep their short opening.
+- **Zora's Fountain Open:** King Zora stays moved and Ruto's reward is given; the quest log stays empty (harmless).
+- **Character Gifts and Minigames** replaced NPC & Minigame Rewards in 0.5.0 (new gift list, two new Deku Theater
+  checks), so it needs further testing.
+- **Small Chests Only** was removed in 0.5.0; Chests Without Cutscene covers it.
+
+</details>
 
 **Partly working**
 
-| Setting | Value tested | Version | Notes |
+| Setting | Value | Version | Notes |
 |---|---|---|---|
-| Tokensanity | All Tokens | 0.5.0 | Items float and work. Junk drops: in test seed 4 a token-based rupee stayed after it was collected and its Skulltula came back; in test seed 5 the game's own rupee (and a Business Scrub Seed) fell instead of floating; in test seed 6 a token-based copy of its chest form floated but stayed after it was collected. Next test: consumables drop as the game's own pickup (they fall, as in test seed 5), shields float. |
+| Tokensanity | All Tokens | 0.5.0 | Items float and work. Junk drops misbehave: a collected token rupee stayed and its Skulltula came back (seed 4); the game's own rupee fell instead of floating (seed 5); a floating chest form stayed after collecting (seed 6). A Skulltula whose drop you didn't collect comes back on reload (issue #2). |
 
 **Not working**
 
@@ -533,78 +379,136 @@ keep their own short opening).
 |---|---|---|
 | Load Saves at Dungeon Entrance | 0.2.1 | Never moved the restart point. Removed in 0.3.0. |
 
-How each setting is implemented, and what the remake makes impossible (keysanity, scrubsanity and others), is
-described in [docs/TECHNICAL.md](docs/TECHNICAL.md).
+How each setting works, and why some classic options (keysanity, scrubsanity, …) can't be done in the remake, is
+described in the original repository's
+[docs/TECHNICAL.md](https://github.com/AbyssDragonModding/Goggles-of-Truth/blob/main/docs/TECHNICAL.md).
 
-## Tools
+## Command-line tool
 
-### Item tracker
-
-`Tools/OOTNS2-Tracker` is an item tracker for the remake. It shows items, songs, stones and medallions,
-upgrades and counters (Gold Skulltulas, Pieces of Heart, keys) as a grid you click through while you play.
-
-- **Left click** steps an item up a tier or adds 1, **right click** steps it back down. **Shift + click**
-  on a counter steps by 5.
-- **File** menu: New, Open, Save and Save As (JSON). The last save reopens when you start it.
-- **No game files are included.** On first start it asks for your game's `.nup` file or the romfs folder you
-  extracted from it, and takes the item icons from it. The icons stay on your PC (`icons/` is never committed).
-
-It needs Python 3.14 or newer and a Vulkan-capable graphics driver. To run it:
+`goggles_cli` makes seeds without the window (handy for scripts and testing):
 
 ```
-cd Tools/OOTNS2-Tracker
-pip install -r requirements.txt
-python tracker.pyw
+goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
+                     [--from-user-settings] [--exefs <folder>]
+goggles_cli check <.nup, romfs or exefs>        check the game version
+goggles_cli scan <.nup or romfs>                list the item locations
+goggles_cli vanilla-test <.nup or romfs>        logic test on the unshuffled game
+goggles_cli dump-world <game> <out.jsonl>       every location, for tools
+goggles_cli dump-plan <game> <settings> <out>   the item pool a settings string makes
+goggles_cli selftest <game>                     read and rewrite every event flow, byte for byte
 ```
 
-More in [Tools/OOTNS2-Tracker/README.md](Tools/OOTNS2-Tracker/README.md).
+`--from-user-settings` uses the settings saved by the window.
+
+## For developers
+
+### Building
+
+You need [Zig 0.17.1](https://ziglang.org/download/). Nothing else: zstd is compiled from `vendor/zstd`, and Raven
+0.3 comes with prebuilt libraries in `vendor/Raven/lib`.
+
+```bash
+zig build                              # debug build of this system: zig-out/<system>
+zig build -Doptimize=ReleaseFast       # release build
+zig build run                          # build and open the window
+zig build cli                          # only the command-line tool
+zig build test                         # unit tests
+```
+
+Cross-compiling works from any system, and every system gets its own folder in `zig-out`:
+
+```bash
+zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows   # zig-out/windows
+zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux     # zig-out/linux
+zig build -Doptimize=ReleaseFast -Dtarget=x86_64-macos     # zig-out/macos
+zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos    # zig-out/macos-aarch64
+```
+
+Each folder holds the window, the command-line tool and the Raven library, under the name the program loads:
+`raven.dll`, `libraven.so.0` or `libraven.0.dylib` (the macOS library is universal: Intel and Apple Silicon). On
+macOS the window and its library are in `Goggles of Truth Randomizer.app` (`Contents/MacOS`), with the icon and
+`Info.plist` (version from `src/version.zig`); the command-line tool sits next to the app. The Windows program carries
+the icon too (`src/ui/app.rc`); on Linux the window sets it when it opens.
+Ship the folder as it is: on Linux and macOS the programs look for the library next to themselves. The Linux window is a
+glibc program, because Raven is built against glibc; the Linux command-line tool is static and runs on any
+distribution. Release builds leave out debug information, which would hold the build machine's folder paths
+(`-Dstrip=false` keeps it). On Windows the window never opens a console window; `-Dconsole=true` gives it one for debugging.
+
+### Releases
+
+GitHub Actions (`.github/workflows/build.yml`) builds Windows, Linux and both macOS versions on every push and keeps
+them as artifacts of the run (Actions tab). When a push to `main` carries a version (`src/version.zig`) that has no
+Release yet, it also publishes one: tag `<version>`, a ZIP per system, and that version's section of `CHANGELOG.md` as
+the notes. To release: raise the version in `src/version.zig` and `build.zig.zon`, add its section to the changelog,
+and push.
+
+### Layout
+
+| Folder | What's in it |
+|---|---|
+| `src/core` | Byte readers, hashes, file system, progress reporting, the seeded random number generator |
+| `src/formats` | The game's file formats: zstd, SARC, BYML, BFEVFL event flows, RESTBL, MSBT text, AINB, NUP packages, xlsx, TOML |
+| `src/game` | Reading the game (folder or `.nup`), the version check, the location scan |
+| `src/settings` | The setting table, presets, settings strings, `user_settings.toml` |
+| `src/logic` | Items and the access rules for every region and location |
+| `src/generator` | Item pool and fill, hints, and every patch written to the mod |
+| `src/platform` | Longshot, emulator folders and per-seed saves |
+| `src/ui` | The window: `main.xml` / `widgets.xml` layouts and `App.zig` |
+| `src/cli.zig`, `src/main.zig` | The two programs |
+| `vendor` | Raven (GUI), the string library, zstd 1.5.7 |
+
+Coding rules for this repository are in [Agents.md](Agents.md). In short: plain, explicit code that's easy to edit by
+hand; allocators passed explicitly (an arena per generation); concrete error sets; and a random number generator
+seeded only from the version, seed and settings string, so every system makes identical seeds.
+
+### Tools
+
+The item tracker (`Tools/OOTNS2-Tracker`) is still the Python version. It is deprecated, along with the Python
+randomizer, and will be rebuilt later with a better layout.
 
 ## Supported game versions
 
-The randomizer edits the game's data files, and their layout can change with a game update. To avoid making a
-broken mod, it only runs on game versions it has been checked against. It computes the SHA-256 hash of
-`exefs/main` and compares it with a list of known versions (`rando/gamecheck.py`). With a `.nup`, the
-`exefs/main` inside the package is used.
+The randomizer edits the game's data files, whose layout can change with an update. To avoid broken mods it only
+runs on versions it has been checked against, by comparing the SHA-256 of `exefs/main` (inside the `.nup`, or next
+to the romfs) with a list of known versions (`src/game/gamecheck.zig`).
 
 | Game version | SHA-256 of `exefs/main` |
 |---|---|
 | 1.1.1 | `7db9ddfda088c22d219ef13496decd7077c68cd67d4b37f53f4ac46a082768f2` |
 
-If your version isn't supported, the randomizer says so and won't generate. Your game is probably older or
-newer than the one this release supports: update the game and the randomizer to their latest versions. If
-you're on the latest of both, open an issue with the hash the randomizer shows.
+If yours isn't supported, update the game and the randomizer to their latest versions. If you're on the latest of
+both, open an issue with the hash the randomizer shows.
 
 ## Known issues
 
-- **Start a new save for every seed.**
-- **Cutscene leftovers:** a chest that held a story item in the normal game may still play that item's
-  follow-up dialogue, because the story flags are set inside those cutscenes.
-- **Text box graphics** sometimes look garbled. The randomizer doesn't change any UI files, so this is most
-  likely the emulator, but reports with screenshots are welcome.
-- **The logic is cautious:** it may expect an item earlier than you strictly need it, so some items show up
-  later than they could.
-- Settings marked *experimental* are the least certain.
-- **Zelda's Letter and the Cucco share a slot:** the remake keeps the child trade items in one slot, so while
-  you're holding Zelda's Letter you can't use the Cucco from the Weird Egg. Show the letter to the Kakariko
-  gate soldier first (with Open Death Mountain off). This is how the game works, so it can't be fixed.
+- **Start a new save for every seed** (or use per-seed saves).
+- **Cutscene leftovers:** a chest that held a story item may still play that item's follow-up dialogue, because
+  the story flags are set inside those cutscenes.
+- **Garbled text box graphics** sometimes. The randomizer doesn't touch UI files, so this is most likely the
+  emulator; screenshots are welcome.
+- **Cautious logic:** it may expect an item earlier than strictly needed.
+- **Zelda's Letter and the Cucco share a slot:** while holding the letter you can't use the Weird Egg's Cucco. Show
+  the letter to the Kakariko gate soldier first. (With Open Death Mountain the letter isn't in the seed.)
 - **Bag Bombs Open Dodongo's Cavern:** the cavern still plays its opening cutscene.
+- **Boss Keys "Own Dungeon"** (experimental) can fail to place items with some settings.
 
 ## Versions
 
-Versions are `Major.Minor.Patch`, starting at **0.1.0**:
-
-- **Minor** goes up when a new setting or feature is added (0.1.x to 0.2.0).
-- **Patch** goes up for fixes to existing features (0.1.0 to 0.1.1).
-
-The version is part of every seed: the same seed and settings string make a different mod in a different
-version. Always say which version you used when you report a problem. It's shown in the window's title area,
-in `settings.txt` and at the top of the checklist.
+Versions are `Major.Minor.Patch`: **Minor** goes up for a new setting or feature, **Patch** for fixes. The version is
+part of every seed (the same seed and settings make a different mod in another version), so always say which version
+you used. It's shown under the window's title, in `settings.txt` and at the top of the checklist. What changed in each
+version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Credits
 
 - Settings and logic modelled on the classic [OoT Randomizer](https://ootrandomizer.com).
 - GUI built with [Raven](https://github.com/oscar-soirey/Raven) (Apache-2.0).
-- Event flow writer, start-of-game skips, Gossip Stone hints and the Gerudo card / small chest findings from [Clawshot](https://github.com/hiKareeem/Clawshot) by Kareem (MIT).
-- Chests without cutscene, token-based Gold Skulltula drops, items shuffled per shop, Business Scrubs and the character gift list from [OotrR](https://github.com/Mozencaz/OotrR) by Mozencaz (MIT).
-- Details and license notices: [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md).
-- This is a fan project. It isn't affiliated with or endorsed by Nintendo. Use your own copy of the game.
+- Event flow writer, start-of-game skips, Gossip Stone hints and the Gerudo card / small chest findings from
+  [Clawshot](https://github.com/hiKareeem/Clawshot) by Kareem (MIT).
+- Chests without cutscene, token-based Gold Skulltula drops, items shuffled per shop, Business Scrubs and the
+  character gift list from [OotrR](https://github.com/Mozencaz/OotrR) by Mozencaz (MIT).
+- NUP package reader based on [nup](https://github.com/a55uka/nup).
+- [zstd](https://github.com/facebook/zstd) (BSD) for the game's compressed files.
+- License details: the original repository's
+  [docs/THIRD_PARTY.md](https://github.com/AbyssDragonModding/Goggles-of-Truth/blob/main/docs/THIRD_PARTY.md).
+- A fan project, not affiliated with or endorsed by Nintendo. Use your own copy of the game.

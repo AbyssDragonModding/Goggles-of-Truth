@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: Something in a seed or in the randomizer didn't work
-title: "[0.1.0] Short description"
+title: "[0.7.0] Short description"
 labels: bug
 ---
 

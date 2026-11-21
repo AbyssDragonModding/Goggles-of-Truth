@@ -1,0 +1,17 @@
+.{
+    .name = .goggles_of_truth_rando,
+    .version = "0.7.0",
+    .fingerprint = 0xd02c8dea756c9ce2,
+    .minimum_zig_version = "0.17.1",
+    .dependencies = .{
+        // The folder is "Raven" (capital R): the path must match exactly on Linux and macOS hosts.
+        .raven = .{ .path = "./vendor/Raven/" },
+        .string = .{ .path = "./vendor/string/" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "vendor",
+    },
+}

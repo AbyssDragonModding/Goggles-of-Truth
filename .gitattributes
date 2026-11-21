@@ -1,2 +1,10 @@
 *.sh text eol=lf
 *.bat text eol=crlf
+# prebuilt libraries and images are stored as they are
+*.dll binary
+*.lib binary
+*.so binary
+*.dylib binary
+*.png binary
+*.ico binary
+*.icns binary

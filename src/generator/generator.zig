@@ -1,0 +1,517 @@
+//! Making a seed: check the game, plan and place the items (with retries), choose hints, write the mod folder, the
+//! spoiler log and the checklist, then switch the output folder's other seeds off and the saves over.
+//! (rando/generator.py generate and write_spoiler.)
+
+const std = @import("std");
+const settings_mod = @import("../settings/settings.zig");
+const world_mod = @import("../game/world.zig");
+const gamecheck = @import("../game/gamecheck.zig");
+const logic = @import("../logic/logic.zig");
+const fill = @import("fill.zig");
+const hints = @import("hints.zig");
+const patches = @import("patches.zig");
+const checklist = @import("checklist.zig");
+const fsmod = @import("../core/fs.zig");
+const hash = @import("../core/hash.zig");
+const Rng = @import("../core/rng.zig").Rng;
+const Progress = @import("../core/Progress.zig");
+const Env = @import("../platform/Env.zig");
+const longshot = @import("../platform/longshot.zig");
+const saves = @import("../platform/saves.zig");
+const version_mod = @import("../version.zig");
+const Allocator = std.mem.Allocator;
+const Settings = settings_mod.Settings;
+const World = world_mod.World;
+const ItemId = logic.ItemId;
+
+pub const GenerateError = error{
+    /// the seed couldn't be made; the Progress failure message says why
+    GenerationFailed,
+    OutOfMemory,
+};
+
+pub const Request = struct {
+    /// the .nup or the romfs folder
+    game_path: []const u8,
+    out_dir: []const u8,
+    settings: Settings,
+    /// null or "": a random seed
+    seed: ?[]const u8 = null,
+    /// null or "": GogglesOfTruth_<seed>
+    mod_name: ?[]const u8 = null,
+    /// the exefs folder ("": next to the romfs folder)
+    exefs: []const u8 = "",
+};
+
+pub const Result = struct {
+    seed: []const u8,
+    settings_string: []const u8,
+    mod_root: []const u8,
+    file_count: usize,
+    /// every shuffled location's id and the item key placed there (for tools that compare builds)
+    placement: []const Placement,
+    /// the hints on the stones (label, kind and the location / area / item / joke line they name)
+    hints: []const HintRecord,
+};
+
+pub const HintRecord = struct {
+    label: []const u8,
+    kind: []const u8,
+    area: ?[]const u8,
+    location: ?[]const u8,
+    item: ?[]const u8,
+    line: usize,
+};
+
+pub const Placement = struct {
+    location: []const u8,
+    item: []const u8,
+};
+
+const seed_alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/// A random 10-character seed name (from the OS's random source).
+pub fn randomSeed(io: std.Io, buffer: *[10]u8) []const u8 {
+    var raw: [10]u8 = undefined;
+    io.random(&raw);
+    for (buffer, raw) |*c, r| c.* = seed_alphabet[r % seed_alphabet.len];
+    return buffer;
+}
+
+/// Makes one seed. `world`: the scanned game when the caller keeps one (the window), else null (it is scanned here).
+/// Strings in the result are allocated with `result_allocator`; everything else lives in a generation arena.
+pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, request: Request, world_in: ?*World, progress: *Progress) GenerateError!Result {
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit(); // the whole generation run is freed at once
+    const a = arena_state.allocator();
+    const fs = env.fs;
+    const t0 = std.Io.Timestamp.now(fs.io, .awake);
+
+    const game = gamecheck.check(a, fs, request.exefs, request.game_path) catch return error.OutOfMemory;
+    if (!game.ok) return progress.fail(error.GenerationFailed, "{s}", .{game.message});
+    progress.log("{s}", .{game.message});
+
+    const st = &request.settings;
+    const sstr = settings_mod.toString(a, st) catch return error.OutOfMemory;
+    var seed_buf: [10]u8 = undefined;
+    const seed: []const u8 = if (request.seed) |s| (if (s.len > 0) s else randomSeed(fs.io, &seed_buf)) else randomSeed(fs.io, &seed_buf);
+
+    var own_world: ?*World = null;
+    defer if (own_world) |w| w.deinit();
+    const world = world_in orelse blk: {
+        own_world = World.init(gpa, fs, request.game_path, progress) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return error.GenerationFailed,
+        };
+        break :blk own_world.?;
+    };
+
+    progress.log("Building item pool...", .{});
+    const seed_key = std.fmt.allocPrint(a, "{s}|{s}|{s}", .{ version_mod.version, seed, sstr }) catch return error.OutOfMemory;
+    const plan = fill.Plan.init(a, world, st, seed_key) catch |err| return planError(err, progress);
+    if (plan.exclusion_ignored.items.len > 0) {
+        progress.log("note: {d} excluded location(s) can only hold a song or a boss reward with these settings, so they aren't excluded: {s}", .{
+            plan.exclusion_ignored.items.len, std.mem.join(a, ", ", plan.exclusion_ignored.items) catch return error.OutOfMemory,
+        });
+    }
+    const user_excluded = plan.countUserExcluded();
+    if (user_excluded > 0) progress.log("Excluded locations: {d} of the shuffled locations only get junk", .{user_excluded});
+
+    // locations no item set can reach are treated as excluded (they only get junk)
+    {
+        var probe = fill.Filler.init(a, plan, 0, progress) catch return error.OutOfMemory;
+        var everything: std.ArrayList(ItemId) = .empty;
+        for (plan.pool.items) |i| if (logic.isProgression(i)) everything.append(a, i) catch return error.OutOfMemory;
+        for (plan.fixed) |f| if (f) |i| everything.append(a, i) catch return error.OutOfMemory;
+        const none = a.alloc(?ItemId, plan.fixed.len) catch return error.OutOfMemory;
+        @memset(none, null);
+        var full = probe.sweep(everything.items, none) catch |err| return planError(err, progress);
+        var unreachable_count: usize = 0;
+        for (plan.shuffled.items) |i| {
+            if (!plan.reachable(i, &full.state)) {
+                unreachable_count += 1;
+                if (!st.is(.logic_rules, "none")) plan.excluded[i] = true;
+            }
+        }
+        if (unreachable_count > 0 and !st.is(.logic_rules, "none")) {
+            progress.log("note: {d} location(s) are out of logic and will only hold junk", .{unreachable_count});
+        }
+    }
+
+    // every attempt gets its own stream from the seed's stream, so a seed always comes out the same
+    const seed_text = std.fmt.allocPrint(a, "{s}|{s}|{s}", .{ version_mod.version, seed, sstr }) catch return error.OutOfMemory;
+    var rng = Rng.fromText(seed_text);
+    var filler: ?*fill.Filler = null;
+    var last_error: []const u8 = "";
+    var attempt: usize = 1;
+    while (attempt <= 40) : (attempt += 1) {
+        progress.log("Placing items (attempt {d})...", .{attempt});
+        const f = a.create(fill.Filler) catch return error.OutOfMemory;
+        f.* = fill.Filler.init(a, plan, rng.next(), progress) catch return error.OutOfMemory;
+        f.run() catch |err| switch (err) {
+            error.PlacementFailed => {
+                last_error = a.dupe(u8, progress.failureMessage()) catch return error.OutOfMemory;
+                continue;
+            },
+            else => return planError(err, progress),
+        };
+        if (st.is(.logic_rules, "none")) {
+            filler = f;
+            break;
+        }
+        var result = f.sweep(&.{}, f.contents() catch return error.OutOfMemory) catch |err| return planError(err, progress);
+        if (!result.state.is(.win)) {
+            last_error = "seed not beatable";
+            continue;
+        }
+        if (st.is(.reachable_locations, "all")) {
+            var missing: usize = 0;
+            for (plan.shuffled.items) |i| if (!result.got[i] and !plan.excluded[i]) {
+                missing += 1;
+            };
+            if (missing > 0) {
+                last_error = std.fmt.allocPrint(a, "{d} locations unreachable", .{missing}) catch return error.OutOfMemory;
+                continue;
+            }
+        }
+        filler = f;
+        break;
+    }
+    const placed_filler = filler orelse {
+        if (user_excluded > 0) {
+            return progress.fail(error.GenerationFailed, "could not place items after 40 attempts: {s} - {d} locations are excluded; the items that have to be placed (progression, dungeon items) may not fit in the rest, or not where they can be reached in time. Exclude fewer locations.", .{ last_error, user_excluded });
+        }
+        return progress.fail(error.GenerationFailed, "could not place items after 40 attempts: {s}", .{last_error});
+    };
+
+    var hint_list: []const hints.Hint = &.{};
+    if (!st.is(.hint_distribution, "none")) {
+        progress.log("Choosing hints...", .{});
+        hint_list = hints.choose(a, world, plan, placed_filler, seed, st.choice(.hint_distribution), st.is(.gossip_stones, "mask")) catch |err| return patchError(err, progress);
+    }
+
+    const mod_name = if (request.mod_name) |m| (if (m.len > 0) m else null) else null;
+    const name = mod_name orelse (std.fmt.allocPrint(a, "{s}{s}", .{ longshot.mod_prefix, seed }) catch return error.OutOfMemory);
+    const mod_root = fsmod.join(a, &.{ request.out_dir, name }) catch return error.OutOfMemory;
+    // The game files are only ever read: every patched file is written to the mod folder. Refuse an output folder
+    // inside a romfs folder (the window checks this too), so a mistake can never write into the game files. A .nup
+    // is a single file opened read-only, so there is nothing to protect there.
+    if (world.files.kind == .folder) {
+        const game_abs = fs.absolute(a, world.files.romfs) catch return error.OutOfMemory;
+        const mod_abs = fs.absolute(a, mod_root) catch return error.OutOfMemory;
+        if (fsmod.isInside(game_abs, mod_abs)) return progress.fail(error.GenerationFailed, "The output folder must not be inside the romfs folder.", .{});
+    }
+
+    progress.log("Writing mod files...", .{});
+    const placed = placed_filler.contents() catch return error.OutOfMemory;
+    // what gets patched: the shuffled placements and the forced items, not the vanilla fixed ones
+    const to_patch = a.alloc(?ItemId, placed.len) catch return error.OutOfMemory;
+    for (to_patch, 0..) |*p, i| p.* = placed_filler.placed[i] orelse plan.forced[i];
+    const out_romfs = fsmod.join(a, &.{ mod_root, "romfs" }) catch return error.OutOfMemory;
+    const written = patches.writePatches(gpa, a, .{
+        .world = world,
+        .plan = plan,
+        .placed = to_patch,
+        .hint_list = hint_list,
+        .out_romfs = out_romfs,
+    }, progress) catch |err| return patchError(err, progress);
+
+    if (st.flag(.create_spoiler)) {
+        writeSpoiler(a, world, plan, placed_filler, hint_list, seed, sstr, mod_root, fs) catch |err| return patchError(err, progress);
+        // it holds every placement, so only with the spoiler
+        checklist.write(a, world, plan, placed_filler, mod_root, seed, sstr, fs) catch |err| {
+            progress.log("warning: checklist.xlsx not written ({s})", .{@errorName(err)});
+        };
+    }
+    const settings_txt = std.fmt.allocPrint(a, "{s} {s}\nSeed: {s}\nSettings string: {s}\n", .{ version_mod.name, version_mod.version, seed, sstr }) catch return error.OutOfMemory;
+    fs.writeAll(fsmod.join(a, &.{ mod_root, "settings.txt" }) catch return error.OutOfMemory, settings_txt) catch |err|
+        return progress.fail(error.GenerationFailed, "couldn't write settings.txt ({s})", .{@errorName(err)});
+
+    try switchOtherSeeds(a, env, request.out_dir, name, st, progress);
+
+    const t1 = std.Io.Timestamp.now(fs.io, .awake);
+    const ms = @divTrunc(t1.nanoseconds - t0.nanoseconds, std.time.ns_per_ms);
+    progress.log("Done in {d}.{d}s: {d} files written to {s}", .{ @divTrunc(ms, 1000), @divTrunc(@mod(ms, 1000), 100), written.len, mod_root });
+    return Result{
+        .seed = result_allocator.dupe(u8, seed) catch return error.OutOfMemory,
+        .settings_string = result_allocator.dupe(u8, sstr) catch return error.OutOfMemory,
+        .mod_root = result_allocator.dupe(u8, mod_root) catch return error.OutOfMemory,
+        .file_count = written.len,
+        .placement = try placementList(result_allocator, world, placed_filler),
+        .hints = try hintRecords(result_allocator, world, hint_list),
+    };
+}
+
+fn placementList(allocator: Allocator, world: *World, filler: *fill.Filler) GenerateError![]const Placement {
+    var out: std.ArrayList(Placement) = .empty;
+    for (filler.placed, 0..) |p, i| {
+        const item = p orelse continue;
+        out.append(allocator, .{
+            .location = allocator.dupe(u8, world.locations.items[i].id) catch return error.OutOfMemory,
+            .item = allocator.dupe(u8, world.items.name(item)) catch return error.OutOfMemory,
+        }) catch return error.OutOfMemory;
+    }
+    return out.items;
+}
+
+fn hintRecords(allocator: Allocator, world: *World, list: []const hints.Hint) GenerateError![]const HintRecord {
+    const out = allocator.alloc(HintRecord, list.len) catch return error.OutOfMemory;
+    for (list, 0..) |h, i| {
+        out[i] = .{
+            .label = allocator.dupe(u8, h.label) catch return error.OutOfMemory,
+            .kind = @tagName(h.kind),
+            .area = if (h.area) |x| allocator.dupe(u8, x) catch return error.OutOfMemory else null,
+            .location = if (h.location) |l| allocator.dupe(u8, world.locations.items[l].id) catch return error.OutOfMemory else null,
+            .item = if (h.item) |it| allocator.dupe(u8, world.items.name(it)) catch return error.OutOfMemory else null,
+            .line = h.line,
+        };
+    }
+    return out;
+}
+
+fn planError(err: fill.FillError, progress: *Progress) GenerateError {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.PlacementFailed, error.NotAsExpected => progress.fail(error.GenerationFailed, "{s}", .{progress.failureMessage()}),
+        error.GameFiles => progress.fail(error.GenerationFailed, "a game file couldn't be read", .{}),
+        error.InvalidData => progress.fail(error.GenerationFailed, "a game file isn't as expected", .{}),
+    };
+}
+
+fn patchError(err: anytype, progress: *Progress) GenerateError {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.GameFiles => progress.fail(error.GenerationFailed, "a game file couldn't be read", .{}),
+        error.InvalidData => progress.fail(error.GenerationFailed, "a game file isn't as expected", .{}),
+        else => blk: {
+            // the step already said why (NotAsExpected, SettingFailed, WriteFailed)
+            if (progress.failureMessage().len == 0) progress.setFailure("{s}", .{@errorName(err)});
+            break :blk error.GenerationFailed;
+        },
+    };
+}
+
+/// Longshot and emulators load every mod folder: the other seeds are switched off, and with Per-Seed Saves the saves
+/// follow the new seed.
+fn switchOtherSeeds(a: Allocator, env: *const Env, out_dir: []const u8, name: []const u8, st: *const Settings, progress: *Progress) GenerateError!void {
+    if (longshot.isModsFolder(a, env, out_dir)) {
+        // two seeds at once would mix, so the others are switched off
+        for (longshot.switchOffOtherSeeds(a, env, out_dir, name) catch return error.OutOfMemory) |r| {
+            progress.log("Longshot: switched off the older seed {s} (renamed to {s})", .{ r.old, r.new });
+        }
+        const left = longshot.activeSeeds(a, env, out_dir, name) catch return error.OutOfMemory;
+        if (left.len > 0) {
+            progress.log("WARNING: Longshot would load these seeds too, and they couldn't be renamed (close the game first, then put _ in front of their names): {s}", .{std.mem.join(a, ", ", left) catch return error.OutOfMemory});
+        }
+    }
+    const target = (saves.targetFor(a, env, out_dir) catch return error.OutOfMemory) orelse return;
+    if (target.note.len > 0) progress.log("WARNING: {s}", .{target.note});
+    if (target.kind == .emulator) {
+        // the emulator loads every mod folder in load/<title id>: move the other seeds out
+        var before: std.ArrayList([]const u8) = .empty;
+        for (saves.seeds(a, env, target) catch return error.OutOfMemory) |s| {
+            if (s.on and !std.mem.eql(u8, s.name, name)) before.append(a, s.name) catch return error.OutOfMemory;
+        }
+        const failed = saves.switchOffEmulatorSeeds(a, env, target, name) catch return error.OutOfMemory;
+        std.mem.sort([]const u8, before.items, {}, struct {
+            fn less(_: void, x: []const u8, y: []const u8) bool {
+                return std.mem.order(u8, x, y) == .lt;
+            }
+        }.less);
+        for (before.items) |n| {
+            var did_fail = false;
+            for (failed) |f| if (std.mem.eql(u8, f, n)) {
+                did_fail = true;
+            };
+            if (!did_fail) progress.log("Emulator: switched off the older seed {s} (moved to {s})", .{ n, target.off });
+        }
+        if (failed.len > 0) {
+            progress.log("WARNING: the emulator would load these seeds too, and they couldn't be moved (close the emulator first): {s}", .{std.mem.join(a, ", ", failed) catch return error.OutOfMemory});
+        }
+    }
+    if (st.flag(.per_seed_saves)) {
+        var msg = saves.Messages{ .allocator = a };
+        saves.switchSaves(a, env, target, name, &msg) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.SaveFailed => progress.log("WARNING: per-seed saves not switched ({s}). Your saves weren't changed; once the game is closed, use Play This Seed on the ROM Options tab.", .{msg.failure}),
+        };
+        for (msg.lines.items) |line| progress.log("Per-seed saves: {s}", .{line});
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------- spoiler
+
+const Pair = struct { location: []const u8, item: []const u8 };
+
+fn lessPair(_: void, x: Pair, y: Pair) bool {
+    switch (std.mem.order(u8, x.location, y.location)) {
+        .lt => return true,
+        .gt => return false,
+        .eq => return std.mem.order(u8, x.item, y.item) == .lt,
+    }
+}
+
+/// "name:" padded to `width` (Python's "%-28s").
+fn padded(out: *std.ArrayList(u8), a: Allocator, text: []const u8, width: usize) error{OutOfMemory}!void {
+    try out.appendSlice(a, text);
+    var n = text.len;
+    while (n < width) : (n += 1) try out.append(a, ' ');
+}
+
+fn valueText(a: Allocator, v: settings_mod.Value) error{OutOfMemory}![]const u8 {
+    return switch (v) {
+        .boolean => |b| if (b) "True" else "False",
+        .int => |n| std.fmt.allocPrint(a, "{d}", .{n}),
+        .choice => |c| c,
+        .list => |l| blk: {
+            // Python's repr of a list of strings
+            var out: std.ArrayList(u8) = .empty;
+            try out.append(a, '[');
+            for (l, 0..) |s, i| {
+                if (i > 0) try out.appendSlice(a, ", ");
+                try out.print(a, "'{s}'", .{s});
+            }
+            try out.append(a, ']');
+            break :blk out.items;
+        },
+    };
+}
+
+fn jsonValue(out: *std.ArrayList(u8), a: Allocator, v: settings_mod.Value) error{OutOfMemory}!void {
+    switch (v) {
+        .boolean => |b| try out.appendSlice(a, if (b) "true" else "false"),
+        .int => |n| try out.print(a, "{d}", .{n}),
+        .choice => |c| try out.print(a, "{f}", .{std.json.fmt(c, .{})}),
+        .list => |l| try out.print(a, "{f}", .{std.json.fmt(l, .{})}),
+    }
+}
+
+/// spoiler.txt and spoiler.json next to the mod: where every item is, the hints and the settings.
+fn writeSpoiler(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Filler, hint_list: []const hints.Hint, seed: []const u8, sstr: []const u8, mod_root: []const u8, fs: fsmod.Fs) patches.WriteError!void {
+    fs.makePath(mod_root) catch return error.WriteFailed;
+    const contents = filler.contents() catch return error.OutOfMemory;
+    const locs = world.locations.items;
+
+    // the playthrough: the progression items each sphere collects (placed ones only)
+    var playthrough: std.ArrayList([]Pair) = .empty;
+    const sweep = filler.sweep(&.{}, contents) catch return error.OutOfMemory;
+    for (sweep.spheres.items) |sphere| {
+        var prog: std.ArrayList(Pair) = .empty;
+        for (sphere.items) |l| {
+            const item = contents[l].?;
+            if (logic.isProgression(item) and filler.placed[l] != null) prog.append(a, .{ .location = locs[l].name, .item = try world.itemNameById(a, item) }) catch return error.OutOfMemory;
+        }
+        if (prog.items.len > 0) {
+            std.mem.sort(Pair, prog.items, {}, lessPair);
+            playthrough.append(a, prog.items) catch return error.OutOfMemory;
+        }
+    }
+
+    // every shuffled location, by region
+    const Region = struct { name: []const u8, rows: std.ArrayList(Pair) };
+    var regions: std.ArrayList(Region) = .empty;
+    for (plan.shuffled.items) |i| {
+        const loc = &locs[i];
+        const region = if (loc.region) |r| world.regionName(r) else "Events";
+        const item = contents[i].?;
+        var item_text = try world.itemNameById(a, item);
+        if (loc.kind == .shop) {
+            if (item == loc.vanilla or world.items.isJunk(item)) {
+                item_text = "(normal shop goods)";
+            } else {
+                item_text = std.fmt.allocPrint(a, "{s}  [{d} rupees]", .{ item_text, plan.shop_prices[i].? }) catch return error.OutOfMemory;
+            }
+        } else if (plan.scrub_prices[i]) |p| {
+            item_text = std.fmt.allocPrint(a, "{s}  [{d} rupees]", .{ item_text, p }) catch return error.OutOfMemory;
+        }
+        var slot: ?*Region = null;
+        for (regions.items) |*r| if (std.mem.eql(u8, r.name, region)) {
+            slot = r;
+        };
+        if (slot == null) {
+            regions.append(a, .{ .name = region, .rows = .empty }) catch return error.OutOfMemory;
+            slot = &regions.items[regions.items.len - 1];
+        }
+        slot.?.rows.append(a, .{ .location = loc.name, .item = item_text }) catch return error.OutOfMemory;
+    }
+    std.mem.sort(Region, regions.items, {}, struct {
+        fn less(_: void, x: Region, y: Region) bool {
+            return std.mem.order(u8, x.name, y.name) == .lt;
+        }
+    }.less);
+
+    var txt: std.ArrayList(u8) = .empty;
+    txt.print(a, "{s} {s}\nSeed: {s}\nSettings string: {s}\n\nSettings:\n", .{ version_mod.name, version_mod.version, seed, sstr }) catch return error.OutOfMemory;
+    for (settings_mod.specs) |s| {
+        try txt.appendSlice(a, "  ");
+        try padded(&txt, a, std.fmt.allocPrint(a, "{s}:", .{s.label}) catch return error.OutOfMemory, 28);
+        txt.print(a, " {s}\n", .{try valueText(a, plan.st.get(s.key))}) catch return error.OutOfMemory;
+    }
+    try txt.appendSlice(a, "\nPlaythrough:\n");
+    for (playthrough.items, 1..) |sphere, n| {
+        txt.print(a, "  Sphere {d}\n", .{n}) catch return error.OutOfMemory;
+        for (sphere) |p| {
+            try txt.appendSlice(a, "    ");
+            try padded(&txt, a, p.location, 55);
+            txt.print(a, " {s}\n", .{p.item}) catch return error.OutOfMemory;
+        }
+    }
+    if (hint_list.len > 0) {
+        txt.print(a, "\nHints ({s}):\n", .{plan.st.choice(.hint_distribution)}) catch return error.OutOfMemory;
+        for (hint_list) |h| {
+            try txt.appendSlice(a, "  ");
+            try padded(&txt, a, h.label, 34);
+            try txt.append(a, ' ');
+            try padded(&txt, a, @tagName(h.kind), 9);
+            txt.print(a, " {s}\n", .{try hints.text(a, world, h, false)}) catch return error.OutOfMemory;
+        }
+    }
+    try txt.appendSlice(a, "\nLocations:\n");
+    for (regions.items) |r| {
+        txt.print(a, "  {s}\n", .{r.name}) catch return error.OutOfMemory;
+        std.mem.sort(Pair, r.rows.items, {}, lessPair);
+        for (r.rows.items) |p| {
+            try txt.appendSlice(a, "    ");
+            try padded(&txt, a, p.location, 55);
+            txt.print(a, " {s}\n", .{p.item}) catch return error.OutOfMemory;
+        }
+    }
+    fs.writeAll(fsmod.join(a, &.{ mod_root, "spoiler.txt" }) catch return error.OutOfMemory, txt.items) catch return error.WriteFailed;
+
+    // spoiler.json
+    var js: std.ArrayList(u8) = .empty;
+    js.print(a, "{{\n \"version\": {f},\n \"seed\": {f},\n \"settings_string\": {f},\n \"settings\": {{", .{
+        std.json.fmt(version_mod.version, .{}), std.json.fmt(seed, .{}), std.json.fmt(sstr, .{}),
+    }) catch return error.OutOfMemory;
+    for (settings_mod.specs, 0..) |s, i| {
+        js.print(a, "{s}\n  {f}: ", .{ if (i > 0) "," else "", std.json.fmt(@tagName(s.key), .{}) }) catch return error.OutOfMemory;
+        try jsonValue(&js, a, plan.st.get(s.key));
+    }
+    try js.appendSlice(a, "\n },\n \"playthrough\": [");
+    for (playthrough.items, 0..) |sphere, i| {
+        js.print(a, "{s}\n  [", .{if (i > 0) "," else ""}) catch return error.OutOfMemory;
+        for (sphere, 0..) |p, k| {
+            js.print(a, "{s}\n   [{f}, {f}]", .{ if (k > 0) "," else "", std.json.fmt(p.location, .{}), std.json.fmt(p.item, .{}) }) catch return error.OutOfMemory;
+        }
+        try js.appendSlice(a, "\n  ]");
+    }
+    try js.appendSlice(a, "\n ],\n \"hints\": {");
+    for (hint_list, 0..) |h, i| {
+        js.print(a, "{s}\n  {f}: {{\"kind\": {f}, \"text\": {f}}}", .{
+            if (i > 0) "," else "", std.json.fmt(h.label, .{}), std.json.fmt(@tagName(h.kind), .{}), std.json.fmt(try hints.text(a, world, h, false), .{}),
+        }) catch return error.OutOfMemory;
+    }
+    try js.appendSlice(a, "\n },\n \"locations\": {");
+    // every location that holds something, by name
+    var all: std.ArrayList(Pair) = .empty;
+    for (contents, 0..) |c, i| {
+        const item = c orelse continue;
+        all.append(a, .{ .location = locs[i].name, .item = try world.itemNameById(a, item) }) catch return error.OutOfMemory;
+    }
+    std.mem.sort(Pair, all.items, {}, lessPair);
+    for (all.items, 0..) |p, i| {
+        js.print(a, "{s}\n  {f}: {f}", .{ if (i > 0) "," else "", std.json.fmt(p.location, .{}), std.json.fmt(p.item, .{}) }) catch return error.OutOfMemory;
+    }
+    try js.appendSlice(a, "\n }\n}");
+    fs.writeAll(fsmod.join(a, &.{ mod_root, "spoiler.json" }) catch return error.OutOfMemory, js.items) catch return error.WriteFailed;
+}

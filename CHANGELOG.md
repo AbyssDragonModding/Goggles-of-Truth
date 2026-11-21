@@ -4,6 +4,112 @@ All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new s
 minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
 different version.
 
+## 0.7.0 - 2026-11-21
+
+The randomizer is now a Zig program. 0.6.2 was never released: everything planned for it is in this version,
+listed below under Added, Changed and Fixed.
+
+### The Zig rewrite
+- **One small program, nothing to install.** The randomizer used to need Python 3.14+, four pip packages and a
+  setup script. It's now a single program per system (Windows, Linux, macOS on Intel or Apple Silicon) with the
+  Raven library next to it: about 5.7 MB on Windows. Unzip it and run it, and it opens straight away.
+- **2.3–3.4× faster seeds** with about the same memory use (benchmark in the README's "Why Zig?" section).
+- **New seeds for the same seed number.** Items are picked with a different random number generator, so a seed
+  number gives a different seed than it did in the Python version. The same version, seed and settings string
+  still always make the same mod, on every system.
+- **Settings strings still work** between the Python and Zig versions, both ways.
+- **Updating:** download the new build and copy your `user_settings.toml` into its folder. The Python version's
+  git auto-updater isn't part of the Zig version.
+
+### Deprecated
+- **The Python version** (0.6.1 and earlier) is deprecated and won't get any more updates. Use this version for
+  new seeds. Its last state is kept under the tag `python-legacy`.
+- **The Python item tracker** (`Tools/OOTNS2-Tracker`) is deprecated along with it. It still works for now, but
+  it won't be updated. It will be rebuilt later with a better layout.
+
+### Added
+- **The altar in the Temple of Time tells the Rainbow Bridge requirement.** Reading it (as child or adult) shows
+  the inscription as before, then a second sign: "Rainbow Bridge to Ganon's Castle", the requirement with what you
+  have of it (e.g. "Medallions: 2/4", "Spiritual Stones: 1/3", "Gold Skulltula Tokens: 12/30"), and "Bow: 1/1
+  Light Arrows: 0/1". The numbers are live: the altar's flow (`DoorOfTime:Check_SpiritStoneBase`) counts them
+  each time with the game's own actions into three new Int flags that aren't saved, from the same "owned" flags
+  the bridge itself reads, or the token count. With Vanilla it says to finish the Shadow and Spirit Temples and
+  come back for the Light Arrows. English in every language, like the hints. Confirmed in-game.
+- **Character gifts and minigames show and name the item they really give.**
+  - Models: the gift flows that show the reward with an actor of their own (the Lost Woods target scrub's bullet
+    bags, Darunia's Goron Bracelet, Biggoron's sword, Zelda's Letter) now show the shuffled item's model, the one a
+    chest would show. Their own animations are made for the original item, so the new model doesn't move; it
+    appears where the original was bound (the scrub's display spot, Darunia's hand).
+  - Text: the lines that announce or describe a reward name the shuffled item, in the highlight colour the game
+    uses: both shooting galleries, Bombchu Bowling (both prizes), horseback archery (both prizes), the Deku
+    Theater, Anju, Talon, the diving game, Biggoron and Zelda (23 lines; e.g. "I'll give you the Hover Boots!").
+    A check that keeps its vanilla item keeps its text. Not yet tested in-game.
+- **The Lost Woods ocarina game gives all its rewards for one won song** (every seed, no setting). The Skull Kids'
+  game (`Npc_SkullKid_Child_02`) used to take three rounds of growing songs, a Blue Rupee, then a Red Rupee, then
+  the check (LW Ocarina Memory Game, vanilla a Piece of Heart). The first won round now gives the Blue Rupee, the
+  Red Rupee and the check in a row and sets the song length the third round has
+  (`Minigame_SkullKidSession_CurrentGradeSoundNumForSession` 8), so a later round gives the third round's reward
+  (a Blue Rupee once the check is taken). Not yet tested in-game.
+
+### Changed
+- **Skip Epona Race** works a third way, now In Testing: a new save already owns Epona, and Epona's Song as
+  adult calls her anywhere you can ride; no race, and Malon's song check isn't needed for her (the logic follows:
+  adult and Epona's Song). Found in a real save after Ingo's race (seed NXZ8W3YNXF): a horse is yours when it is
+  in the save's horse list, `OwnedHorseList.ActorName` (10 entries), and the race's end leaves
+  `Animal_Epona_Adult` in entry 0 with every other horse field (name, tack, body, hair, stats) at its default.
+  A first try wrote that entry from Epona's Song during play (`EventTriggerSetGameDataString64`, Index 0): the
+  entry was written, but Epona only came after saving and reloading (seed EUWM5Z4VQV), as the game reads the list
+  when a save loads. So the new save starts with it: the list's default (one value for all 10 entries) is Epona.
+  The song's write stays as a fallback for a save made before. The 0.6.1 way (the song in the ranch counting the
+  race as won) is gone. Confirmed in-game (seed M69CJ7HK7X): on a new save, Epona came to her song as adult, with
+  no reload. (A song added from the debug menu isn't kept in the save; songs learned at their check are.)
+- **Open Death Mountain** takes Zelda's Letter out of the seed. The gate flag it sets
+  (`Npc_Hylia_Soldier_003_GateOpen`) is what the letter would set, and the Happy Mask Shop's masks read it, so the
+  letter had no use. A Red Rupee takes its place in the pool, and Zelda's check is shuffled (a random item from
+  the pool) even with Shuffle Quest Rewards off. The logic's mask trade (the Deku Theater's Skull Mask and Mask of
+  Truth, and the Mask of Truth for Gossip Stone hints) follows: Open Death Mountain or the letter.
+- **Skip Child Zelda's three start checks** (HC Zeldas Letter, HC Malon Egg, Song from Impa) can hold any item,
+  filled like every other check. They used to take only items a new save can simply own (an "obtained" flag
+  and a pouch count: 26 kinds of item in a full pool, mostly songs and key items; outside progression only
+  Farore's Wind, Nayru's Love and the Stone of Agony), and an empty one was filled with that junk first. Those
+  items are still set in the new save; anything else (bags, ammo, rupees, hearts, medallions, tokens...) is
+  handed over when a new game starts, at the end of the opening before its autosave, by the same gift call the
+  game's NPC and check flows use (`GetPouchContent:GetPouchContentByActorName`, with the item window); the
+  opening's event info now lists that flow.
+- **Items Shuffled Per Shop puts a real item on every chosen shelf.** Junk landing on a shelf left its normal
+  goods, and the pool is mostly junk, so most chosen shelves looked unchanged (seed 83WVJZQBZE: 10 of 13; the
+  Kokiri, Market, Goron, Zora and potion shops looked vanilla). After the progression items are placed, each empty
+  chosen shelf now takes an item it can sell once (songs, equipment, spells, key items); junk goes on a shelf only
+  if no such item is left. Few items qualify (an item a shelf sells must exist once in the seed, so its
+  "obtained" flag can hide the bought shelf), so with 3-4 shelves per shop some still keep their goods: about
+  10 of 18-28 in test seeds, against 3 of 13 before. Confirmed in-game in the Kokiri Shop (seed FMUSCNWQBR).
+- **The Kokiri Shop takes part in Items Shuffled Per Shop.** It never did, though the tooltip listed it: each of
+  its eight shelves is placed three times, once for adult Link and twice for child Link, with complementary
+  conditions (`Meet_DekuTree_IsAfter_Step02_Exp` and its negation: the stock before and after the Deku Tree), and
+  every shelf with a condition was skipped, since the sold-out condition replaces it. A shuffled shelf's child
+  copies now get a new computed flag each, "its own condition AND not owned"
+  (`Rando_Shop_<item>_[Not_]Meet_DekuTree_IsAfter_Step02_Exp`, read the way the game's own placements read
+  computed flags), and the adult copy the plain "not owned" one. A shelf with a condition but no copy for its
+  negation can be missing in a way the logic doesn't know (the Market Potion Shop's bug, after the bottle
+  tutorial) and is still never shuffled. Confirmed in-game (seed FMUSCNWQBR): the Kokiri Shop sold the Gift of
+  Halved Damage and the Gift of Doubled Magic.
+
+### Fixed
+- **The Kokiri Sword chest played the sword scene** when Shuffle Kokiri Sword was off (seed 83WVJZQBZE). Its own
+  opening event (`Get_StoneOfForest_GetSword`: the chest opening, the sword swing `Dm_Kokiri_0063`, a Navi tip)
+  was only removed when the chest held another item. With **Skip Story Scenes** it's now removed for the vanilla
+  sword too: the scene sets no save flags, and the normal chest opening gives the sword (the swing and Navi's tip
+  are gone). Confirmed in-game (seed FMUSCNWQBR, where it was tied to Chests Without Cutscene; it belongs with the
+  story scenes, so it moved there).
+- **A Gold Skulltula that dropped a rupee or refill came back after its drop was collected** (Tokensanity; the
+  Kakariko tree Skulltula with a Gold Rupee, seed 83WVJZQBZE). Only the token's own pickup logic records the kill,
+  and only when the pickup's get event ends; consumables dropped as the game's own pickup, which never does
+  (OotrR's notes report the same). They are now token-based like every other drop, built from the item's
+  chest form, and every token-based drop's pouch plays the get event on each pickup, even at full capacity
+  (`PlayGetEventManyTimes`, `IsPlayGetEventPouchMax`, as OotrR sets them). Without those two, a token-based rupee
+  stayed on the ground (0.5.0 test seeds 4 and 6). Rupees and refills now float like the other drops. Confirmed
+  in-game (seed FMUSCNWQBR): a Kokiri Forest Skulltula's Purple Rupee was collected and the Skulltula stayed dead.
+
 ## 0.6.1 - 2026-11-16
 
 ### Added

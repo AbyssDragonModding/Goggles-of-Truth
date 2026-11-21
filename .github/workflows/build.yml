@@ -1,0 +1,117 @@
+# Builds the randomizer for every desktop system on each push, and publishes a GitHub Release when the version in
+# src/version.zig has none yet.
+#
+#   every push / pull request   tests, then the four builds, kept as downloadable artifacts of the run
+#   a push to main with a new   also a Release named after the version (tag "<version>", e.g. 0.7.0) with one ZIP
+#   version in src/version.zig  per system, and the notes of that version from CHANGELOG.md
+#
+# So to release: raise the version in src/version.zig (and build.zig.zon), add its section to CHANGELOG.md, push.
+# Pushes that don't change the version only update the artifacts. A Release can also be made again by deleting it
+# (and its tag) on GitHub and re-running the workflow from the Actions tab.
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ZIG_VERSION: 0.17.1
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x64,   target: x86_64-windows, folder: windows }
+          - { name: linux-x64,     target: x86_64-linux,   folder: linux }
+          - { name: macos-x64,     target: x86_64-macos,   folder: macos }
+          - { name: macos-arm64,   target: aarch64-macos,  folder: macos-aarch64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Read the version
+        id: version
+        run: echo "version=$(sed -n 's/^pub const version = "\(.*\)";/\1/p' src/version.zig)" >> "$GITHUB_OUTPUT"
+
+      # the engine's tests run on the build machine (Linux), once is enough
+      - name: Test
+        if: matrix.name == 'linux-x64'
+        run: zig build test
+
+      - name: Build
+        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseFast
+
+      # zip on Linux keeps the programs' execute permission (and the macOS .app as it is)
+      - name: Package
+        run: |
+          name="Goggles-of-Truth-${{ steps.version.outputs.version }}-${{ matrix.name }}"
+          mkdir -p dist
+          cp -r "zig-out/${{ matrix.folder }}" "dist/$name"
+          cp README.md CHANGELOG.md LICENSE "dist/$name/"
+          (cd dist && zip -r -y -q "$name.zip" "$name")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Goggles-of-Truth-${{ steps.version.outputs.version }}-${{ matrix.name }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is this version released yet?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(sed -n 's/^pub const version = "\(.*\)";/\1/p' src/version.zig)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "$version" > /dev/null 2>&1; then
+            echo "Release $version already exists: nothing to publish."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        if: steps.check.outputs.new == 'true'
+        with:
+          path: dist
+          merge-multiple: true
+
+      # the release notes: this version's section of CHANGELOG.md (from its "## <version>" line to the next "## ")
+      - name: Publish the release
+        if: steps.check.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1 || $0 == "## " v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "See CHANGELOG.md." > notes.md; fi
+          gh release create "$VERSION" dist/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "Goggles of Truth Randomizer $VERSION" \
+            --notes-file notes.md
