@@ -4,6 +4,14 @@ All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new s
 minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
 different version.
 
+## 0.7.1 - 2026-11-21
+
+### Fixed
+- **The randomizer could crash while making a seed.** Two bugs made debug builds of 0.7.0 stop every time (while
+  writing the mod files), and with Mask of Truth hints (as in the Expert preset) also while choosing hints. Release
+  builds, like the 0.7.0 downloads, didn't stop, but the hint bug read memory that was no longer in use, so it
+  could have gone wrong there too. Both are fixed. The mods 0.7.0 made were not affected.
+
 ## 0.7.0 - 2026-11-21
 
 The randomizer is now a Zig program. 0.6.2 was never released: everything planned for it is in this version,
