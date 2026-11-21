@@ -463,8 +463,10 @@ seeded only from the version, seed and settings string, so every system makes id
 
 ### Tools
 
-The item tracker (`Tools/OOTNS2-Tracker`) is still the Python version. It is deprecated, along with the Python
-randomizer, and will be rebuilt later with a better layout.
+The item tracker was a Python program (`Tools/OOTNS2-Tracker`). It is deprecated along with the Python randomizer and
+is no longer on `main`: it is kept under the tag
+[`python-legacy`](https://github.com/AbyssDragonModding/Goggles-of-Truth/tree/python-legacy/Tools/OOTNS2-Tracker). It will be
+rebuilt later with a better layout.
 
 ## Supported game versions
 

@@ -24,8 +24,8 @@ listed below under Added, Changed and Fixed.
 ### Deprecated
 - **The Python version** (0.6.1 and earlier) is deprecated and won't get any more updates. Use this version for
   new seeds. Its last state is kept under the tag `python-legacy`.
-- **The Python item tracker** (`Tools/OOTNS2-Tracker`) is deprecated along with it. It still works for now, but
-  it won't be updated. It will be rebuilt later with a better layout.
+- **The Python item tracker** (`Tools/OOTNS2-Tracker`) is deprecated along with it and moved off `main`: it's kept
+  under the tag `python-legacy` and won't be updated. It will be rebuilt later with a better layout.
 
 ### Added
 - **The altar in the Temple of Time tells the Rainbow Bridge requirement.** Reading it (as child or adult) shows

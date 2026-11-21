@@ -12,8 +12,3 @@ checklist_sample_*.csv
 user_settings.toml
 user_settings.toml.tmp
 save_backups/
-
-# the deprecated Python tracker in Tools/
-__pycache__/
-*.pyc
-.venv/
