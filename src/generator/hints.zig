@@ -317,7 +317,9 @@ const Searches = struct {
     allocator: Allocator,
     filler: *fill.Filler,
     contents: []?ItemId,
-    cache: std.AutoHashMap(usize, logic.State),
+    /// Each state has an allocation of its own: callers keep the pointer `get` returns (Chooser.full) while later
+    /// searches add entries, and a map growing moves the values it holds, which would leave that pointer dangling.
+    cache: std.AutoHashMap(usize, *logic.State),
 
     const none_key = std.math.maxInt(usize);
 
@@ -336,9 +338,11 @@ const Searches = struct {
                 error.OutOfMemory => return error.OutOfMemory,
                 else => return error.NotAsExpected,
             };
-            slot.value_ptr.* = result.state;
+            const state = self.allocator.create(logic.State) catch return error.OutOfMemory;
+            state.* = result.state;
+            slot.value_ptr.* = state;
         }
-        return slot.value_ptr;
+        return slot.value_ptr.*;
     }
 
     fn won(self: *Searches, without: ?usize) PatchError!bool {
@@ -498,7 +502,7 @@ pub fn choose(allocator: Allocator, world: *World, plan: *fill.Plan, filler: *fi
             .allocator = allocator,
             .filler = filler,
             .contents = filler.contents() catch return error.OutOfMemory,
-            .cache = std.AutoHashMap(usize, logic.State).init(allocator),
+            .cache = std.AutoHashMap(usize, *logic.State).init(allocator),
         },
         .full = undefined,
         .free = .empty,

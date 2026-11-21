@@ -139,7 +139,9 @@ pub fn rebuild(allocator: std.mem.Allocator, data: []const u8, replace: []const 
         const start = try readU32(data, node + 8, false);
         const end = try readU32(data, node + 12, false);
         const name = try bytes.cStringAt(data, h.names_offset + @as(usize, attr & 0xFFFF) * 4);
-        gcd = std.math.gcd(gcd, @as(usize, start));
+        // std.math.gcd needs one of its numbers to be non-zero (Python's math.gcd(0, 0) is 0), and the first file
+        // starts at 0: an offset of 0 divides by anything, so it doesn't change the alignment and is skipped.
+        if (start != 0) gcd = std.math.gcd(gcd, @as(usize, start));
         var file_data = try bytes.sliceAt(data, h.data_offset + start, h.data_offset + end);
         for (replace, 0..) |r, k| {
             if (std.mem.eql(u8, r.name, name)) {
