@@ -1,6 +1,7 @@
 # Goggles of Truth
 ### An OoT26 randomizer mod
-## Zig rewrite in progress (easy cross compilation, faster seed generation, smaller binary size and memory footprint)
+## Zig rewrite in progress and testing, Why?: On average a seed generation is about ~2-3x faster than the python version, easier cross platform compilation, lower binary size.
+
 ## Current Version: 0.6.1 (PUBLIC BETA RELEASE)
 **Goggles of Truth** is an item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time*
 (OoT26); the **Goggles of Truth Randomizer** is the program that makes the seeds. It shuffles chests,
