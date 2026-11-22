@@ -1,6 +1,6 @@
 # Goggles of Truth
 
-**An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26).**
+**An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26), attempting to bring back most of the settings from the classic randomizer (with some additional qol settings).**
 
 ## Version **0.7.1** (public beta) · [Discord](https://discord.gg/adSV8cWfBY) ·
 [Source](https://github.com/AbyssDragonModding/Goggles-of-Truth)
