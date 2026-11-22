@@ -153,7 +153,7 @@ confirmed in.
 ## Why Zig?
 
 Up to 0.6.2 the randomizer was a Python program. It is now written in [Zig](https://ziglang.org): one small program
-per system, with nothing to install, that opens straight away and makes seeds 8.6–12.4× faster.
+per system, with nothing to install, that opens straight away and makes seeds 8.6–12.4× faster, Insane speed gains due to zigs compiled nature and adding multi-threading (uses multiple cpu cores to generate seeds) and caching.
 
 The Python version is deprecated and no longer updated. Its last state is kept under the tag
 [`python-legacy`](https://github.com/AbyssDragonModding/Goggles-of-Truth/tree/python-legacy).
