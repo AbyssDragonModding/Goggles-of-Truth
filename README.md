@@ -128,7 +128,7 @@ When only some choices of an option have a different status, they're named in th
 | Windows, Linux | 🟢 Stable |
 | macOS (Intel and Apple Silicon) | 🔴 Not tested (built, but not yet run on a Mac) |
 
-Options the remake can't support yet (keysanity, scrubsanity, entrance randomizer, cows, ...) are listed with the
+Options the randomizer doesn't support yet (need more investigation) (keysanity, entrance randomizer, cows, ...) are listed with the
 reason on the window's **Not Supported** tab. The [test results](#test-results) say which version each setting was
 confirmed in.
 
