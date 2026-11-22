@@ -22,6 +22,9 @@ const textpatches = @import("textpatches.zig");
 const door = @import("door.zig");
 const pickups = @import("pickups.zig");
 const flows = @import("flows.zig");
+const filecache = @import("filecache.zig");
+const compressor = @import("compressor.zig");
+const zstd = @import("../formats/zstd.zig");
 const Progress = @import("../core/Progress.zig");
 const Allocator = std.mem.Allocator;
 const PatchError = patchset.PatchError;
@@ -97,6 +100,8 @@ pub const Inputs = struct {
     placed: []const ?ItemId,
     hint_list: []const hints.Hint,
     out_romfs: []const u8,
+    /// Cache Compressed Files: where compressed files are reused from, or null to compress every file
+    cache: ?*filecache.FileCache = null,
 };
 
 /// Every changed file goes to `inputs.out_romfs`. Returns the written romfs-relative paths.
@@ -459,7 +464,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     };
     patches.endStep();
 
-    return writeFiles(a, world, &patches, &restbl, rt_rel, rt_dictionary, inputs.out_romfs, progress);
+    return writeFiles(gpa, a, world, &patches, &restbl, rt_rel, rt_dictionary, inputs.out_romfs, inputs.cache, progress);
 }
 
 fn mapFill(err: fill.FillError) PatchError {
@@ -583,19 +588,56 @@ fn patchActor(
     }
 }
 
+/// `data` compressed with `dictionary`: through the file cache when there is one (the bytes are the same).
+fn compressFile(allocator: Allocator, world: *World, cache: ?*filecache.FileCache, data: []const u8, dictionary: ?[]const u8) zstd.ZstdError![]u8 {
+    if (cache) |c| return c.compress(allocator, &world.zs, data, dictionary);
+    return world.zs.compress(allocator, data, dictionary);
+}
+
 /// Writes every changed file (compressed again with its dictionary) and the grown size table.
-fn writeFiles(a: Allocator, world: *World, patches: *patchset.PatchSet, restbl: *restbl_mod.Restbl, rt_rel: []const u8, rt_dictionary: ?[]const u8, out_romfs: []const u8, progress: *Progress) WriteError![][]const u8 {
+///
+/// The files are compressed first, on several threads (compressor.zig; `gpa` must be thread-safe), then written one
+/// by one in path order on this thread, with the size table updated as before. Compressing is most of a seed's time
+/// and each file is compressed on its own, so the mod comes out the same as on one thread.
+fn writeFiles(gpa: Allocator, a: Allocator, world: *World, patches: *patchset.PatchSet, restbl: *restbl_mod.Restbl, rt_rel: []const u8, rt_dictionary: ?[]const u8, out_romfs: []const u8, cache: ?*filecache.FileCache, progress: *Progress) WriteError![][]const u8 {
     var written: std.ArrayList([]const u8) = .empty;
-    // each file's compressed bytes are written and then freed: they are never all in memory at once
     const s = patches.allocator;
-    for (try patches.sortedPaths(a)) |rel| {
+    const paths = try patches.sortedPaths(a);
+
+    // one job per compressed file, in path order (job_of[i]: the job of paths[i], or null for a file written as it is)
+    var jobs: std.ArrayList(compressor.Job) = .empty;
+    const job_of = a.alloc(?usize, paths.len) catch return error.OutOfMemory;
+    for (paths, 0..) |rel, i| {
+        const p = patches.current.get(rel).?;
+        job_of[i] = null;
+        if (!p.compressed) continue;
+        job_of[i] = jobs.items.len;
+        jobs.append(a, compressor.Job{ .data = p.data, .dictionary = p.dictionary }) catch return error.OutOfMemory;
+    }
+    // the compressed bytes are on `gpa`: each is freed once written, the rest here if writing stops early
+    defer for (jobs.items) |j| if (j.out) |bytes| gpa.free(bytes);
+    compressor.Compressor.run(gpa, &world.zs, cache, jobs.items) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return progress.fail(error.WriteFailed, "the mod's files could not be compressed ({s})", .{@errorName(err)}),
+    };
+
+    for (paths, 0..) |rel, i| {
         defer patches.endStep();
         const p = patches.current.get(rel).?;
-        const bytes_out = if (p.compressed) world.zs.compress(s, p.data, p.dictionary) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            else => return progress.fail(error.WriteFailed, "{s} could not be compressed", .{rel}),
-        } else p.data;
+        var bytes_out: []const u8 = p.data;
+        if (job_of[i]) |k| {
+            const job = &jobs.items[k];
+            if (job.failure) |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return progress.fail(error.WriteFailed, "{s} could not be compressed", .{rel}),
+            };
+            bytes_out = job.out.?;
+        }
         try writeOne(s, world, out_romfs, rel, bytes_out, progress);
+        if (job_of[i]) |k| {
+            gpa.free(jobs.items[k].out.?);
+            jobs.items[k].out = null;
+        }
         const key = if (std.mem.endsWith(u8, rel, ".zs")) rel[0 .. rel.len - 3] else rel;
         if (restbl.get(key)) |old| {
             const before = patches.original_len.get(rel).?;
@@ -608,7 +650,7 @@ fn writeFiles(a: Allocator, world: *World, patches: *patchset.PatchSet, restbl: 
         error.OutOfMemory => return error.OutOfMemory,
         error.InvalidData => return progress.fail(error.WriteFailed, "the size table could not be written", .{}),
     };
-    const packed_table = world.zs.compress(s, table, rt_dictionary) catch |err| switch (err) {
+    const packed_table = compressFile(s, world, cache, table, rt_dictionary) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return progress.fail(error.WriteFailed, "the size table could not be compressed", .{}),
     };

@@ -70,6 +70,14 @@ pub const Fs = struct {
         return st.size;
     }
 
+    /// Sets a file's modification time to now (the cache keeps the files used last).
+    pub fn touch(self: Self, path: []const u8) FsError!void {
+        // through an open file: Zig 0.17's path version (Dir.setTimestampsNow) isn't implemented on Windows yet
+        const file = Dir.cwd().openFile(self.io, path, .{ .mode = .read_write }) catch |err| return mapError(err);
+        defer file.close(self.io);
+        file.setTimestampsNow(self.io) catch |err| return mapError(err);
+    }
+
     /// The whole file, allocated with `allocator`.
     pub fn readAll(self: Self, allocator: std.mem.Allocator, path: []const u8) FsError![]u8 {
         return Dir.cwd().readFileAlloc(self.io, path, allocator, .unlimited) catch |err| return mapError(err);

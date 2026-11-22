@@ -42,6 +42,13 @@ extern fn ZSTD_compressBound(size: usize) usize;
 extern fn ZSTD_compressCCtx(cctx: ?*ZSTD_CCtx, dst: ?*anyopaque, cap: usize, src: ?*const anyopaque, size: usize, level: c_int) usize;
 extern fn ZSTD_compress_usingCDict(cctx: ?*ZSTD_CCtx, dst: ?*anyopaque, cap: usize, src: ?*const anyopaque, size: usize, cdict: ?*const ZSTD_CDict) usize;
 extern fn ZSTD_isError(code: usize) c_uint;
+extern fn ZSTD_versionNumber() c_uint;
+
+/// The zstd library's version (1.5.7 is 10507). A newer library may compress the same data differently, so the
+/// file cache keys on it.
+pub fn libraryVersion() u32 {
+    return ZSTD_versionNumber();
+}
 
 const content_size_unknown: c_ulonglong = std.math.maxInt(c_ulonglong);
 const content_size_error: c_ulonglong = std.math.maxInt(c_ulonglong) - 1;
@@ -188,13 +195,23 @@ pub const Context = struct {
         return Decompressed{ .data = try decompressWith(allocator, src, dict.ddict), .dictionary = dict.name };
     }
 
+    /// Builds the compression dictionary for `dictionary` now (null: none, nothing to do). Compressing from several
+    /// threads at once is safe once every dictionary they use is prepared: a prepared one is only read (zstd allows
+    /// one CDict to be used by many threads).
+    pub fn prepare(self: *Self, dictionary: ?[]const u8) ZstdError!void {
+        const name = dictionary orelse return;
+        const dict = self.byName(name) orelse return error.UnknownDictionary;
+        if (dict.cdict == null) dict.cdict = ZSTD_createCDict(dict.data.ptr, dict.data.len, level);
+        if (dict.cdict == null) return error.OutOfMemory;
+    }
+
     /// Compresses a patched file with the dictionary its original used (null: none).
     pub fn compress(self: *Self, allocator: std.mem.Allocator, data: []const u8, dictionary: ?[]const u8) ZstdError![]u8 {
         const name = dictionary orelse return compressPlain(allocator, data);
         const dict = self.byName(name) orelse return error.UnknownDictionary;
 
-        // The compression dictionary is built once, on first use. Only one generation runs at a time (the window
-        // starts no second job while one is busy), so no lock is needed here.
+        // The compression dictionary is built once, on first use. Several threads compress at once only after
+        // `prepare` has built every dictionary they use (compressor.zig), so this never runs on two threads at once.
         if (dict.cdict == null) dict.cdict = ZSTD_createCDict(dict.data.ptr, dict.data.len, level);
         const cdict = dict.cdict orelse return error.OutOfMemory;
 

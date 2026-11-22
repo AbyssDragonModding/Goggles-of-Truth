@@ -4,6 +4,41 @@ All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new s
 minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
 different version.
 
+## 0.7.2 - 2026-11-22
+
+Seeds are made 3–6× faster: a `.nup` seed takes 1.5–2.5 s instead of 9–10 s, an extracted romfs 1.3–1.7 s instead
+of 4–5 s (README benchmark).
+
+### Changed
+- **The mod's files are compressed on several threads at once** (up to 8, one per CPU core). Timing a seed showed
+  where its time went: about 90% was compressing the patched files again (zstd level 16 with the game's
+  dictionaries), one after another. Reading the game is a small part: a `.nup` costs only about 0.15 s more than
+  an extracted romfs. A `.nup` seed took longer because it holds the game text in all 16 languages, and each
+  language's message archive takes 0.3–0.6 s to compress (an extracted romfs dump may only have English).
+  - Each file is still compressed on its own, and the files are written in the same order afterwards, so the files
+    are byte for byte the same as when they were compressed one at a time (checked from a `.nup` and from a romfs,
+    Defaults and Expert). Seeds still change with the version number, as always.
+  - The game's compression dictionaries are built before the threads start (`zstd.Context.prepare`), since
+    building one isn't safe on two threads at once (`src/generator/compressor.zig`).
+  - Peak memory use is higher while the files are compressed: up to about 690 MB for a `.nup` seed with the Expert
+    preset, against 440 MB in 0.7.0.
+
+### Added
+- **Cache Compressed Files** (ROM Options > Output, on by default; `cache_files` in `user_settings.toml`, and
+  `--no-cache` for `goggles_cli`). Every compressed file of 32 KB or more is also kept in a `cache` folder next to
+  the program, named by the SHA-256 of what it was made from (its bytes, the dictionary, the compression level and
+  the zstd version). A later seed that writes the same file takes it from there instead of compressing it again.
+  The log says how many files were reused.
+  - A cached file is only used when it decompresses to exactly the bytes it stands for, so the mod is byte for byte
+    the same with the cache or without it (also checked with damaged cache files, which are deleted and made again).
+    It works the same for both kinds of game files: a file compressed for a `.nup` seed is reused by a romfs seed.
+  - What it saves depends on the settings. Files that depend on the item placement (stage files, many event flows)
+    differ from seed to seed; the text of every language only does when Gossip Stone hints are on. With the default
+    settings a `.nup` seed drops from 2.1 s to 1.5 s once one seed was made; with hints on (Standard, Expert) there
+    is little to reuse. Making the same seed again reuses every file.
+  - The cache stays under 1 GB on its own (the files used longest ago are deleted first) and can be deleted at any
+    time. It isn't part of the settings string, so it never changes a seed.
+
 ## 0.7.1 - 2026-11-21
 
 ### Fixed

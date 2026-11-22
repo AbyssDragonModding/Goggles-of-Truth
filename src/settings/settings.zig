@@ -245,7 +245,8 @@ pub fn findPreset(name: []const u8) ?*const Preset {
     return null;
 }
 
-/// `st` with preset `name` applied (Excluded Locations, Create Spoiler Log and Per-Seed Saves are kept).
+/// `st` with preset `name` applied (Excluded Locations, Create Spoiler Log, Per-Seed Saves and Cache Compressed
+/// Files are kept).
 pub fn applyPreset(st: Settings, preset: *const Preset) Settings {
     var out = st;
     for (preset.values) |kv| out.set(kv.key, kv.value);
@@ -283,7 +284,8 @@ comptime {
             }
             count += 1;
         }
-        if (count != key_count - 3) @compileError("preset " ++ p.name ++ " doesn't set every gameplay setting");
+        // the four that aren't gameplay: Excluded Locations, Create Spoiler Log, Per-Seed Saves, Cache Compressed Files
+        if (count != key_count - 4) @compileError("preset " ++ p.name ++ " doesn't set every gameplay setting");
     }
 }
 
@@ -365,7 +367,7 @@ pub fn settingStatus(key: Key, value: ?[]const u8) Status {
 // ------------------------------------------------------------------------------------------ settings string
 
 /// Settings that only decide where things are written, not what the seed is: left out of the settings string.
-const not_in_string = [_]Key{.per_seed_saves};
+const not_in_string = [_]Key{ .per_seed_saves, .cache_files };
 
 fn lessKeyName(_: void, a: Key, b: Key) bool {
     return std.mem.order(u8, @tagName(a), @tagName(b)) == .lt;
@@ -530,6 +532,19 @@ test "settings string round trip" {
     try std.testing.expectEqual(@as(i64, 40), back.int(.bridge_tokens));
     try std.testing.expectEqual(@as(usize, 2), back.excluded().len);
     try std.testing.expectEqualStrings("Zelda \u{e9}", back.excluded()[1]);
+}
+
+test "output-only settings stay out of the settings string" {
+    // why: the settings string is part of every seed's random stream, so turning the cache or per-seed saves off
+    // must never change the seed
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const defaults = Settings.defaults();
+    var changed = Settings.defaults();
+    changed.set(.cache_files, .{ .boolean = false });
+    changed.set(.per_seed_saves, .{ .boolean = false });
+    try std.testing.expectEqualStrings(try toString(a, &defaults), try toString(a, &changed));
 }
 
 test "split status" {

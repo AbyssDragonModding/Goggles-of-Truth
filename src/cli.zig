@@ -1,7 +1,7 @@
 //! goggles_cli: the randomizer without a window.
 //!
 //!   goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
-//!                        [--from-user-settings] [--exefs <folder>] [--dump-placement <file.json>]
+//!                        [--from-user-settings] [--exefs <folder>] [--no-cache] [--dump-placement <file.json>]
 //!   goggles_cli check <.nup, romfs or exefs>          game version check (prints the exefs/main SHA-256)
 //!   goggles_cli scan <.nup or romfs>                  scan the game and list a sample of the locations
 //!   goggles_cli vanilla-test <.nup or romfs>          is the vanilla placement beatable under the logic?
@@ -10,7 +10,8 @@
 //!   goggles_cli selftest <game>                       read and write back every event flow (byte check)
 //!
 //! Without --settings, generate uses user_settings.toml next to the program with --from-user-settings, else the
-//! defaults.
+//! defaults. Compressed files are cached in the cache folder next to the program (Cache Compressed Files) unless
+//! --no-cache is given or user_settings.toml turns it off (with --from-user-settings).
 
 const std = @import("std");
 const engine = @import("engine");
@@ -19,7 +20,7 @@ const Allocator = std.mem.Allocator;
 const usage =
     \\usage:
     \\  goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
-    \\                       [--from-user-settings] [--exefs <folder>]
+    \\                       [--from-user-settings] [--exefs <folder>] [--no-cache]
     \\  goggles_cli check <.nup, romfs or exefs>
     \\  goggles_cli scan <.nup or romfs>
     \\  goggles_cli vanilla-test <.nup or romfs>
@@ -91,6 +92,7 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
     var settings_string: ?[]const u8 = null;
     var exefs: []const u8 = "";
     var from_user = false;
+    var no_cache = false;
     var dump_placement: ?[]const u8 = null;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -102,6 +104,7 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         else if (std.mem.eql(u8, arg, "--settings")) settings_string = try optionValue(args, &i)
         else if (std.mem.eql(u8, arg, "--exefs")) exefs = try optionValue(args, &i)
         else if (std.mem.eql(u8, arg, "--from-user-settings")) from_user = true
+        else if (std.mem.eql(u8, arg, "--no-cache")) no_cache = true
         else if (std.mem.eql(u8, arg, "--dump-placement")) dump_placement = try optionValue(args, &i)
         else return error.BadArguments;
     }
@@ -113,13 +116,19 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
             std.debug.print("error: invalid settings string\n", .{});
             return error.Failed;
         };
-        // the settings string leaves out where things are written: keep the file's choice
-        if (from_user) st.set(.per_seed_saves, (try engine.usersettings.load(a, env)).settings.get(.per_seed_saves));
+        // the settings string leaves out where and how things are written: keep the file's choices
+        if (from_user) {
+            const file = (try engine.usersettings.load(a, env)).settings;
+            st.set(.per_seed_saves, file.get(.per_seed_saves));
+            st.set(.cache_files, file.get(.cache_files));
+        }
     } else if (from_user) {
         const loaded = try engine.usersettings.load(a, env);
         for (loaded.messages) |m| std.debug.print("{s}\n", .{m});
         st = loaded.settings;
     }
+
+    if (no_cache) st.set(.cache_files, .{ .boolean = false });
 
     var progress = engine.Progress.stderrPrinter();
     const result = engine.generator.generate(gpa, a, env, .{

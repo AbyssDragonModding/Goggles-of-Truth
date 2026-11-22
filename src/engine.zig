@@ -36,6 +36,8 @@ pub const logic = @import("logic/logic.zig");
 pub const patchset = @import("generator/patchset.zig");
 pub const fill = @import("generator/fill.zig");
 pub const generator = @import("generator/generator.zig");
+pub const filecache = @import("generator/filecache.zig");
+pub const compressor = @import("generator/compressor.zig");
 
 // ---- where the seeds go
 pub const Env = @import("platform/Env.zig");
@@ -64,6 +66,8 @@ test {
     _ = usersettings;
     _ = logic;
     _ = generator;
+    _ = filecache;
+    _ = compressor;
     _ = longshot;
     _ = saves;
 }

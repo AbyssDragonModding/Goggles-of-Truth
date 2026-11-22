@@ -2,7 +2,7 @@
 
 **An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26), attempting to bring back most of the settings from the classic randomizer (with some additional qol settings).**
 
-## Version **0.7.1** (public beta) · [Discord](https://discord.gg/adSV8cWfBY) ·
+## Version **0.7.2** (public beta) · [Discord](https://discord.gg/adSV8cWfBY) ·
 [Source](https://github.com/AbyssDragonModding/Goggles-of-Truth)
 
 Goggles of Truth shuffles chests, songs, dungeon rewards, NPC gifts, shop items, Gold Skulltulas and more, and
@@ -124,12 +124,13 @@ When only some choices of an option have a different status, they're named in th
 | Spoiler log (`spoiler.txt`, `spoiler.json`) and test checklist (`checklist.xlsx`) | 🟢 Stable |
 | Longshot support: finds the game, follows its updates, switches older seeds off | 🟢 Stable |
 | Per-Seed Saves (Longshot, and Lichii and other yuzu-family emulators) | 🟢 Stable |
+| Cache Compressed Files: later seeds reuse files compressed before (the mod is byte for byte the same) | 🟢 Stable |
 | Command-line tool (`goggles_cli`) | 🟢 Stable |
 | Windows, Linux | 🟢 Stable |
 | macOS (Intel and Apple Silicon) | 🔴 Not tested (built, but not yet run on a Mac) |
 
 Options the randomizer doesn't support yet (need more investigation) (keysanity, entrance randomizer, cows, ...) are listed with the
-reason on the window's **Not Supported** tab. The [test results](#test-results) say which version each setting was
+reason on the window's **Not Supported** tab. The [changelog](CHANGELOG.md) says which version each setting was
 confirmed in.
 
 ## Contents
@@ -152,39 +153,55 @@ confirmed in.
 ## Why Zig?
 
 Up to 0.6.2 the randomizer was a Python program. It is now written in [Zig](https://ziglang.org): one small program
-per system, with nothing to install, that opens straight away and makes seeds 2.3–3.4× faster.
+per system, with nothing to install, that opens straight away and makes seeds 8.6–12.4× faster.
 
 The Python version is deprecated and no longer updated. Its last state is kept under the tag
 [`python-legacy`](https://github.com/AbyssDragonModding/Goggles-of-Truth/tree/python-legacy).
 
 ### Benchmark
 
-The same settings, the same game files and the same machine, both generators making a complete mod folder
-(including the spoiler log and checklist). Three runs per case; times are wall-clock from start to exit, averaged.
+The same settings, the same game files and the same machine, every generator making a complete mod folder
+(including the spoiler log and checklist). Three runs per case, each with its own seed; times are wall-clock from
+start to exit, averaged.
 
-| Game files | Settings | Python 0.6.2 | Zig 0.6.2 | Faster by |
+| Game files | Settings | Python 0.6.2 | Zig 0.7.0 | Zig 0.7.2 | Zig 0.7.2, cache filled | Faster than Python |
+|---|---|---|---|---|---|---|
+| Extracted romfs | Defaults | 11.6 s | 3.8 s | **1.3 s** | 1.4 s | **8.6×** |
+| Extracted romfs | Expert preset | 17.5 s | 4.8 s | **1.6 s** | 1.7 s | **10.9×** |
+| `.nup` package | Defaults | 18.5 s | 8.9 s | 2.1 s | **1.5 s** | **12.4×** |
+| `.nup` package | Expert preset | 24.0 s | 10.3 s | **2.5 s** | **2.5 s** | **9.7×** |
+
+"Zig 0.7.2" is a seed with an empty cache (or Cache Compressed Files off: the same within ±0.05 s). "Cache filled"
+means one seed with the same settings (and another seed number) was made before, as when you make several seeds in a
+row.
+
+**Where the time goes:** in 0.7.0, about 90% of a seed was compressing the changed files again for the mod (zstd at
+level 16, with the game's dictionaries), one file after another. Reading the game is a small part: a `.nup` costs
+only about 0.15 s more to read than an extracted romfs. A `.nup` seed takes longer because the `.nup` holds the
+game text in all 16 languages, and each language's text archive (2–3.5 MB) takes 0.3–0.6 s to compress; the
+extracted romfs used here only has English.
+
+**What 0.7.2 changed:**
+- **The files are compressed on several threads at once** (up to 8, one per CPU core). This is most of the gain,
+  for every seed and every setting. Each file is still compressed on its own and written in the same order, so a
+  seed comes out byte for byte the same as when the files were compressed one at a time.
+- **Cache Compressed Files** reuses files that come out the same as in an earlier seed. With the default settings
+  that's the text of all 16 languages, so a `.nup` seed saves another 0.6 s. Gossip Stone hints are written into
+  every language's text and differ from seed to seed, so with hints on (Standard and Expert presets) there is
+  little to reuse. Making the same seed again (same seed and settings) reuses every file.
+
+Peak memory use (RAM). Compressing eight files at once takes more memory than one at a time:
+
+| Game files | Settings | Python 0.6.2 | Zig 0.7.0 | Zig 0.7.2 |
 |---|---|---|---|---|
-| Extracted romfs | Defaults | 10.9 s | **3.6 s** | **3.0×** |
-| Extracted romfs | Expert preset | 15.1 s | **4.4 s** | **3.4×** |
-| `.nup` package | Defaults | 17.3 s | **7.7 s** | **2.3×** |
-| `.nup` package | Expert preset | 23.2 s | **8.5 s** | **2.7×** |
+| Extracted romfs | Defaults / Expert | 186 / 215 MB | 172 / 236 MB | 310 / 354 MB |
+| `.nup` package | Defaults / Expert | 377 / 415 MB | 326 / 441 MB | 572 / 689 MB |
 
-The Zig times barely varied between runs (±0.1 s); Python's varied by up to ±1 s. The more a setting changes, the
-bigger the gap: the Expert preset adds about 4–6 s to a Python seed but under 1 s to a Zig one. Most of the Zig
-version's time goes to reading and decompressing the game's files, which with a `.nup` means unpacking them from the
-package first.
-
-Peak memory use (RAM) is about the same for both:
-
-| Game files | Settings | Python | Zig |
-|---|---|---|---|
-| Extracted romfs | Defaults / Expert | 186 / 214 MB | 173 / 235 MB |
-| `.nup` package | Defaults / Expert | 379 / 415 MB | 326 / 440 MB |
-
-<sub>Test machine: AMD Ryzen 9 9950X, 64 GB RAM, Windows 11, game files on a local drive. Python 3.15.0 with the
-0.6.2 Python randomizer; Zig 0.17.1 `ReleaseFast` build of `goggles_cli generate`. Seeds `BENCH1`–`BENCH3`.
-Python 0.6.2 crashes in its small-chest patch (`qol.py`), so the Python runs used an in-memory fix of that one
-function (the same fix the Zig version has). The game files and the Python source were not changed.</sub>
+<sub>Test machine: AMD Ryzen 9 9950X (16 cores), 64 GB RAM, Windows 11, game files on a local drive. Python 3.15.0
+with the 0.6.2 Python randomizer; Zig 0.17.1 `ReleaseFast` builds of `goggles_cli generate` (0.7.0 from its tag).
+Seeds `BENCH1`–`BENCH3`. With fewer cores 0.7.2 uses fewer threads, and the gain is smaller. Python 0.6.2 crashes in
+its small-chest patch (`qol.py`), so the Python runs used an in-memory fix of that one function (the same fix the
+Zig version has). The game files and the Python source were not changed.</sub>
 
 ### What else changed for players
 
@@ -274,12 +291,17 @@ settings string (copy it from the window or `settings.txt`) so others can make i
 ### Your saved settings
 
 Everything you change is saved to `user_settings.toml` next to the program, including the game and output folders.
-On macOS it's next to `Goggles of Truth Randomizer.app`, not inside it (as are `save_backups` and `error_log.txt`).
+On macOS it's next to `Goggles of Truth Randomizer.app`, not inside it (as are `save_backups`, `cache` and
+`error_log.txt`).
 
 - **Reset everything:** close the randomizer and delete `user_settings.toml`. **Reset** (next to the settings
   string) resets only the settings.
 - **Edit by hand:** close the randomizer first; every setting is listed with its allowed values and default. An
   invalid value is ignored and the log says so.
+- **The `cache` folder** holds compressed files kept by **Cache Compressed Files** (ROM Options > Output, on by
+  default): a later seed that writes the same file takes it from there instead of compressing it again. It stays under 1 GB on its own (the files used longest ago go first) and can be deleted at any
+  time; it is filled again as you make seeds. Turning the option off makes every seed compress every file, with the
+  same result.
 - Versions before 0.5.0 kept settings in `.ootr_remake.json` in your user folder. It is read once if
   `user_settings.toml` doesn't exist yet.
 
@@ -383,7 +405,7 @@ not confirmed). For a drop-down, the badge follows the chosen option (Item Pool 
 
 | Tab | What you can change |
 |---|---|
-| **ROM Options** | Game and output folders, mod name, seed, spoiler log, per-seed saves |
+| **ROM Options** | Game and output folders, mod name, seed, spoiler log, per-seed saves, the file cache |
 | **World** | Logic (glitchless or none); open Kokiri Forest, Door of Time, Zora's Fountain and Death Mountain; the Rainbow Bridge requirement (vanilla, medallions, Spiritual Stones or Gold Skulltula tokens, shown at the Temple of Time altar); skip child Zelda; skip Epona's race |
 | **Items** | Songs, Spiritual Stones and Medallions, ocarinas, Kokiri Sword, Weird Egg; freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards, Great Fairies, Skulltula House, Tokensanity, items shuffled per shop, Business Scrubs; item pool size; ammo chests needing their bag |
 | **Dungeon Items** | Maps & Compasses, small keys, boss keys |
@@ -424,7 +446,7 @@ their item, and every confirmed cutscene skip and Quality of Life option on.
 
 ```
 goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
-                     [--from-user-settings] [--exefs <folder>]
+                     [--from-user-settings] [--exefs <folder>] [--no-cache]
 goggles_cli check <.nup, romfs or exefs>        check the game version
 goggles_cli scan <.nup or romfs>                list the item locations
 goggles_cli vanilla-test <.nup or romfs>        logic test on the unshuffled game
@@ -433,7 +455,8 @@ goggles_cli dump-plan <game> <settings> <out>   the item pool a settings string 
 goggles_cli selftest <game>                     read and rewrite every event flow, byte for byte
 ```
 
-`--from-user-settings` uses the settings saved by the window.
+`--from-user-settings` uses the settings saved by the window. The tool keeps its own `cache` folder next to itself
+(Cache Compressed Files); `--no-cache` compresses every file instead, for the same mod.
 
 ## For developers
 
@@ -486,7 +509,7 @@ and push.
 | `src/game` | Reading the game (folder or `.nup`), the version check, the location scan |
 | `src/settings` | The setting table, presets, settings strings, `user_settings.toml` |
 | `src/logic` | Items and the access rules for every region and location |
-| `src/generator` | Item pool and fill, hints, and every patch written to the mod |
+| `src/generator` | Item pool and fill, hints, every patch written to the mod, compressing on threads (`compressor.zig`) and the file cache (`filecache.zig`) |
 | `src/platform` | Longshot, emulator folders and per-seed saves |
 | `src/ui` | The window: `main.xml` / `widgets.xml` layouts and `App.zig` |
 | `src/cli.zig`, `src/main.zig` | The two programs |

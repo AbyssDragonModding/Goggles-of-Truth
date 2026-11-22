@@ -11,6 +11,7 @@ const fill = @import("fill.zig");
 const hints = @import("hints.zig");
 const patches = @import("patches.zig");
 const checklist = @import("checklist.zig");
+const filecache = @import("filecache.zig");
 const fsmod = @import("../core/fs.zig");
 const hash = @import("../core/hash.zig");
 const Rng = @import("../core/rng.zig").Rng;
@@ -80,6 +81,7 @@ pub fn randomSeed(io: std.Io, buffer: *[10]u8) []const u8 {
 
 /// Makes one seed. `world`: the scanned game when the caller keeps one (the window), else null (it is scanned here).
 /// Strings in the result are allocated with `result_allocator`; everything else lives in a generation arena.
+/// `gpa` must be thread-safe (the program's gpa is): the mod's files are compressed on several threads.
 pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, request: Request, world_in: ?*World, progress: *Progress) GenerateError!Result {
     var arena_state = std.heap.ArenaAllocator.init(gpa);
     defer arena_state.deinit(); // the whole generation run is freed at once
@@ -208,13 +210,25 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     const to_patch = a.alloc(?ItemId, placed.len) catch return error.OutOfMemory;
     for (to_patch, 0..) |*p, i| p.* = placed_filler.placed[i] orelse plan.forced[i];
     const out_romfs = fsmod.join(a, &.{ mod_root, "romfs" }) catch return error.OutOfMemory;
+    // Cache Compressed Files: compressing the patched files is most of a seed's time, and many come out the same
+    // from seed to seed (filecache.zig)
+    var cache_state: ?filecache.FileCache = null;
+    if (st.flag(.cache_files)) cache_state = filecache.FileCache.init(a, fs, env.app_dir) catch return error.OutOfMemory;
+    const cache: ?*filecache.FileCache = if (cache_state) |*c| c else null;
     const written = patches.writePatches(gpa, a, .{
         .world = world,
         .plan = plan,
         .placed = to_patch,
         .hint_list = hint_list,
         .out_romfs = out_romfs,
+        .cache = cache,
     }, progress) catch |err| return patchError(err, progress);
+    if (cache) |c| {
+        progress.log("File cache: {d} of {d} large files reused, {d} compressed and stored", .{ c.hits, c.hits + c.misses, c.misses });
+        if (c.replaced > 0) progress.log("File cache: {d} damaged file(s) made again", .{c.replaced});
+        if (c.warning) |w| progress.log("warning: the file cache is off for this seed: {s}", .{w});
+        if (c.misses > 0 and c.warning == null) c.trim(gpa);
+    }
 
     if (st.flag(.create_spoiler)) {
         writeSpoiler(a, world, plan, placed_filler, hint_list, seed, sstr, mod_root, fs) catch |err| return patchError(err, progress);

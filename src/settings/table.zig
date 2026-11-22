@@ -61,6 +61,7 @@ pub const Key = enum {
     excluded_locations,
     create_spoiler,
     per_seed_saves,
+    cache_files,
 };
 
 pub const specs = [_]Spec{
@@ -877,6 +878,23 @@ pub const specs = [_]Spec{
             \\Generating a seed, or Play This Seed on the ROM Options tab, stores the slots you have now with their
             \\seed and brings in the new seed's (empty slots for a new one). Slots no seed owns are copied to
             \\save_backups first. The game's options are shared. Close the game before switching.
+        ,
+    },
+    .{
+        .key = .cache_files,
+        .tab = "ROM Options",
+        .group = "Output",
+        .label = "Cache Compressed Files",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\Most of a seed's time goes to compressing the files written into the mod. With this on, every
+            \\compressed file is also kept in the cache folder next to the randomizer, and a file that comes out
+            \\the same in a later seed is taken from there instead of being compressed again. That saves the
+            \\most when Gossip Stone hints are off: the game text of every language then stays the same from seed
+            \\to seed (with a .nup, about a third of the seed's time). Works with a .nup and an extracted romfs
+            \\alike, and the mod is byte for byte the same either way. The cache is checked before use and kept
+            \\under 1 GB (the files used longest ago go first); delete the cache folder at any time to empty it.
         ,
     },
 };
