@@ -20,7 +20,23 @@ mod folders.
 > Your test reports make it better: see [Testing and reporting problems](#testing-and-reporting-problems).
 
 *Disclaimer: Claude was used to help build this; it speeds development up a lot. Settings are tested in-game by hand.*
+## Contents
 
+- [Features](#features)
+- [Why Zig?](#why-zig)
+- [What you need](#what-you-need)
+- [Getting the randomizer](#getting-the-randomizer)
+- [Making a seed](#making-a-seed)
+- [Installing a seed](#installing-a-seed)
+- [Testing and reporting problems](#testing-and-reporting-problems)
+- [Settings](#settings)
+- [Command-line tool](#command-line-tool)
+- [For developers](#for-developers)
+- [Supported game versions](#supported-game-versions)
+- [Known issues](#known-issues)
+- [Versions](#versions)
+- [Credits](#credits)
+- 
 ## Features
 
 Everything the randomizer can do, and how far each part has been tested in-game. The status is the same as the
@@ -132,23 +148,6 @@ When only some choices of an option have a different status, they're named in th
 Options the randomizer doesn't support yet (need more investigation) (keysanity, entrance randomizer, cows, ...) are listed with the
 reason on the window's **Not Supported** tab. The [changelog](CHANGELOG.md) says which version each setting was
 confirmed in.
-
-## Contents
-
-- [Features](#features)
-- [Why Zig?](#why-zig)
-- [What you need](#what-you-need)
-- [Getting the randomizer](#getting-the-randomizer)
-- [Making a seed](#making-a-seed)
-- [Installing a seed](#installing-a-seed)
-- [Testing and reporting problems](#testing-and-reporting-problems)
-- [Settings](#settings)
-- [Command-line tool](#command-line-tool)
-- [For developers](#for-developers)
-- [Supported game versions](#supported-game-versions)
-- [Known issues](#known-issues)
-- [Versions](#versions)
-- [Credits](#credits)
 
 ## Why Zig?
 
