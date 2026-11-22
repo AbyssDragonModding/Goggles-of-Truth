@@ -21,8 +21,120 @@ mod folders.
 
 *Disclaimer: Claude was used to help build this; it speeds development up a lot. Settings are tested in-game by hand.*
 
+## Features
+
+Everything the randomizer can do, and how far each part has been tested in-game. The status is the same as the
+badge the window shows next to each option:
+
+| Status | Badge | Meaning |
+|---|---|---|
+| 🟢 **Stable** | green | Confirmed in-game |
+| 🟡 **Semi-tested** | yellow (*In Testing*) | Partly confirmed: some of it was seen working, the rest still needs a check |
+| 🔴 **Not tested** | red (*Experimental*) | Built and checked on the files, but not yet confirmed in-game |
+
+When only some choices of an option have a different status, they're named in the table.
+
+### World
+
+| Feature | Choices | Status |
+|---|---|---|
+| Logic Rules | Glitchless | 🟢 Stable |
+| | No Logic | 🔴 Not tested |
+| Guarantee Reachable Locations | All | 🟢 Stable |
+| | Required Only | 🔴 Not tested |
+| Kokiri Forest | Closed, Closed Deku, Open | 🟢 Stable |
+| Door of Time | Closed, Open | 🟢 Stable |
+| Zora's Fountain | Closed, Open | 🟢 Stable |
+| Open Death Mountain | Off, On (Zelda's Letter leaves the seed) | 🟢 Stable |
+| Rainbow Bridge Requirement | Vanilla, Medallions (1–6), Spiritual Stones, Gold Skulltula Tokens (1–100) | 🟢 Stable |
+| The Temple of Time altar shows the bridge requirement and your progress | always on | 🟢 Stable |
+| Skip Child Zelda (her, Malon's and Impa's checks can hold any item) | Off, On | 🟢 Stable |
+| Skip Epona Race (Epona is yours from the start) | On | 🟡 Semi-tested |
+
+### Items
+
+| Feature | Choices | Status |
+|---|---|---|
+| Shuffle Songs | Vanilla, Song Locations, Anywhere | 🟢 Stable |
+| Shuffle Spiritual Stones / Medallions | Vanilla, Dungeon Reward Locations, Anywhere | 🟢 Stable |
+| Shuffle Ocarinas | Off, On | 🟢 Stable |
+| Shuffle Kokiri Sword | Off, On | 🟢 Stable |
+| Shuffle Weird Egg | Off, On | 🟢 Stable |
+| Shuffle Freestanding Items | Off, On | 🟢 Stable |
+| Shuffle Freestanding Rupees | Off, On | 🟢 Stable |
+| Shuffle Boss Heart Containers | Off, On | 🟢 Stable |
+| Character Gifts and Minigames | On | 🟡 Semi-tested |
+| Gifts show the model of the item they really give, and their text names it | always on | 🔴 Not tested |
+| Shuffle Quest Rewards | Off, On | 🟢 Stable |
+| Business Scrubs (the four one-time scrubs) | Off, On; price 10, the game's, or random | 🟢 Stable |
+| Shuffle Great Fairy Rewards | Off, On | 🟢 Stable |
+| Shuffle Skulltula House Rewards | Off, On | 🟢 Stable |
+| Tokensanity (Gold Skulltulas drop shuffled items) | Off, Dungeons Only, Overworld Only, All Tokens | 🟢 Stable |
+| Items Shuffled Per Shop (Kokiri Shop included) | Off, 1–4 items or random; price 10 or random | 🟢 Stable |
+| Item Pool | Balanced | 🟢 Stable |
+| | Scarce, Minimal | 🔴 Not tested |
+| Refills Need Their Item (ammo chests give rupees until you have the bag or weapon) | Off, On | 🟢 Stable |
+
+### Dungeon Items
+
+| Feature | Choices | Status |
+|---|---|---|
+| Maps & Compasses | Vanilla, Own Dungeon, Start With | 🟢 Stable |
+| | Remove (replaced by junk) | 🔴 Not tested |
+| Small Keys | Vanilla | 🟢 Stable |
+| | Own Dungeon | 🔴 Not tested |
+| Boss Keys | Vanilla | 🟢 Stable |
+| | Own Dungeon (can fail to place items with some settings) | 🔴 Not tested |
+
+### Hints
+
+| Feature | Choices | Status |
+|---|---|---|
+| Gossip Stone hints | No Hints, Balanced, Strong, Useless | 🟢 Stable |
+| Gossip Stones need the Mask of Truth | Mask of Truth Required, No Mask of Truth | 🟢 Stable |
+
+### Quality of Life
+
+| Feature | Choices | Status |
+|---|---|---|
+| Every seed starts outside the Kokiri Shop (no 30-second black screen) | always on | 🟢 Stable |
+| Make All Cutscenes Skippable | Off, On | 🟢 Stable |
+| Skip Opening Movie | Off, On | 🟢 Stable |
+| Skip the Great Deku Tree's Talk | Off, On | 🟢 Stable |
+| Skip Kaepora Gaebora | Off, On | 🟢 Stable |
+| Chests Without Cutscene (big chests) | Off, On | 🟢 Stable |
+| Skip Area Intro Cutscenes | On | 🟡 Semi-tested |
+| Skip Story Scenes | On | 🟡 Semi-tested (a few scenes confirmed, most not yet) |
+| Bag Bombs without Goron Bracelet | Off, On | 🟢 Stable |
+| Bag Bombs Open Dodongo's Cavern | Off, On | 🟢 Stable |
+| Gold Skulltulas Day and Night, Any Age | Off, On | 🟢 Stable |
+| Skip Ganon's Trials | Off, On | 🟢 Stable |
+| Saria's Song With Just an Ocarina | Off, On | 🟢 Stable |
+| Anju Needs Only 1 Cucco | Off, On | 🟢 Stable |
+| Poe shop requires only 1 Big Poe | On | 🔴 Not tested |
+| The Lost Woods ocarina game gives all its rewards for one won song | always on | 🔴 Not tested |
+
+### The program
+
+| Feature | Status |
+|---|---|
+| Reads a `.nup` package or an extracted romfs and exefs, and checks the game version | 🟢 Stable |
+| Seeds, settings strings and seed presets (Beginner, Standard, Expert) | 🟢 Stable |
+| Excluded Locations (checks that only ever hold minor items) | 🟢 Stable |
+| Spoiler log (`spoiler.txt`, `spoiler.json`) and test checklist (`checklist.xlsx`) | 🟢 Stable |
+| Longshot support: finds the game, follows its updates, switches older seeds off | 🟢 Stable |
+| Per-Seed Saves (Longshot, and Lichii and other yuzu-family emulators) | 🟢 Stable |
+| Command-line tool (`goggles_cli`) | 🟢 Stable |
+| Windows, Linux | 🟢 Stable |
+| macOS (Intel and Apple Silicon) | 🔴 Not tested (built, but not yet run on a Mac) |
+
+Options the remake can't support yet (keysanity, scrubsanity, entrance randomizer, cows, ...) are listed with the
+reason on the window's **Not Supported** tab. The [test results](#test-results) say which version each setting was
+confirmed in.
+
 ## Contents
 
+- [Features](#features)
 - [Why Zig?](#why-zig)
 - [What you need](#what-you-need)
 - [Getting the randomizer](#getting-the-randomizer)
