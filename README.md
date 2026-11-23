@@ -133,7 +133,7 @@ When only some choices of an option have a different status, they're named in th
 | Saria's Song With Just an Ocarina | Off, On | 🟢 Stable |
 | Anju Needs Only 1 Cucco | Off, On | 🟢 Stable |
 | Poe shop requires only 1 Big Poe | On | 🔴 Not tested |
-| The Lost Woods ocarina game gives all its rewards for one won song | always on | 🔴 Not tested |
+| The Lost Woods ocarina game gives all its rewards for one won song | always on | 🟢 Stable |
 
 ### The program
 
