@@ -26,17 +26,18 @@ const builtin = @import("builtin");
 const fsmod = @import("../core/fs.zig");
 const Env = @import("Env.zig");
 const longshot = @import("longshot.zig");
+const seedinfo = @import("../core/seedinfo.zig");
 const Allocator = std.mem.Allocator;
 
 pub const title_id = "0400486024DEC000";
 pub const marker = "goggles_of_truth_seed.txt";
 const store = "saves";
 /// Stored saves carry the seed's settings.txt: a folder name used again for a different seed has a different one, and
-/// its old saves aren't brought back.
+/// its old saves aren't brought back. A rebuild of the same seed (same placements, a newer release) keeps them.
 const identity = "seed_settings.txt";
 const shared = [_][]const u8{ "option.sav", marker, identity };
 pub const emu_off = "GogglesOfTruth_off";
-const emulator_exes = [_][]const u8{ "yuzu", "suyu", "sudachi", "citron", "eden", "torzu", "lichii", "fritchii", "ryujinx", "ryubing" };
+pub const emulator_exes = [_][]const u8{ "yuzu", "suyu", "sudachi", "citron", "eden", "torzu", "lichii", "fritchii", "ryujinx", "ryubing" };
 
 pub const SaveError = error{
     /// the game or emulator is running, a seed can't be found or moved, ... (the message says what)
@@ -121,10 +122,13 @@ pub fn longshotSaveDirs(allocator: Allocator, env: *const Env) error{OutOfMemory
     }
     const data = try env.xdgData(allocator);
     const conf = try env.xdgConfig(allocator);
+    // Longshot's docs (docs/user/saves.md): ${XDG_DATA_HOME:-~/.local/share}/longshot/save on Linux; the launcher's
+    // docs also name longshot/user/save
     return accountDirs(allocator, env, &.{
+        try fsmod.join(allocator, &.{ data, "longshot", "save" }),
+        try fsmod.join(allocator, &.{ data, "longshot", "user", "save" }),
         try fsmod.join(allocator, &.{ data, "Longshot", "save" }),
         try fsmod.join(allocator, &.{ conf, "Longshot", "save" }),
-        try fsmod.join(allocator, &.{ data, "longshot", "save" }),
     });
 }
 
@@ -262,7 +266,7 @@ pub fn seeds(allocator: Allocator, env: *const Env, target: Target) error{OutOfM
 }
 
 /// The folder of seed `name` (switched on or off), or null.
-fn seedFolder(allocator: Allocator, env: *const Env, target: Target, name: []const u8) error{OutOfMemory}!?[]const u8 {
+pub fn seedFolder(allocator: Allocator, env: *const Env, target: Target, name: []const u8) error{OutOfMemory}!?[]const u8 {
     var found: ?[]const u8 = null;
     for (try seeds(allocator, env, target)) |s| {
         if (!std.mem.eql(u8, s.name, name)) continue;
@@ -423,6 +427,15 @@ fn identityOf(allocator: Allocator, env: *const Env, store_dir: []const u8) []co
     return env.fs.readAll(allocator, path) catch "";
 }
 
+/// Do saves stored with settings.txt `recorded` fit the seed folder's settings.txt now (`current`)? They do when both
+/// builds place the items the same way (same placement version, seed and settings string), even if a later release
+/// rebuilt the seed with fixes. A text that can't be read is compared as it is.
+fn savesFitSeed(recorded: []const u8, current: []const u8) bool {
+    const recorded_info = seedinfo.parseSettingsText(recorded) orelse return std.mem.eql(u8, recorded, current);
+    const current_info = seedinfo.parseSettingsText(current) orelse return std.mem.eql(u8, recorded, current);
+    return recorded_info.samePlacements(current_info);
+}
+
 /// A timestamp for backup folder names (UTC): YYYYMMDD-HHMMSS.
 fn stamp(allocator: Allocator, env: *const Env) error{OutOfMemory}![]const u8 {
     const now = std.Io.Timestamp.now(env.fs.io, .real).toSeconds();
@@ -446,66 +459,111 @@ pub fn switchSaves(allocator: Allocator, env: *const Env, target: Target, new_se
     }
     const backups = try fsmod.join(allocator, &.{ env.app_dir, "save_backups" });
     const when = try stamp(allocator, env);
+    for (target.save_dirs) |d| try switchSaveFolder(allocator, env, target, d, new_seed, backups, when, msg);
+}
+
+/// Rebuilding `seed` (the same seed made again with fixes, the same placements): its saves stay. The game's slots
+/// are never emptied or moved away for it:
+///   - slots that are already `seed`'s stay as they are;
+///   - slots no seed owns are most likely the ones being played with it: they stay in the game too and become
+///     `seed`'s (a copy goes to save_backups first, in case they were another seed's);
+///   - slots of another seed are stored with that seed, and `seed`'s stored ones come back, as when switching
+///     seeds (nothing is deleted before it is copied).
+pub fn keepSavesForRebuild(allocator: Allocator, env: *const Env, target: Target, seed: []const u8, msg: *Messages) SaveError!void {
+    if (target.save_dirs.len == 0) return msg.add("no {s} save folder yet: nothing to keep", .{target.kind.label()});
+    if (gameRunning(allocator, env, target)) |running| {
+        if (running.len > 0) return msg.fail("{s} is running; close it first, so its saves stay with {s}", .{ running, seed });
+    }
+    const backups = try fsmod.join(allocator, &.{ env.app_dir, "save_backups" });
+    const when = try stamp(allocator, env);
     for (target.save_dirs) |d| {
         const account = fsmod.basename(d);
         const old = owner(allocator, env, d);
-        if (old != null and std.mem.eql(u8, old.?, new_seed)) {
-            try msg.add("{s}: already {s}'s saves", .{ account, new_seed });
+        if (old != null and std.mem.eql(u8, old.?, seed)) {
+            try msg.add("{s}: {s}'s saves stay in the game", .{ account, seed });
             continue;
         }
-        // 1. store what's there now
-        const items = try seedFiles(allocator, env, d);
-        var dest: ?[]const u8 = if (old) |o| try storeDir(allocator, env, target, o, d) else null;
-        var to_backup = false;
-        if (dest == null and try hasProgress(allocator, env, d)) {
-            dest = try fsmod.join(allocator, &.{ backups, try std.fmt.allocPrint(allocator, "{s} {s} {s}", .{ when, old orelse "unassigned", account }) });
-            to_backup = true;
-        }
-        if (dest != null and items.len > 0) {
-            const dst = dest.?;
-            if (env.fs.isDir(dst)) {
-                // an older copy of this seed's saves
-                for (try seedFiles(allocator, env, dst)) |n| removeAny(env, try fsmod.join(allocator, &.{ dst, n }));
+        if (old == null) {
+            const items = try seedFiles(allocator, env, d);
+            if (try hasProgress(allocator, env, d)) {
+                const copy = try fsmod.join(allocator, &.{ backups, try std.fmt.allocPrint(allocator, "{s} before rebuilding {s} {s}", .{ when, seed, account }) });
+                try copyItems(allocator, env, d, copy, items, msg);
+                try msg.add("{s}: the game's slots stay in the game as {s}'s (a copy is in {s})", .{ account, seed, copy });
             }
-            try copyItems(allocator, env, d, dst, items, msg);
-            if (!to_backup) {
-                const id_path = try fsmod.join(allocator, &.{ dst, identity });
-                env.fs.writeAll(id_path, identityOf(allocator, env, dst)) catch |err| return msg.fail("couldn't write {s}: {s}", .{ id_path, @errorName(err) });
-            }
-            try msg.add("{s}: saves of {s} kept in {s}", .{ account, old orelse "no seed", dst });
+            try writeMarker(allocator, env, d, seed, msg);
+            continue;
         }
-        // 2. bring in the new seed's (or empty slots)
-        const src = try storeDir(allocator, env, target, new_seed, d);
-        var stored: []const []const u8 = if (src != null and env.fs.isDir(src.?)) try seedFiles(allocator, env, src.?) else &.{};
-        if (stored.len > 0) {
-            const id_path = try fsmod.join(allocator, &.{ src.?, identity });
-            // no record: trust it
-            const same = if (env.fs.readAll(allocator, id_path)) |recorded| std.mem.eql(u8, recorded, identityOf(allocator, env, src.?)) else |_| true;
-            if (!same) {
-                const stale = try fsmod.join(allocator, &.{ backups, try std.fmt.allocPrint(allocator, "{s} {s} (older seed of that name) {s}", .{ when, new_seed, account }) });
-                env.fs.makePath(backups) catch {};
-                env.fs.rename(src.?, stale) catch |err| return msg.fail("couldn't move {s}: {s}", .{ src.?, @errorName(err) });
-                try msg.add("{s}: {s}'s stored saves are from another seed of the same name; moved to {s}", .{ account, new_seed, stale });
-                stored = &.{};
-            }
-        }
-        for (items) |n| {
-            var in_stored = false;
-            for (stored) |s| if (std.mem.eql(u8, s, n)) {
-                in_stored = true;
-            };
-            if (in_stored or isSlotName(n)) removeAny(env, try fsmod.join(allocator, &.{ d, n }));
-        }
-        if (stored.len > 0) {
-            try copyItems(allocator, env, src.?, d, stored, msg);
-            try msg.add("{s}: {s}'s saves restored", .{ account, new_seed });
-        } else {
-            try msg.add("{s}: new saves for {s} (empty slots)", .{ account, new_seed });
-        }
-        const marker_path = try fsmod.join(allocator, &.{ d, marker });
-        const text = try std.fmt.allocPrint(allocator, "{s}\n", .{new_seed});
-        env.fs.writeAll(marker_path, text) catch |err| return msg.fail("couldn't write {s}: {s}", .{ marker_path, @errorName(err) });
+        try switchSaveFolder(allocator, env, target, d, seed, backups, when, msg);
     }
+}
+
+fn writeMarker(allocator: Allocator, env: *const Env, save_dir: []const u8, seed: []const u8, msg: *Messages) SaveError!void {
+    const marker_path = try fsmod.join(allocator, &.{ save_dir, marker });
+    const text = try std.fmt.allocPrint(allocator, "{s}\n", .{seed});
+    env.fs.writeAll(marker_path, text) catch |err| return msg.fail("couldn't write {s}: {s}", .{ marker_path, @errorName(err) });
+}
+
+/// One save folder of switchSaves: store the slots there with the seed that owns them, then bring `new_seed`'s.
+fn switchSaveFolder(allocator: Allocator, env: *const Env, target: Target, d: []const u8, new_seed: []const u8, backups: []const u8, when: []const u8, msg: *Messages) SaveError!void {
+    const account = fsmod.basename(d);
+    const old = owner(allocator, env, d);
+    if (old != null and std.mem.eql(u8, old.?, new_seed)) {
+        return msg.add("{s}: already {s}'s saves", .{ account, new_seed });
+    }
+    // 1. store what's there now
+    const items = try seedFiles(allocator, env, d);
+    var dest: ?[]const u8 = if (old) |o| try storeDir(allocator, env, target, o, d) else null;
+    var to_backup = false;
+    if (dest == null and try hasProgress(allocator, env, d)) {
+        dest = try fsmod.join(allocator, &.{ backups, try std.fmt.allocPrint(allocator, "{s} {s} {s}", .{ when, old orelse "unassigned", account }) });
+        to_backup = true;
+    }
+    if (dest != null and items.len > 0) {
+        const dst = dest.?;
+        if (env.fs.isDir(dst) and (try seedFiles(allocator, env, dst)).len > 0) {
+            // why: an older stored copy of that seed's saves is moved aside, never deleted: the game folder may hold
+            // fewer slots than it (or none), and a slot only in the older copy would be lost
+            const older = try fsmod.join(allocator, &.{ backups, try std.fmt.allocPrint(allocator, "{s} {s} (older stored saves) {s}", .{ when, old orelse "unassigned", account }) });
+            env.fs.makePath(backups) catch {};
+            env.fs.rename(dst, older) catch |err| return msg.fail("couldn't move {s}: {s}", .{ dst, @errorName(err) });
+            try msg.add("{s}: the older stored saves of {s} were moved to {s}", .{ account, old orelse "no seed", older });
+        }
+        try copyItems(allocator, env, d, dst, items, msg);
+        if (!to_backup) {
+            const id_path = try fsmod.join(allocator, &.{ dst, identity });
+            env.fs.writeAll(id_path, identityOf(allocator, env, dst)) catch |err| return msg.fail("couldn't write {s}: {s}", .{ id_path, @errorName(err) });
+        }
+        try msg.add("{s}: saves of {s} kept in {s}", .{ account, old orelse "no seed", dst });
+    }
+    // 2. bring in the new seed's (or empty slots)
+    const src = try storeDir(allocator, env, target, new_seed, d);
+    var stored: []const []const u8 = if (src != null and env.fs.isDir(src.?)) try seedFiles(allocator, env, src.?) else &.{};
+    if (stored.len > 0) {
+        const id_path = try fsmod.join(allocator, &.{ src.?, identity });
+        // no record: trust it
+        const same = if (env.fs.readAll(allocator, id_path)) |recorded| savesFitSeed(recorded, identityOf(allocator, env, src.?)) else |_| true;
+        if (!same) {
+            const stale = try fsmod.join(allocator, &.{ backups, try std.fmt.allocPrint(allocator, "{s} {s} (older seed of that name) {s}", .{ when, new_seed, account }) });
+            env.fs.makePath(backups) catch {};
+            env.fs.rename(src.?, stale) catch |err| return msg.fail("couldn't move {s}: {s}", .{ src.?, @errorName(err) });
+            try msg.add("{s}: {s}'s stored saves are from another seed of the same name; moved to {s}", .{ account, new_seed, stale });
+            stored = &.{};
+        }
+    }
+    for (items) |n| {
+        var in_stored = false;
+        for (stored) |stored_name| if (std.mem.eql(u8, stored_name, n)) {
+            in_stored = true;
+        };
+        if (in_stored or isSlotName(n)) removeAny(env, try fsmod.join(allocator, &.{ d, n }));
+    }
+    if (stored.len > 0) {
+        try copyItems(allocator, env, src.?, d, stored, msg);
+        try msg.add("{s}: {s}'s saves restored", .{ account, new_seed });
+    } else {
+        try msg.add("{s}: new saves for {s} (empty slots)", .{ account, new_seed });
+    }
+    try writeMarker(allocator, env, d, new_seed, msg);
 }
 
 /// Switches `name` on (and every other seed off) and gives it its own saves.
@@ -522,4 +580,78 @@ test "seed names" {
     try std.testing.expectEqualStrings("GogglesOfTruth_X", seedName("GogglesOfTruth_X"));
     try std.testing.expect(isSlotName("slot_03"));
     try std.testing.expect(!isSlotName("slot_x"));
+}
+
+/// Test helper: a file with `text` at `folder`/`name` (folders made as needed).
+fn writeTestFile(allocator: Allocator, env: *const Env, folder: []const u8, name: []const u8, text: []const u8) !void {
+    const path = try fsmod.join(allocator, &.{ folder, name });
+    try env.fs.makePath(fsmod.dirname(path));
+    try env.fs.writeAll(path, text);
+}
+
+fn readTestFile(allocator: Allocator, env: *const Env, folder: []const u8, name: []const u8) ?[]const u8 {
+    const path = fsmod.join(allocator, &.{ folder, name }) catch return null;
+    return env.fs.readAll(allocator, path) catch null;
+}
+
+test "a rebuild keeps the seed's saves" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try fsmod.join(a, &.{ ".zig-cache", "tmp", &tmp.sub_path });
+    var environ = std.process.Environ.Map.init(a);
+    const env = Env{ .environ = &environ, .fs = fsmod.Fs.init(std.testing.io), .app_dir = root };
+    const mods = try fsmod.join(a, &.{ root, "mods" });
+    const game_saves = try fsmod.join(a, &.{ root, "save", "0000000000000001" });
+    const save_dirs = [_][]const u8{game_saves};
+    const target = Target{ .kind = .emulator, .mods = mods, .save_dirs = &save_dirs };
+    const seed = "GogglesOfTruth_REBUILT";
+    const other = "GogglesOfTruth_OTHER";
+    const settings_text = "Goggles of Truth Randomizer 0.7.4\nPlacement version: 0.7.3\nSeed: REBUILT\nSettings string: eNqX\n";
+    try writeTestFile(a, &env, try fsmod.join(a, &.{ mods, seed }), "settings.txt", settings_text);
+    try writeTestFile(a, &env, try fsmod.join(a, &.{ mods, other }), "settings.txt", "Goggles of Truth Randomizer 0.7.4\nPlacement version: 0.7.3\nSeed: OTHER\nSettings string: eNqY\n");
+
+    // 1. slots no seed owns (a seed copied in by hand and played): they stay in the game, now the seed's
+    try writeTestFile(a, &env, game_saves, "slot_00/progress.sav", "my playthrough");
+    try writeTestFile(a, &env, game_saves, "account.sav", "account");
+    var msg = Messages{ .allocator = a };
+    try keepSavesForRebuild(a, &env, target, seed, &msg);
+    try std.testing.expectEqualStrings("my playthrough", readTestFile(a, &env, game_saves, "slot_00/progress.sav").?);
+    try std.testing.expectEqualStrings(seed, owner(a, &env, game_saves).?);
+    try std.testing.expect(env.fs.isDir(try fsmod.join(a, &.{ root, "save_backups" })));
+
+    // 2. the seed's own slots: untouched
+    try keepSavesForRebuild(a, &env, target, seed, &msg);
+    try std.testing.expectEqualStrings("my playthrough", readTestFile(a, &env, game_saves, "slot_00/progress.sav").?);
+
+    // 3. another seed's slots in the game: stored with that seed, and the rebuilt seed's stored slots come back
+    //    (stored by an older release with the same placements: they still fit)
+    try writeTestFile(a, &env, game_saves, marker, other ++ "\n");
+    const stored = try fsmod.join(a, &.{ mods, seed, "saves", "0000000000000001" });
+    try env.fs.deleteTree(try fsmod.join(a, &.{ game_saves, "slot_00" }));
+    try writeTestFile(a, &env, game_saves, "slot_01/progress.sav", "other seed's save");
+    try writeTestFile(a, &env, stored, "slot_00/progress.sav", "my playthrough");
+    try writeTestFile(a, &env, stored, identity, "Goggles of Truth Randomizer 0.7.3\nSeed: REBUILT\nSettings string: eNqX\n");
+    try keepSavesForRebuild(a, &env, target, seed, &msg);
+    try std.testing.expectEqualStrings("my playthrough", readTestFile(a, &env, game_saves, "slot_00/progress.sav").?);
+    try std.testing.expect(readTestFile(a, &env, game_saves, "slot_01/progress.sav") == null);
+    const other_stored = try fsmod.join(a, &.{ mods, other, "saves", "0000000000000001" });
+    try std.testing.expectEqualStrings("other seed's save", readTestFile(a, &env, other_stored, "slot_01/progress.sav").?);
+    try std.testing.expectEqualStrings(seed, owner(a, &env, game_saves).?);
+
+    // 4. storing never deletes an older stored copy: the game has no slots of OTHER now, OTHER's stored slot_01 is
+    //    moved to save_backups instead of being replaced by nothing
+    try writeTestFile(a, &env, game_saves, marker, other ++ "\n");
+    try env.fs.deleteTree(try fsmod.join(a, &.{ game_saves, "slot_00" }));
+    try switchSaves(a, &env, target, seed, &msg);
+    const backup_names = try env.fs.listDir(a, try fsmod.join(a, &.{ root, "save_backups" }));
+    var older_copy_found = false;
+    for (backup_names) |n| {
+        if (std.mem.indexOf(u8, n, "older stored saves") == null) continue;
+        const folder = try fsmod.join(a, &.{ root, "save_backups", n });
+        if (readTestFile(a, &env, folder, "slot_01/progress.sav")) |text| older_copy_found = std.mem.eql(u8, text, "other seed's save");
+    }
+    try std.testing.expect(older_copy_found);
 }

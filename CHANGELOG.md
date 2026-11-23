@@ -1,8 +1,70 @@
 # Changelog
 
 All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new setting or feature raises the
-minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
-different version.
+minor version, a fix raises the patch version. Since 0.7.4 the same seed and settings string place items the same
+way in every version with the same placement version (shown in `settings.txt`); before, each version placed them
+differently.
+
+## 0.7.4 - 2026-11-23
+
+### Added
+- **Rebuild Seed** (ROM Options > Seeds and saves) and **`goggles_cli generate --rebuild <seed folder>`**: make
+  a seed again with this version's fixes. It uses the seed's own seed number and settings string (from its
+  `settings.txt`), so every item, price, hint and starting item stays where it was, and it goes into the seed's own
+  folder: the earlier build's mod files are replaced, its stored per-seed saves are kept, and your save loads as
+  before. A seed whose placements differ (made by an older placement version) is refused, with the reason.
+- **Launch Game** button (top right): starts Longshot or the emulator that the output folder belongs to: a Longshot
+  `mods` folder starts that game's `longshot.exe`, an emulator's `load/0400486024DEC000` folder starts the emulator.
+  The **Launch Game** card on the ROM Options tab sets the Longshot game folder, the emulator program and an
+  optional game file the emulator boots (`-g <file>`; Ryujinx takes the file alone). Empty fields are found from the
+  output folder (Longshot always, a portable emulator by its `user` folder). It won't start a second copy of a game
+  that is already running.
+- **Test seeds: `goggles_cli generate --place "LOCATION=ITEM"`** (repeatable) puts an item at a chosen location before
+  the fill places everything else around it, to test something without playing to it. The placements are kept in
+  `settings.txt` (`Test placements:`), so a rebuild places them again; a normal seed never has any.
+
+### Changed
+- **Placement version**: a seed's random stream now starts from a *placement version* instead of the version
+  itself. It only changes when a version changes where items go, so a bug-fix version places the same seed and
+  settings string exactly like the version before it. 0.7.4's placement version is 0.7.3: seeds made with 0.7.3 come
+  out the same (checked on 8 seeds across the four presets: placements, hints and spoiler logs identical).
+  `settings.txt`, `spoiler.txt` and `spoiler.json` show it (`Placement version:`).
+- **Per-seed saves** of a seed stay with it when the seed is rebuilt by a newer version with the same placements
+  (they used to be put aside as "another seed of the same name" when `settings.txt` changed). A rebuild never
+  empties the game's slots for its seed: the seed's own slots stay in the game, and so do slots no seed owns (a seed
+  copied into the mods folder by hand and played), which become the seed's after a copy goes to `save_backups/`.
+  Before, those were moved to `save_backups/` and the game got empty slots. A rebuild while the game runs is refused.
+- **Storing a seed's saves never deletes its older stored copy**: it is moved to `save_backups/` first. Before, it
+  was replaced by what was in the game, even when the game had no slots of it any more.
+- **Generating into an existing seed folder** replaces the earlier build's mod files first (`romfs`, `exefs`,
+  `settings.txt`, spoiler logs, checklist), so no file of the old build is left behind; anything else in the folder,
+  like its stored saves, stays.
+
+- **Skip Story Scenes is now called Skip Cutscenes** (the same setting: settings strings and saved settings keep
+  it) and also skips the Royal Family's Tomb in Kakariko Graveyard: the tomb opening when Zelda's Lullaby is
+  played at the gravestone, and the Sun's Song stone inside, its lesson, the day/night scenes for each age and the
+  song's own scene. The stone's check is handed over at once (the randomized item, as with the other skipped
+  scenes). Two things made this possible: a scene with no event flow of its own (the Sun's Song day/night scenes
+  are timelines) is now skipped as "seen", and an event's info row now also lists the flows it reaches through its
+  own flow's other entry points, so the stone's new item hand-over isn't stopped. Not yet tested in-game.
+
+### Fixed
+- **Longshot is found on Linux again** (the **Longshot** button and the first start). The randomizer looked for the
+  launcher's `builds.json` in `~/.local/share/LongshotLauncher`, but on Linux the launcher keeps it in
+  `${XDG_DATA_HOME:-~/.local/share}/longshot/launcher` (from the launcher's own source; `LONGSHOT_LAUNCHER_HOME` is
+  read too, on every system). The fallback scan of `~/Games/Longshot` now also looks two folders deep, where the
+  launcher puts its builds (`<track>/<version>`, like `stable/v3.1.1`). Per-seed saves also look in
+  `~/.local/share/longshot/user/save`, and Launch Game finds `bin/longshot`. Not yet tried on a Linux machine.
+- **Bag Bombs Open Dodongo's Cavern: the boulder now breaks like a normal bombable rock** when a bag bomb explodes
+  next to it, with no cutscene. Before, a bag bomb started the boulder's cutscene, which waits for the bomb flower's
+  own explosion and so could softlock. (A first fix in this version removed the boulder as soon as a bag bomb was
+  next to it, before the bomb went off: confirmed in-game, so it was replaced. A second one gave the boulder only
+  WallCrack's life, and the game crashed loading Death Mountain Trail.) The boulder is a cracked rock without a
+  life; it now becomes a child of the game's WallCrack actor, as every bombable rock in the game is (its own parts
+  stay, it inherits the life, 6 HP hurt only by bombs and the hammer, with the blackboard, drops and perception
+  that come with it; WallCrack's files are copied unchanged into its pack), so the explosion breaks it, the cavern
+  opens for good and the quest moves on to the dungeon as after the cutscene. The bomb flower still plays its cutscene (confirmed
+  in-game). Found with the decrypted game dump; the bag-bomb explosion is not yet tried in-game.
 
 ## 0.7.3 - 2026-11-22
 

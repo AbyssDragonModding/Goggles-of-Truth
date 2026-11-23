@@ -1,9 +1,14 @@
 //! Longshot (https://git.magicbean.dev/MagicBeanDev/Longshot): find its game builds and their mods folder.
 //!
-//! Longshot runs the game natively on PC. Its launcher builds the game from your own .nup into a game folder
-//! (Games\Longshot\<version> in your user folder by default) and lists every build in builds.json:
+//! Longshot runs the game natively on PC. Its launcher builds the game from your own .nup into a game folder,
+//! <builds>/<track>/<version> (Games/Longshot/stable/v3.1.1 in your user folder by default; track: stable, nightly
+//! or a pull request), and lists every build in builds.json, in the launcher's home (LongshotLauncher's
+//! Core/LauncherHome.cs):
 //!     Windows: %LOCALAPPDATA%\LongshotLauncher\builds.json
-//!     Linux:   ~/.local/share/LongshotLauncher/builds.json (or $XDG_DATA_HOME, or ~/.config)
+//!     Linux:   ${XDG_DATA_HOME:-~/.local/share}/longshot/launcher/builds.json
+//!     both:    $LONGSHOT_LAUNCHER_HOME/builds.json when that is set
+//! (0.7.3 and before looked in ~/.local/share/LongshotLauncher on Linux, which the launcher never uses, and only
+//! one folder deep under ~/Games/Longshot: Linux users had to choose the mods folder by hand.)
 //! Each entry has "folder", "name", "nup" and "default". The launcher's settings.json next to it has "nup" too.
 //!
 //! Mods go in the game folder's "mods" folder, one folder per mod with a romfs folder inside: exactly what the
@@ -43,20 +48,22 @@ pub const Build = struct {
     }
 };
 
+/// The launcher's home folders to read, the one it uses first (see the top of this file).
 fn launcherDirs(allocator: Allocator, env: *const Env) error{OutOfMemory}![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    if (env.get("LONGSHOT_LAUNCHER_HOME")) |home_override| try out.append(allocator, try allocator.dupe(u8, home_override));
     if (builtin.os.tag == .windows) {
         const local = try env.localAppData(allocator);
-        const out = try allocator.alloc([]const u8, 1);
-        out[0] = try fsmod.join(allocator, &.{ local, "LongshotLauncher" });
-        return out;
+        try out.append(allocator, try fsmod.join(allocator, &.{ local, "LongshotLauncher" }));
+        return out.items;
     }
     const data = try env.xdgData(allocator);
     const conf = try env.xdgConfig(allocator);
-    const out = try allocator.alloc([]const u8, 3);
-    out[0] = try fsmod.join(allocator, &.{ data, "LongshotLauncher" });
-    out[1] = try fsmod.join(allocator, &.{ conf, "LongshotLauncher" });
-    out[2] = try fsmod.join(allocator, &.{ data, "longshot" });
-    return out;
+    try out.append(allocator, try fsmod.join(allocator, &.{ data, "longshot", "launcher" }));
+    // older guesses, harmless when they don't exist
+    try out.append(allocator, try fsmod.join(allocator, &.{ data, "LongshotLauncher" }));
+    try out.append(allocator, try fsmod.join(allocator, &.{ conf, "LongshotLauncher" }));
+    return out.items;
 }
 
 fn readJson(allocator: Allocator, env: *const Env, path: []const u8) ?std.json.Value {
@@ -130,21 +137,36 @@ pub fn findBuilds(allocator: Allocator, env: *const Env) error{OutOfMemory}![]Bu
             if (data == .object) if (jsonString(data.object, "buildsFolder")) |bf| if (bf.len > 0) try scan.append(allocator, bf);
         }
     }
-    // builds the launcher doesn't list (portable, or made with the command line tools), newest version first
+    // builds the launcher doesn't list (portable, or made with the command line tools), newest version first:
+    // <builds>/<track>/<version> as the launcher makes them, and <builds>/<version> as older ones and the builder's
+    // --out did
     for (scan.items) |root| {
-        const names = env.fs.listDir(allocator, root) catch continue;
-        std.mem.sort([]u8, names, {}, struct {
-            fn more(_: void, x: []u8, y: []u8) bool {
-                return naturalLess({}, y, x);
+        for (try sortedFolderNamesNewestFirst(allocator, env, root)) |n| {
+            const folder = try fsmod.join(allocator, &.{ root, n });
+            if (isGameFolder(allocator, env, folder)) {
+                try addBuild(allocator, env, &builds, .{ .name = n, .folder = folder });
+                continue;
             }
-        }.more);
-        for (names) |n| try addBuild(allocator, env, &builds, .{ .name = n, .folder = try fsmod.join(allocator, &.{ root, n }) });
+            for (try sortedFolderNamesNewestFirst(allocator, env, folder)) |version| {
+                try addBuild(allocator, env, &builds, .{ .name = version, .folder = try fsmod.join(allocator, &.{ folder, version }) });
+            }
+        }
     }
     // stable: the launcher's order, default first
     var out: std.ArrayList(Build) = .empty;
     for (builds.items) |b| if (b.default) try out.append(allocator, b);
     for (builds.items) |b| if (!b.default) try out.append(allocator, b);
     return out.items;
+}
+
+fn sortedFolderNamesNewestFirst(allocator: Allocator, env: *const Env, root: []const u8) error{OutOfMemory}![][]u8 {
+    const names = env.fs.listDir(allocator, root) catch return &.{};
+    std.mem.sort([]u8, names, {}, struct {
+        fn more(_: void, x: []u8, y: []u8) bool {
+            return naturalLess({}, y, x);
+        }
+    }.more);
+    return names;
 }
 
 fn addBuild(allocator: Allocator, env: *const Env, builds: *std.ArrayList(Build), b: Build) error{OutOfMemory}!void {
@@ -296,4 +318,41 @@ test "version keys" {
     try std.testing.expect(VersionKey.less(a, b));
     try std.testing.expect(VersionKey.less(b, c));
     try std.testing.expect(naturalLess({}, "v2.9", "v2.10"));
+}
+
+test "Longshot builds are found the way the launcher lays them out" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try fsmod.join(a, &.{ ".zig-cache", "tmp", &tmp.sub_path });
+    const home = try std.fs.path.resolve(a, &.{root});
+    var environ = std.process.Environ.Map.init(a);
+    try environ.put("HOME", home);
+    try environ.put("USERPROFILE", home);
+    try environ.put("XDG_DATA_HOME", try fsmod.join(a, &.{ home, "data" }));
+    try environ.put("LOCALAPPDATA", try fsmod.join(a, &.{ home, "local" }));
+    const env = Env{ .environ = &environ, .fs = fsmod.Fs.init(std.testing.io), .app_dir = home };
+
+    // a build only in the default builds folder, two levels down: <builds>/<track>/<version>
+    const scanned = try fsmod.join(a, &.{ home, "Games", "Longshot", "stable", "v3.1.1" });
+    try env.fs.makePath(try fsmod.join(a, &.{ scanned, "mods" }));
+    try env.fs.writeAll(try fsmod.join(a, &.{ scanned, "longshot_version.txt" }), "version=v3.1.1\n");
+    // a build somewhere else, only listed in the launcher's builds.json (LONGSHOT_LAUNCHER_HOME on every system)
+    const listed = try fsmod.join(a, &.{ home, "Elsewhere", "v3.2.0" });
+    try env.fs.makePath(listed);
+    try env.fs.writeAll(try fsmod.join(a, &.{ listed, "longshot_version.txt" }), "version=v3.2.0\n");
+    const launcher_home = try fsmod.join(a, &.{ home, "launcher" });
+    try env.fs.makePath(launcher_home);
+    var json: std.ArrayList(u8) = .empty;
+    try json.print(a, "{{\"format\":1,\"builds\":[{{\"name\":\"v3.2.0\",\"folder\":{f},\"default\":true}}]}}", .{std.json.fmt(listed, .{})});
+    try env.fs.writeAll(try fsmod.join(a, &.{ launcher_home, "builds.json" }), json.items);
+    try environ.put("LONGSHOT_LAUNCHER_HOME", launcher_home);
+
+    const builds = try findBuilds(a, &env);
+    try std.testing.expectEqual(@as(usize, 2), builds.len);
+    try std.testing.expectEqualStrings("v3.2.0", builds[0].name); // the launcher's default first
+    try std.testing.expectEqualStrings("v3.1.1", builds[1].name);
+    try std.testing.expect(isModsFolder(a, &env, try fsmod.join(a, &.{ scanned, "mods" })));
 }

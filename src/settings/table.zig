@@ -320,7 +320,7 @@ pub const specs = [_]Spec{
         .default = .{ .boolean = true },
         .tip =
             \\The Kokiri Sword chest gives a random item, and the sword is found in another check.
-            \\Off: the sword stays in its chest. It plays the sword's own scene, unless Skip Story Scenes is
+            \\Off: the sword stays in its chest. It plays the sword's own scene, unless Skip Cutscenes is
             \\on: then the chest opens like any other and Link holds the sword up.
         ,
     },
@@ -797,11 +797,11 @@ pub const specs = [_]Spec{
         .key = .skip_story_scenes,
         .tab = "Quality of Life",
         .group = "Cutscenes",
-        .label = "Skip Story Scenes (experimental, needs additional testing)",
+        .label = "Skip Cutscenes (experimental, needs additional testing)",
         .kind = .boolean,
         .default = .{ .boolean = false },
         .tip =
-            \\The story scenes that come with quest progress don't play; you get their item straight away:
+            \\The cutscenes that come with quest progress don't play; you get their item straight away:
             \\- Temple of Time: the door opening, Ganondorf, pulling the Master Sword, and Rauru's talk in the
             \\  Chamber of Sages (his Light Medallion check is given at once);
             \\- adult Temple of Time: Sheik's first talk, the sages' talks, Zelda's reveal and the Light Arrows;
@@ -811,8 +811,10 @@ pub const specs = [_]Spec{
             \\- the Kokiri Sword chest: Link's sword swing and Navi's tip after it (the chest opens like any other);
             \\- the rest of each post-boss chain (the Deku Tree's death, Darunia, Ruto, the Deku Sprout, the
             \\  lake refilling...), Sheik/Mido/Ruto/Nabooru before the adult temples, and Ganon's Castle's
-            \\  first visit, trial barriers and tower barrier (not yet tested in-game).
-            \\Song lessons, boss intros and the ending still play (Make All Cutscenes Skippable covers those).
+            \\  first visit, trial barriers and tower barrier (not yet tested in-game);
+            \\- Kakariko Graveyard: the Royal Family's Tomb opening to Zelda's Lullaby, and the Sun's Song stone
+            \\  inside (its lesson and scene; its check is given at once; not yet tested in-game).
+            \\Other song lessons, boss intros and the ending still play (Make All Cutscenes Skippable covers those).
             \\Tested in-game so far: Rauru's Light Medallion after the Master Sword, the Great Deku Tree after
             \\Gohma (his check is given) and Saria's Fairy Ocarina on the bridge. Known to still play: leaving
             \\the Temple of Time as adult.
@@ -889,7 +891,7 @@ pub const specs = [_]Spec{
         .tip =
             \\Big chests open without the camera move and Link's opening animation: the lid opens, Link holds
             \\the item up and its message shows. The fanfare starts at once. Small chests keep
-            \\their own short opening. The Kokiri Sword chest's sword scene is Skip Story Scenes.
+            \\their own short opening. The Kokiri Sword chest's sword scene is Skip Cutscenes.
         ,
     },
     .{
@@ -913,8 +915,10 @@ pub const specs = [_]Spec{
         .kind = .boolean,
         .default = .{ .boolean = true },
         .tip =
-            \\A bomb from your Bomb Bag breaks the boulder in front of Dodongo's Cavern, so you don't need the
-            \\Goron Bracelet to open it. Off: only the bomb flower next to it works, which needs the bracelet.
+            \\A bomb from your Bomb Bag breaks the boulder in front of Dodongo's Cavern when it explodes, like any
+            \\bombable rock (no cutscene), so you don't need the Goron Bracelet to open it. The bomb flower still
+            \\plays its cutscene.
+            \\Off: only the bomb flower next to it works, which needs the bracelet.
         ,
     },
     .{

@@ -2,11 +2,12 @@
 
 const std = @import("std");
 const byml = @import("../formats/byml.zig");
+const sarc = @import("../formats/sarc.zig");
+const restbl = @import("../formats/restbl.zig");
 const evfl = @import("../formats/evfl.zig");
 const evfl_view = @import("../formats/evfl_view.zig");
 const ainb = @import("../formats/ainb.zig");
 const bytes = @import("../core/bytes.zig");
-const hash = @import("../core/hash.zig");
 const world_mod = @import("../game/world.zig");
 const patchset = @import("patchset.zig");
 const flows = @import("flows.zig");
@@ -104,64 +105,100 @@ pub fn patchSariaSong(world: *World, patches: *PatchSet, progress: *Progress, ol
 }
 
 // --- Dodongo's Cavern boulder and bag bombs ------------------------------------------------------
-// Logic/DeathMountainTrail_Child_Prefab_ffa7: the boulder (node 7, ActorLogicDeathProcComplete) breaks when its break
-// event runs. The event is requested by node 14 = OperateAND(node 6 output 5, node 5), where node 6 is the special
-// bomb flower's own logic (its fruit state) and node 5 = OR of the three "BombFruit" sensors. Node 20 is a sensor for
-// "Item_Bomb" (bag bombs) that vanilla doesn't use there. Patch: node 14 becomes OperateOR, and its flower-state
-// input becomes node 20's hit output, so either a bag bomb near the boulder or a bomb-flower fruit triggers the break.
-const dodongo_ainb = "Logic/DeathMountainTrail_Child_Prefab_ffa7.logic.module.ainb";
+// Read with the decrypted dump (Pack/Actor/*.pack.txt, Logic/DeathMountainTrail_Child_Prefab_ffa7.ainb.txt):
+// - The boulder (Obj_DeathMtTrail_BrokenRock_A_01) is a cracked rock without a life: it has the cracked rocks'
+//   attack target shape ("Tgt"), death procedure (CrackObjectCommon) and fracture, but explosions don't hurt it. Only
+//   its cutscene (Dm_DeathMtTrail_0010, started by the bomb flower's fruit) breaks it, with EventTriggerRequestDeath.
+// - Every bombable rock in the game is a child of WallCrack: its ActorParam's "$parent" is
+//   Work/Actor/WallCrack.engine__actor__ActorParam.gyml, it overrides a few components (Obj_Goron_BrokenRock_A_01:
+//   model, physics, destruction and links only) and inherits the rest, among them the life (LifeParam WallCrack:
+//   MaxLife 6, hurt only by bomb-type and hammer attacks), the blackboard, the drops and the perception emitter. Its
+//   pack holds the WallCrack files those use, and WallCrack's ActorParam itself.
+// Patch: the boulder becomes a WallCrack child the same way. Its ActorParam gets that "$parent" (every component it
+// has stays its own; it inherits only the ones it lacks), and every file of the WallCrack pack its pack lacks is
+// copied in unchanged. A bag bomb's explosion then breaks it like any cracked rock, when it explodes. The boulder's
+// own logic (node 7, ActorLogicDeathProcComplete, Dead -> nodes 12, 11, 8) moves Get_StoneOfFire to DungeonStart,
+// as after the cutscene, and its NoRespawn save flag keeps it broken. The bomb flower's cutscene is unchanged: it
+// switches the boulder's death during events off first and breaks it itself.
+//
+// History (0.7.4): a graph patch first removed the boulder as soon as a bag bomb was next to it, before the bomb
+// went off. Then the boulder got only WallCrack's LifeRef and GameParameterTableRef: the game crashed creating it
+// when Death Mountain Trail loaded (Longshot: an access violation in BaseProcCreateAndDeleteThread), as the life
+// needs the components it comes with. Before 0.7.4, a bag bomb started the bomb flower's cutscene, which softlocked.
+const dodongo_boulder = "Obj_DeathMtTrail_BrokenRock_A_01";
+const dodongo_boulder_pack = "Pack/Actor/Obj_DeathMtTrail_BrokenRock_A_01.pack.zs";
+const dodongo_boulder_param = "Actor/Obj_DeathMtTrail_BrokenRock_A_01.engine__actor__ActorParam.bgyml";
+const bombable_rock_pack = "Pack/Actor/WallCrack.pack.zs";
+const bombable_rock_param = "Actor/WallCrack.engine__actor__ActorParam.bgyml";
+const bombable_rock_parent = "Work/Actor/WallCrack.engine__actor__ActorParam.gyml";
 
-pub fn patchDodongoBagBombs(world: *World, patches: *PatchSet, progress: *Progress) PatchError!bool {
-    if (!world.files.exists(dodongo_ainb)) {
-        progress.log("warning: Dodongo's Cavern boulder logic not found; bag bombs still can't open it", .{});
-        return false;
-    }
-    const orig = try patches.read(dodongo_ainb);
-    const data = patches.allocator.dupe(u8, orig.data) catch return error.OutOfMemory;
-    const recognised = dodongoRecognised(data) catch false;
-    if (!recognised) {
-        progress.log("warning: Dodongo's Cavern boulder logic not recognised; bag-bomb patch skipped", .{});
-        return false;
-    }
-    const pair = (try dodongoPair(data)).?;
-    const n14 = try ainb.nodeOffset(data, 14);
-    const n5 = try ainb.nodeOffset(data, 5);
-    bytes.putU32(data, n14 + 8, try bytes.u32At(data, n5 + 8)); // name -> OperateOR
-    bytes.putU32(data, n14 + 0xC, hash.mm3("OperateOR")); // name hash
-    bytes.putU16(data, pair, 20); // flower state -> Item_Bomb sensor hit
-    bytes.putU16(data, pair + 2, 0);
-    try patches.emit(dodongo_ainb, orig.data, data, null, false);
-    return true;
-}
-
-fn dodongoRecognised(data: []const u8) PatchError!bool {
-    const expect = [_]struct { node: usize, name: []const u8 }{
-        .{ .node = 5, .name = "OperateOR" },
-        .{ .node = 6, .name = "ActorLogicBombFlowerGrassBreakBreakDeathMtTrailBrokenRock" },
-        .{ .node = 7, .name = "ActorLogicDeathProcComplete" },
-        .{ .node = 14, .name = "OperateAND" },
-        .{ .node = 20, .name = "HoldActorObserverBySensorHitInfo" },
+fn findInPack(allocator: Allocator, pack: []const u8, name: []const u8) PatchError!?[]const u8 {
+    const entry = sarc.find(allocator, pack, name) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.InvalidData,
     };
-    for (expect) |e| {
-        if (!std.mem.eql(u8, try ainb.nodeName(data, e.node), e.name)) return false;
-    }
-    const pool = try bytes.u32At(data, 0x24);
-    const item_bomb = std.mem.indexOfPos(u8, data, pool, "\x00Item_Bomb\x00") orelse return false;
-    if (item_bomb + 1 <= pool) return false;
-    return (try dodongoPair(data)) != null;
+    return if (entry) |e| e.data else null;
 }
 
-/// The multi-input link of node 14 that reads node 6's output 5 (followed by node 5's output 1).
-fn dodongoPair(data: []const u8) PatchError!?usize {
-    const multi = try bytes.u32At(data, 0x38);
-    const multi_end = try bytes.u32At(data, 0x30);
-    var pair: ?usize = null;
-    var o: usize = multi;
-    while (o + 8 < multi_end) : (o += 8) {
-        if (try bytes.u16At(data, o) == 6 and try bytes.u16At(data, o + 2) == 5 and
-            try bytes.u16At(data, o + 8) == 5 and try bytes.u16At(data, o + 10) == 1) pair = o;
+pub fn patchDodongoBagBombs(world: *World, patches: *PatchSet, resource_sizes: *restbl.Restbl, progress: *Progress) PatchError!bool {
+    if (!world.files.exists(dodongo_boulder_pack) or !world.files.exists(bombable_rock_pack)) {
+        progress.log("warning: Dodongo's Cavern boulder or the cracked-rock actor not found; bag bombs still can't open it", .{});
+        return false;
     }
-    return pair;
+    const a = patches.allocator;
+    const boulder_raw = try patches.read(dodongo_boulder_pack);
+    const rock_raw = try patches.read(bombable_rock_pack);
+
+    const param_bytes = (try findInPack(a, boulder_raw.data, dodongo_boulder_param)) orelse {
+        progress.log("warning: {s} has no ActorParam; bag-bomb patch skipped", .{dodongo_boulder});
+        return false;
+    };
+    const param = try byml.loadDict(a, param_bytes);
+    const components = param.getDict("Components") orelse {
+        progress.log("warning: {s}'s ActorParam has no Components; bag-bomb patch skipped", .{dodongo_boulder});
+        return false;
+    };
+    // why: only the boulder as the dump shows it: a cracked rock's death, no parent and no life of its own
+    const death = components.getString("DeathRef") orelse "";
+    const is_expected_boulder = std.mem.indexOf(u8, death, "CrackObjectCommon") != null and
+        !param.contains("$parent") and !components.contains("LifeRef");
+    if (!is_expected_boulder) {
+        progress.log("warning: {s} isn't as expected (no cracked-rock death, or a parent or life already); bag-bomb patch skipped", .{dodongo_boulder});
+        return false;
+    }
+    if (try findInPack(a, rock_raw.data, bombable_rock_param) == null) {
+        progress.log("warning: the cracked-rock pack has no {s}; bag-bomb patch skipped", .{bombable_rock_param});
+        return false;
+    }
+    try param.put(a, "$parent", .{ .string = bombable_rock_parent });
+    const version = if (param_bytes.len >= 4) std.mem.readInt(u16, param_bytes[2..4], if (param_bytes[0] == 'B') .big else .little) else 7;
+    const new_param = try byml.dump(a, .{ .dict = param }, version, false);
+
+    // every WallCrack file the boulder's pack lacks (what its inherited components read, and the parent itself)
+    const rock_files = sarc.list(a, rock_raw.data) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.InvalidData,
+    };
+    var added: std.ArrayList(sarc.NewFile) = .empty;
+    for (rock_files.items) |file| {
+        if (try findInPack(a, boulder_raw.data, file.name) != null) continue;
+        added.append(a, .{ .name = file.name, .data = file.data }) catch return error.OutOfMemory;
+    }
+    const new_pack = sarc.rebuild(a, boulder_raw.data, &.{.{ .name = dodongo_boulder_param, .data = new_param }}, added.items) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.InvalidData,
+    };
+    try patches.emitZs(dodongo_boulder_pack, boulder_raw, new_pack);
+
+    // the resource size table lists files inside packs too: the bigger ActorParam needs a bigger entry (the copied
+    // files are the WallCrack pack's own, already listed with their sizes)
+    if (resource_sizes.get(dodongo_boulder_param)) |listed_size| {
+        if (new_param.len > param_bytes.len) {
+            const grown = listed_size + @as(u32, @intCast(new_param.len - param_bytes.len));
+            resource_sizes.set(dodongo_boulder_param, grown) catch return error.OutOfMemory;
+        }
+    }
+    return true;
 }
 
 // --- Songs: the teaching sub-flow also hands out the vanilla song -------------------------------

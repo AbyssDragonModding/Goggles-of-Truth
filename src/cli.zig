@@ -2,6 +2,12 @@
 //!
 //!   goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
 //!                        [--from-user-settings] [--exefs <folder>] [--no-cache] [--preset NAME] [--dump-placement <file.json>]
+//!   goggles_cli generate --game <.nup or romfs> --rebuild <seed folder> [--dump-placement <file.json>]
+//!                                                     make a seed again with this release's fixes: the same seed,
+//!                                                     settings string and placements, into the same folder (its
+//!                                                     stored per-seed saves are kept)
+//!   --place "LOCATION=ITEM" (generate, repeatable)    test seeds: put an item at a location before the fill (names
+//!                                                     as the spoiler log shows them); kept in settings.txt
 //!   goggles_cli check <.nup, romfs or exefs>          game version check (prints the exefs/main SHA-256)
 //!   goggles_cli scan <.nup or romfs>                  scan the game and list a sample of the locations
 //!   goggles_cli vanilla-test <.nup or romfs>          is the vanilla placement beatable under the logic?
@@ -21,6 +27,8 @@ const usage =
     \\usage:
     \\  goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
     \\                       [--from-user-settings] [--exefs <folder>] [--no-cache] [--preset NAME]
+    \\  goggles_cli generate --game <.nup or romfs> --rebuild <seed folder>
+    \\  (generate also takes --place "LOCATION=ITEM", repeatable, for test seeds)
     \\  goggles_cli check <.nup, romfs or exefs>
     \\  goggles_cli scan <.nup or romfs>
     \\  goggles_cli vanilla-test <.nup or romfs>
@@ -95,6 +103,8 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
     var no_cache = false;
     var dump_placement: ?[]const u8 = null;
     var preset_name: ?[]const u8 = null;
+    var rebuild_folder: ?[]const u8 = null;
+    var test_placements: std.ArrayList(engine.seedinfo.TestPlacement) = .empty;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
@@ -108,7 +118,53 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         else if (std.mem.eql(u8, arg, "--no-cache")) no_cache = true
         else if (std.mem.eql(u8, arg, "--dump-placement")) dump_placement = try optionValue(args, &i)
         else if (std.mem.eql(u8, arg, "--preset")) preset_name = try optionValue(args, &i)
+        else if (std.mem.eql(u8, arg, "--rebuild")) rebuild_folder = try optionValue(args, &i)
+        else if (std.mem.eql(u8, arg, "--place")) {
+            const text = try optionValue(args, &i);
+            const placement = engine.seedinfo.parseTestPlacement(text) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.InvalidTestPlacement => {
+                    std.debug.print("error: --place wants \"LOCATION=ITEM\", got \"{s}\"\n", .{text});
+                    return error.Failed;
+                },
+            };
+            try test_placements.append(a, placement);
+        }
         else return error.BadArguments;
+    }
+
+    // --rebuild: the seed number, settings string, output folder and folder name all come from the seed folder
+    if (rebuild_folder) |folder| {
+        if (out.len > 0 or seed != null or name != null or settings_string != null or preset_name != null or from_user or test_placements.items.len > 0) {
+            std.debug.print("error: --rebuild takes the seed, settings, test placements, folder and name from the seed folder; leave out --out, --seed, --name, --settings, --preset, --place and --from-user-settings\n", .{});
+            return error.Failed;
+        }
+        const trimmed = std.mem.trimEnd(u8, folder, "/\\");
+        switch (try engine.generator.checkRebuild(a, env.fs, trimmed)) {
+            .not_a_seed => {
+                std.debug.print("error: {s} has no readable settings.txt, so it isn't a seed folder\n", .{trimmed});
+                return error.Failed;
+            },
+            .other_placements => |info| {
+                std.debug.print("error: {s} was made by {s}, whose items are placed differently than in this release ({s}); a rebuild would be a different seed\n", .{ trimmed, info.release, engine.version.version });
+                return error.Failed;
+            },
+            .ready => |info| {
+                seed = info.seed;
+                settings_string = info.settings_string;
+                out = engine.fs.dirname(trimmed);
+                name = engine.fs.basename(trimmed);
+                const recorded = engine.seedinfo.parseTestPlacements(a, info.test_placements) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    error.InvalidTestPlacement => {
+                        std.debug.print("error: the seed folder's test placements can't be read: {s}\n", .{info.test_placements});
+                        return error.Failed;
+                    },
+                };
+                try test_placements.appendSlice(a, recorded);
+                std.debug.print("Rebuilding seed {s} (made by {s}) with {s}\n", .{ info.seed, info.release, engine.version.version });
+            },
+        }
     }
     if (game.len == 0 or out.len == 0) return error.BadArguments;
 
@@ -147,6 +203,8 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         .mod_name = name,
         .exefs = exefs,
         .use_file_cache = !no_cache,
+        .test_placements = test_placements.items,
+        .rebuild = rebuild_folder != null,
     }, null, &progress) catch |err| {
         std.debug.print("Generation failed: {s}\n", .{if (progress.failureMessage().len > 0) progress.failureMessage() else @errorName(err)});
         return error.Failed;

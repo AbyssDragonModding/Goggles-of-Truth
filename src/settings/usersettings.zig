@@ -33,6 +33,12 @@ pub const Paths = struct {
     game: []const u8 = "",
     /// the output folder
     output: []const u8 = "",
+    /// Launch Game (platform/launcher.zig): the Longshot game folder or program ("" = the game next to the output
+    /// folder), the emulator program or its folder ("" = a portable emulator's own), and the game file the emulator
+    /// boots ("" = the emulator opens without one)
+    longshot: []const u8 = "",
+    emulator: []const u8 = "",
+    emulator_game: []const u8 = "",
 };
 
 pub const App = struct {
@@ -139,6 +145,15 @@ pub fn load(allocator: Allocator, env: *const Env) error{OutOfMemory}!Loaded {
         if (p.get("output")) |v| if (v == .string) {
             paths.output = v.string;
         };
+        if (p.get("longshot")) |v| if (v == .string) {
+            paths.longshot = v.string;
+        };
+        if (p.get("emulator")) |v| if (v == .string) {
+            paths.emulator = v.string;
+        };
+        if (p.get("emulator_game")) |v| if (v == .string) {
+            paths.emulator_game = v.string;
+        };
     }
     var app = App{};
     if (doc.table("app")) |t| if (t.get("auto_update")) |v| if (v == .bool) {
@@ -239,6 +254,14 @@ pub fn dumps(allocator: Allocator, st: *const Settings, paths: Paths, app: App) 
     try tomlString(&out, allocator, paths.game);
     try out.appendSlice(allocator, "\noutput = ");
     try tomlString(&out, allocator, paths.output);
+    try out.appendSlice(allocator, "\n# Launch Game: the Longshot game folder (or its program), the emulator's program (or its folder) and the\n");
+    try out.appendSlice(allocator, "# game file the emulator starts. Leave empty to use the ones the output folder belongs to.\n");
+    try out.appendSlice(allocator, "longshot = ");
+    try tomlString(&out, allocator, paths.longshot);
+    try out.appendSlice(allocator, "\nemulator = ");
+    try tomlString(&out, allocator, paths.emulator);
+    try out.appendSlice(allocator, "\nemulator_game = ");
+    try tomlString(&out, allocator, paths.emulator_game);
     try out.appendSlice(allocator, "\n\n[settings]\n");
     const preset = settings_mod.matchingPreset(st);
     try out.print(allocator, "# Preset these settings match: {s}. (Informational: a preset is applied from the window.)\n", .{preset orelse "none (custom)"});

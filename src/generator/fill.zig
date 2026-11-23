@@ -9,6 +9,7 @@ const gamedata = @import("gamedata.zig");
 const hash = @import("../core/hash.zig");
 const Rng = @import("../core/rng.zig").Rng;
 const Progress = @import("../core/Progress.zig");
+const seedinfo = @import("../core/seedinfo.zig");
 const Allocator = std.mem.Allocator;
 const World = world_mod.World;
 const Location = world_mod.Location;
@@ -228,6 +229,8 @@ pub const Plan = struct {
     sold_once_cache: std.AutoHashMap(ItemId, bool),
     gs_refuses_cache: std.AutoHashMap(ItemId, bool),
     copies: ?std.AutoHashMap(ItemId, usize) = null,
+    /// a test seed's chosen placements in settings.txt form ("" for a normal seed; applyTestPlacements)
+    test_placements_text: []const u8 = "",
 
     const Self = @This();
 
@@ -321,6 +324,45 @@ pub const Plan = struct {
         }
         @memcpy(self.user_excluded, self.excluded);
         return self;
+    }
+
+    /// Test seeds (`goggles_cli generate --place`): each chosen location keeps the chosen item and leaves the
+    /// shuffle, and one copy of that item leaves the item pool, so the pool still fits the locations; the fill
+    /// places everything else around them and its logic counts them like any unshuffled item. Returns a message
+    /// saying what is wrong, or null when every placement was applied. Normal seeds have none, so this never
+    /// changes their placements.
+    pub fn applyTestPlacements(self: *Self, requests: []const seedinfo.TestPlacement) FillError!?[]const u8 {
+        const allocator = self.allocator;
+        for (requests) |request| {
+            const location_index = for (self.world.locations.items, 0..) |*loc, i| {
+                if (std.mem.eql(u8, loc.name, request.location) or std.mem.eql(u8, loc.id, request.location)) break i;
+            } else {
+                return std.fmt.allocPrint(allocator, "no location named \"{s}\" (use the name the spoiler log shows)", .{request.location}) catch error.OutOfMemory;
+            };
+            if (!self.is_shuffled[location_index]) {
+                return std.fmt.allocPrint(allocator, "\"{s}\" isn't shuffled with these settings, so it can't take a chosen item", .{request.location}) catch error.OutOfMemory;
+            }
+            var pool_index: ?usize = null;
+            for (self.pool.items, 0..) |item, i| {
+                const display_name = self.world.itemNameById(allocator, item) catch return error.OutOfMemory;
+                if (std.mem.eql(u8, self.world.items.name(item), request.item) or std.mem.eql(u8, display_name, request.item)) {
+                    pool_index = i;
+                    break;
+                }
+            }
+            const chosen_index = pool_index orelse {
+                return std.fmt.allocPrint(allocator, "no \"{s}\" left in the item pool (use the name the spoiler log shows; each copy can be placed once)", .{request.item}) catch error.OutOfMemory;
+            };
+            const item = self.pool.orderedRemove(chosen_index);
+            const shuffled_position = std.mem.indexOfScalar(usize, self.shuffled.items, location_index).?;
+            _ = self.shuffled.orderedRemove(shuffled_position);
+            self.is_shuffled[location_index] = false;
+            self.excluded[location_index] = false;
+            self.user_excluded[location_index] = false;
+            self.fixed[location_index] = item;
+            self.forced[location_index] = item;
+        }
+        return null;
     }
 
     fn boolArray(allocator: Allocator, n: usize) FillError![]bool {

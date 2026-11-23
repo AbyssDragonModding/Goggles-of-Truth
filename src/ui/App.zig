@@ -106,6 +106,9 @@ window: r.Window,
 root: r.Widget,
 romfs_in: r.TextInput,
 out_in: r.TextInput,
+longshot_in: r.TextInput,
+emulator_in: r.TextInput,
+emulator_game_in: r.TextInput,
 name_in: r.TextInput,
 seed_in: r.TextInput,
 hash_lab: r.Label,
@@ -139,6 +142,10 @@ excluded: std.array_hash_map.String(void) = .empty,
 /// owned copies of the text fields' paths
 game_path: []u8 = &.{},
 out_path: []u8 = &.{},
+/// Launch Game's paths (platform/launcher.zig): "" = found from the output folder
+longshot_path: []u8 = &.{},
+emulator_path: []u8 = &.{},
+emulator_game_path: []u8 = &.{},
 seed_text: []u8 = &.{},
 last_seed: []u8 = &.{},
 
@@ -272,6 +279,9 @@ pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
         .root = root,
         .romfs_in = try find(root, r.TextInput, "romfs_in"),
         .out_in = try find(root, r.TextInput, "out_in"),
+        .longshot_in = try find(root, r.TextInput, "longshot_in"),
+        .emulator_in = try find(root, r.TextInput, "emulator_in"),
+        .emulator_game_in = try find(root, r.TextInput, "emulator_game_in"),
         .name_in = try find(root, r.TextInput, "name_in"),
         .seed_in = try find(root, r.TextInput, "seed_in"),
         .hash_lab = try find(root, r.Label, "hash_lab"),
@@ -309,6 +319,9 @@ fn deinit(self: *App) void {
     self.excluded.deinit(self.gpa);
     self.gpa.free(self.game_path);
     self.gpa.free(self.out_path);
+    self.gpa.free(self.longshot_path);
+    self.gpa.free(self.emulator_path);
+    self.gpa.free(self.emulator_game_path);
     self.gpa.free(self.seed_text);
     self.gpa.free(self.last_seed);
     self.gpa.free(self.check_key);
@@ -354,6 +367,12 @@ fn bind(self: *App) AppError!void {
     self.setOwned(&self.out_path, loaded.paths.output);
     self.romfs_in.setText(self.z(self.game_path));
     self.out_in.setText(self.z(self.out_path));
+    self.setOwned(&self.longshot_path, loaded.paths.longshot);
+    self.setOwned(&self.emulator_path, loaded.paths.emulator);
+    self.setOwned(&self.emulator_game_path, loaded.paths.emulator_game);
+    self.longshot_in.setText(self.z(self.longshot_path));
+    self.emulator_in.setText(self.z(self.emulator_path));
+    self.emulator_game_in.setText(self.z(self.emulator_game_path));
 
     // custom_presets.toml
     var preset_messages: std.ArrayList([]const u8) = .empty;
@@ -375,6 +394,13 @@ fn bind(self: *App) AppError!void {
         .{ .name = "rando.longshot", .f = onLongshot },
         .{ .name = "rando.browse.romfs", .f = onBrowseFolder },
         .{ .name = "rando.browse.out", .f = onBrowseFolder },
+        .{ .name = "rando.browse.longshot", .f = onBrowseLaunchPath },
+        .{ .name = "rando.browse.emulator", .f = onBrowseLaunchPath },
+        .{ .name = "rando.browse.emugame", .f = onBrowseLaunchPath },
+        .{ .name = "rando.path.longshot", .f = onPathChanged },
+        .{ .name = "rando.path.emulator", .f = onPathChanged },
+        .{ .name = "rando.path.emugame", .f = onPathChanged },
+        .{ .name = "rando.launch_game", .f = onLaunchGame },
         .{ .name = "rando.path.romfs", .f = onPathChanged },
         .{ .name = "rando.path.out", .f = onPathChanged },
         .{ .name = "rando.path.name", .f = onPathChanged },
@@ -385,6 +411,7 @@ fn bind(self: *App) AppError!void {
         .{ .name = "rando.filter", .f = onFilter },
         .{ .name = "rando.refresh_seeds", .f = onRefreshSeeds },
         .{ .name = "rando.play_selected", .f = onPlaySelected },
+        .{ .name = "rando.rebuild_selected", .f = onRebuildSelected },
         .{ .name = "rando.play_seed", .f = onPlaySeed },
         .{ .name = "rando.toggle_excluded", .f = onToggleExcluded },
     };
@@ -790,11 +817,11 @@ fn onBrowseNup(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     self.pathChanged(.game, path);
 }
 
-const PathField = enum { game, output, name, seed };
+const PathField = enum { game, output, name, seed, longshot, emulator, emulator_game };
 
 fn onPathChanged(self: *App, sender: ?r.Widget, action: [:0]const u8) void {
     const input = (sender orelse return).as(r.TextInput) orelse return;
-    const field: PathField = if (std.mem.endsWith(u8, action, ".romfs")) .game else if (std.mem.endsWith(u8, action, ".out")) .output else if (std.mem.endsWith(u8, action, ".seed")) .seed else .name;
+    const field: PathField = if (std.mem.endsWith(u8, action, ".romfs")) .game else if (std.mem.endsWith(u8, action, ".out")) .output else if (std.mem.endsWith(u8, action, ".seed")) .seed else if (std.mem.endsWith(u8, action, ".longshot")) .longshot else if (std.mem.endsWith(u8, action, ".emulator")) .emulator else if (std.mem.endsWith(u8, action, ".emugame")) .emulator_game else .name;
     self.pathChanged(field, input.getText());
 }
 
@@ -803,11 +830,94 @@ fn pathChanged(self: *App, field: PathField, text: []const u8) void {
         .game => self.setOwned(&self.game_path, text),
         .output => self.setOwned(&self.out_path, text),
         .seed => self.setOwned(&self.seed_text, text),
+        .longshot => self.setOwned(&self.longshot_path, text),
+        .emulator => self.setOwned(&self.emulator_path, text),
+        .emulator_game => self.setOwned(&self.emulator_game_path, text),
         .name => {},
     }
     if (field == .output) self.fillSeeds();
     if (field == .game) _ = self.verifyGame();
-    if ((field == .game or field == .output) and self.loaded) _ = self.save();
+    const is_saved_path = switch (field) {
+        .game, .output, .longshot, .emulator, .emulator_game => true,
+        .name, .seed => false,
+    };
+    if (is_saved_path and self.loaded) _ = self.save();
+}
+
+/// Browse buttons of the Launch Game card: the Longshot game folder, the emulator program, the emulator's game file.
+fn onBrowseLaunchPath(self: *App, _: ?r.Widget, action: [:0]const u8) void {
+    const a = self.frame.allocator();
+    if (std.mem.endsWith(u8, action, ".longshot")) {
+        const current = std.mem.trim(u8, self.longshot_path, " \t");
+        const folder = r.fileDialogSelectFolder(.{
+            .parent = self.window,
+            .title = "Select the Longshot game folder (with longshot.exe and the mods folder)",
+            .directory = if (self.env.fs.isDir(current)) self.z(current) else null,
+        });
+        const chosen = engine.gamefiles.cleanPath(a, folder) catch return;
+        if (chosen.len == 0) return;
+        self.longshot_in.setText(self.z(chosen));
+        self.pathChanged(.longshot, chosen);
+        return;
+    }
+    const is_emulator = std.mem.endsWith(u8, action, ".emulator");
+    const current = std.mem.trim(u8, if (is_emulator) self.emulator_path else self.emulator_game_path, " \t");
+    const folder = if (self.env.fs.isDir(current)) current else fsmod.dirname(current);
+    const program_filters = [_]r.FileFilter{
+        .{ .name = "Programs", .patterns = engine.host.program_file_patterns.ptr },
+        .{ .name = "All files", .patterns = "*" },
+    };
+    const game_filters = [_]r.FileFilter{
+        .{ .name = "Switch games (*.nsp, *.xci, *.nca)", .patterns = "*.nsp;*.xci;*.nca" },
+        .{ .name = "All files", .patterns = "*" },
+    };
+    const path = r.fileDialogOpen(.{
+        .parent = self.window,
+        .title = if (is_emulator) "Select the emulator program" else "Select the game file the emulator starts",
+        .directory = if (folder.len > 0 and self.env.fs.isDir(folder)) self.z(folder) else null,
+        .filters = if (is_emulator) &program_filters else &game_filters,
+    }) orelse return;
+    if (path.len == 0) return;
+    if (is_emulator) {
+        self.emulator_in.setText(path);
+        self.pathChanged(.emulator, path);
+    } else {
+        self.emulator_game_in.setText(path);
+        self.pathChanged(.emulator_game, path);
+    }
+}
+
+/// Launch Game: starts Longshot or the emulator the output folder belongs to (platform/launcher.zig).
+fn onLaunchGame(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    var arena = std.heap.ArenaAllocator.init(self.gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const out = std.mem.trim(u8, self.out_path, " \t");
+    const plan = switch (engine.launcher.planLaunch(a, &self.env, out, .{
+        .longshot = self.longshot_path,
+        .emulator = self.emulator_path,
+        .emulator_game = self.emulator_game_path,
+    }) catch return) {
+        .ready => |ready| ready,
+        .problem => |problem| {
+            self.messageBox("Launch Game", problem);
+            return;
+        },
+    };
+    if (engine.saves.targetFor(a, &self.env, out) catch null) |target| {
+        if (engine.saves.gameRunning(a, &self.env, target)) |running| {
+            if (running.len > 0) {
+                self.messageBox("Launch Game", self.fmtZ("{s} is already running.", .{running}));
+                return;
+            }
+        }
+    }
+    if (plan.note.len > 0) self.write(plan.note);
+    engine.launcher.launch(&self.env, plan) catch {
+        self.messageBox("Launch Game", self.fmtZ("{s} couldn't be started.", .{plan.program}));
+        return;
+    };
+    self.writeFmt("Launch Game: started {s} ({s}).", .{ plan.program, plan.kind.label() });
 }
 
 /// Points the output folder at the Longshot game's mods folder. `quiet` (the first start): say nothing when Longshot
@@ -992,6 +1102,13 @@ fn startJob(self: *App, kind: @FieldType(Job, "kind"), game: []const u8, request
         const names = a.alloc([]const u8, req.settings.excluded().len) catch return self.jobFailed(job);
         for (req.settings.excluded(), 0..) |n, i| names[i] = a.dupe(u8, n) catch return self.jobFailed(job);
         copy.settings.set(.excluded_locations, .{ .list = names });
+        // a rebuilt test seed's chosen placements, too
+        const placements = a.alloc(engine.seedinfo.TestPlacement, req.test_placements.len) catch return self.jobFailed(job);
+        for (req.test_placements, 0..) |placement, i| placements[i] = .{
+            .location = a.dupe(u8, placement.location) catch return self.jobFailed(job),
+            .item = a.dupe(u8, placement.item) catch return self.jobFailed(job),
+        };
+        copy.test_placements = placements;
         job.request = copy;
     }
     self.busy = true;
@@ -1195,6 +1312,69 @@ fn onPlaySelected(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     self.playSeed(self.seeds_list.getSelected());
 }
 
+/// Rebuild This Seed: makes the selected seed again with this release (its own seed number, settings string and
+/// folder), so a fix reaches a seed already being played: the items stay where they were and its saves still fit.
+/// The window's own settings aren't used, except Per-Seed Saves (not part of a settings string).
+fn onRebuildSelected(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    const index = self.seeds_list.getSelected();
+    if (self.busy) return;
+    if (index < 0 or index >= self.seed_rows.items.len) {
+        self.messageBox("Rebuild This Seed", "Choose a seed in the list first.");
+        return;
+    }
+    const paths = self.checkPaths(true) orelse return;
+    if (!self.requireGame()) return;
+    const a = self.frame.allocator();
+    const target = (engine.saves.targetFor(a, &self.env, paths.out) catch null) orelse return;
+    const seed_name = a.dupe(u8, self.seed_rows.items[@intCast(index)]) catch return;
+    const folder = (engine.saves.seedFolder(a, &self.env, target, seed_name) catch null) orelse {
+        self.messageBox("Rebuild This Seed", "That seed's folder wasn't found; click Refresh.");
+        return;
+    };
+    const info = switch (engine.generator.checkRebuild(a, self.env.fs, folder) catch return) {
+        .ready => |ready| ready,
+        .not_a_seed => {
+            self.messageBox("Rebuild This Seed", self.fmtZ("{s} has no readable settings.txt, so it can't be made again.", .{folder}));
+            return;
+        },
+        .other_placements => |other| {
+            self.messageBox("Rebuild This Seed", self.fmtZ("{s} was made by version {s}, which places items differently than {s}. Rebuilt, it would be a different seed and its saves wouldn't fit, so it is left as it is. Make a new seed instead.", .{ seed_name, other.release, engine.version.version }));
+            return;
+        },
+    };
+    var st = engine.settings.fromString(a, info.settings_string) catch {
+        self.messageBox("Rebuild This Seed", "That seed's settings string can't be read by this version.");
+        return;
+    };
+    st.set(.per_seed_saves, self.st.get(.per_seed_saves));
+    const test_placements = engine.seedinfo.parseTestPlacements(a, info.test_placements) catch {
+        self.messageBox("Rebuild This Seed", "That seed's test placements can't be read.");
+        return;
+    };
+    // why: a switched-off seed is switched on first, so the rebuild goes into its own folder (with its stored
+    // saves) and not into a new one next to it
+    var msg = engine.saves.Messages{ .allocator = a };
+    const active_folder = engine.saves.switchOn(a, &self.env, target, seed_name, &msg) catch {
+        self.messageBox("Rebuild This Seed", if (msg.failure.len > 0) msg.failure else "The seed couldn't be switched on.");
+        self.fillSeeds();
+        return;
+    };
+    self.writeFmt("Rebuilding {s} (seed {s}, made by {s}) with {s}: same items and places, this version's fixes.", .{ seed_name, info.seed, info.release, engine.version.version });
+    self.setOwned(&self.game_path, paths.game);
+    self.setOwned(&self.out_path, paths.out);
+    _ = self.save();
+    self.startJob(.generate, paths.game, .{
+        .game_path = paths.game,
+        .out_dir = fsmod.dirname(active_folder),
+        .settings = st,
+        .seed = info.seed,
+        .mod_name = fsmod.basename(active_folder),
+        .exefs = "",
+        .test_placements = test_placements,
+        .rebuild = true,
+    });
+}
+
 fn onPlaySeed(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
     const list = (sender orelse return).as(r.ListView) orelse return;
     self.playSeed(list.getSelected());
@@ -1235,7 +1415,13 @@ fn save(self: *App) bool {
     defer arena.deinit();
     const a = arena.allocator();
     const st = self.currentSettings(a) catch return false;
-    const err = engine.usersettings.save(a, &self.env, &st, .{ .game = self.game_path, .output = self.out_path }) catch return false;
+    const err = engine.usersettings.save(a, &self.env, &st, .{
+        .game = self.game_path,
+        .output = self.out_path,
+        .longshot = self.longshot_path,
+        .emulator = self.emulator_path,
+        .emulator_game = self.emulator_game_path,
+    }) catch return false;
     if (err) |e| {
         if (!self.save_warned) {
             self.save_warned = true;

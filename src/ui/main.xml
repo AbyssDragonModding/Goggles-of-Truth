@@ -13,7 +13,7 @@
 <Window Title="Goggles of Truth Randomizer" Width="1000" Height="800" MinWidth="760" MinHeight="560">
   <VBox Spacing="14">
 
-    <!-- Header: title, Open Folder, Generate Mod -->
+    <!-- Header: title, Open Folder, Launch Game, Generate Mod -->
     <HBox Spacing="12" Slot.Auto="true" Slot.Padding="24,18,24,0">
       <VBox Spacing="2" Slot.Fill="1">
         <Label Text="Goggles of Truth Randomizer" TextSize="28"/>
@@ -21,6 +21,8 @@
       </VBox>
       <Button Name="open_folder" Text="  Open Folder  " OnClicked="rando.open_folder" Slot.Auto="true" Slot.VAlign="Center"
               Tooltip="Open the output folder, where your generated seeds are"/>
+      <Button Name="launch_game" Text="  Launch Game  " OnClicked="rando.launch_game" Slot.Auto="true" Slot.VAlign="Center"
+              Tooltip="Start Longshot or the emulator the output folder belongs to (set their paths on the ROM Options tab's Launch Game card). Generate first: the newest seed is the one switched on."/>
       <Button Name="generate" Text="  Generate Mod  " Style="Primary" OnClicked="rando.generate" Slot.Auto="true"
               Slot.VAlign="Center"/>
     </HBox>

@@ -10,6 +10,7 @@ pub const threads = @import("core/threads.zig");
 pub const host = @import("platform/host.zig");
 pub const Progress = @import("core/Progress.zig");
 pub const version = @import("version.zig");
+pub const seedinfo = @import("core/seedinfo.zig");
 
 // ---- file formats
 pub const zstd = @import("formats/zstd.zig");
@@ -46,10 +47,12 @@ pub const compressor = @import("generator/compressor.zig");
 pub const Env = @import("platform/Env.zig");
 pub const longshot = @import("platform/longshot.zig");
 pub const saves = @import("platform/saves.zig");
+pub const launcher = @import("platform/launcher.zig");
 
 test {
     _ = bytes;
     _ = threads;
+    _ = seedinfo;
     _ = host;
     _ = hash;
     _ = fs;
@@ -76,4 +79,5 @@ test {
     _ = compressor;
     _ = longshot;
     _ = saves;
+    _ = launcher;
 }

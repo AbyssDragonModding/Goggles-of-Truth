@@ -1,6 +1,7 @@
 # build output
 zig-out/
 .zig-cache/
+*.bat
 
 # generated mods, scratch output and anything copied from the game must never be committed
 out/

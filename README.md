@@ -2,7 +2,7 @@
 
 **An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26), attempting to bring back most of the settings from the classic randomizer (with some additional qol settings).**
 
-## Version **0.7.3** · [Discord](https://discord.gg/adSV8cWfBY) ·
+## Version **0.7.4** · [Discord](https://discord.gg/adSV8cWfBY) ·
 [Source](https://github.com/AbyssDragonModding/Goggles-of-Truth)
 
 Goggles of Truth shuffles chests, songs, dungeon rewards, NPC gifts, shop items, Gold Skulltulas and more, and
@@ -125,9 +125,9 @@ When only some choices of an option have a different status, they're named in th
 | Skip Kaepora Gaebora | Off, On | 🟢 Stable |
 | Chests Without Cutscene (big chests) | Off, On | 🟢 Stable |
 | Skip Area Intro Cutscenes | On | 🟡 Semi-tested |
-| Skip Story Scenes | On | 🟡 Semi-tested (a few scenes confirmed, most not yet) |
+| Skip Cutscenes (was Skip Story Scenes) | On | 🟡 Semi-tested (a few scenes confirmed, most not yet; the Royal Family's Tomb added in 0.7.4) |
 | Bag Bombs without Goron Bracelet | Off, On | 🟢 Stable |
-| Bag Bombs Open Dodongo's Cavern | Off, On | 🟢 Stable |
+| Bag Bombs Open Dodongo's Cavern (no cutscene) | Off, On | 🟡 Semi-tested (changed in 0.7.4, not yet tried in-game) |
 | Gold Skulltulas Day and Night, Any Age | Off, On | 🟢 Stable |
 | Skip Ganon's Trials | Off, On | 🟢 Stable |
 | Saria's Song With Just an Ocarina | Off, On | 🟢 Stable |
@@ -146,6 +146,7 @@ When only some choices of an option have a different status, they're named in th
 | Spoiler log (`spoiler.txt`, `spoiler.json`) and test checklist (`checklist.xlsx`) | 🟢 Stable |
 | Longshot support: finds the game, follows its updates, switches older seeds off | 🟢 Stable |
 | Per-Seed Saves (Longshot, and Lichii and other yuzu-family emulators) | 🟢 Stable |
+| Launch Game (starts Longshot or the emulator the output folder belongs to) | 🟡 Semi-tested (not yet tried with every emulator) |
 | File cache (always on): later seeds reuse files compressed before (the mod is byte for byte the same) | 🟢 Stable |
 | Command-line tool (`goggles_cli`) | 🟢 Stable |
 | Windows, Linux | 🟢 Stable |
@@ -325,7 +326,8 @@ with your seeds. (The Python version's git auto-updater isn't part of the Zig ve
 3. Pick settings on the **World**, **Items**, **Dungeon Items**, **Hints** and **Quality of Life** tabs (hover over an
    option to see what it does), or start from a [seed preset](#seed-presets).
 4. Click **Generate Mod**. Every click makes a new seed: if the seed number was already made, a new one is picked
-   first, so an earlier seed is never overwritten. **Open Folder** opens the output folder. Each seed gets its own
+   first, so an earlier seed is never overwritten (to bring a fix into a seed you're playing, use **Rebuild This
+   Seed**; see [Versions](#versions)). **Open Folder** opens the output folder. Each seed gets its own
    folder:
 
 ```
@@ -379,7 +381,8 @@ and the randomizer installs seeds and manages saves for you.
 1. Build the game with the Longshot launcher first.
 2. Click **Longshot** next to the output folder. It finds the launcher's game (by default in
    `Games\Longshot\<version>` in your user folder), sets the output folder to its `mods` folder, and fills in the
-   launcher's `.nup` if the game field is empty. On the first start this happens by itself.
+   launcher's `.nup` if the game field is empty. On the first start this happens by itself. (The launcher's list
+   of builds is in `%LOCALAPPDATA%\LongshotLauncher` on Windows and `~/.local/share/longshot/launcher` on Linux.)
    A Longshot game somewhere else: choose its `mods` folder (next to `longshot.exe`) with **Browse**.
 3. **Close the game, then generate.** Longshot reads mods only when it starts.
 4. Longshot loads every mod in `mods`, so older seeds are **switched off** by renaming them to
@@ -387,6 +390,29 @@ and the randomizer installs seeds and manages saves for you.
    play one again. Other mods are left alone.
 5. After a Longshot update (a new `Games\Longshot\<version>` folder), the randomizer switches to the new `mods`
    folder by itself. Seeds in the old folder aren't loaded any more.
+
+### Launch Game
+
+**Launch Game** (top right, next to Generate Mod) starts the game the output folder belongs to:
+
+| Output folder | Starts |
+|---|---|
+| A Longshot game's `mods` folder | **Longshot**: the program in the **Longshot** path, else `longshot.exe` in that game folder (next to `mods`) |
+| An emulator's `load/0400486024DEC000` folder | **The emulator**: the program in the **Emulator** path, else the one next to a portable emulator's `user` folder |
+| Anything else | Nothing (neither would load the seed from there); the window says so |
+
+Set the paths on the **ROM Options** tab's **Launch Game** card (they're kept in `user_settings.toml`):
+
+- **Longshot**: the Longshot game folder (with `longshot.exe` and `mods`) or the program. Empty: the game whose
+  `mods` folder is the output folder. A path to another Longshot game is used, with a note in the log that it won't
+  load this seed.
+- **Emulator**: the emulator's program (yuzu, Eden, Citron, Lichii, Ryujinx...) or the folder it's in. Empty: found
+  only for a portable emulator.
+- **Emulator game file** (optional): the game's `.nsp`/`.xci` as you'd open it in the emulator. Set, the emulator
+  starts the game right away (`-g <file>`, or the file alone for Ryujinx); empty, it opens to its game list.
+
+The game starts on its own (closing the randomizer doesn't close it). If it's already running, nothing is started:
+close it first, so a new seed and its saves are loaded.
 
 ### Per-seed saves
 
@@ -403,6 +429,11 @@ when the output folder is:
 - **Generating** stores your current slots with the seed they belong to and gives the new seed empty slots.
 - **Play This Seed** (ROM Options > Seeds and saves, or double-click a seed) switches that seed on, all others off,
   and brings its slots back. ▶ marks the seed that's on, ★ the one whose saves are in the game.
+- **Rebuild This Seed** makes the selected seed again with this version's fixes (same items, same places) and keeps
+  its saves; see [Versions](#versions). A rebuild never empties the game's slots or switches them away for that
+  seed: its own slots stay in the game; slots no seed owns (a seed you copied in by hand and played) stay too and
+  become that seed's, with a copy in `save_backups/` first; slots of another seed are stored with that seed and the
+  rebuilt seed's come back. Close the game first: a rebuild while it runs is refused.
 
 A seed's slots live in `<seed folder>/saves/`. Slots no seed owns (like saves from before) are copied to
 `save_backups/` next to the randomizer first; nothing is deleted before it's copied. `option.sav` is shared by all
@@ -513,7 +544,10 @@ Saving under the same name updates it, and **Delete Preset** removes the one cho
 
 ```
 goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
-                     [--from-user-settings] [--exefs <folder>] [--no-cache]
+                     [--from-user-settings] [--exefs <folder>] [--no-cache] [--preset NAME]
+goggles_cli generate --game <.nup or romfs> --rebuild <seed folder>
+                                                make a seed again with this version's fixes (same placements)
+goggles_cli generate ... --place "LOCATION=ITEM"  test seeds: put an item at a location (repeatable)
 goggles_cli check <.nup, romfs or exefs>        check the game version
 goggles_cli scan <.nup or romfs>                list the item locations
 goggles_cli vanilla-test <.nup or romfs>        logic test on the unshuffled game
@@ -521,6 +555,12 @@ goggles_cli dump-world <game> <out.jsonl>       every location, for tools
 goggles_cli dump-plan <game> <settings> <out>   the item pool a settings string makes
 goggles_cli selftest <game>                     read and rewrite every event flow, byte for byte
 ```
+
+**Test seeds:** `--place "Kokiri Forest Chest 4=Bomb Bag" --place "Kokiri Forest Chest 5=Goron Bracelet"` puts
+those items there before the rest is shuffled around them (names as the spoiler log shows them; the item leaves the
+pool, so the seed is still complete and beatable). They are listed in `settings.txt` (`Test placements:`), so
+**Rebuild This Seed** places them again. Pick a location that is open before its own item is needed: Kokiri Forest's
+grotto chests (Chests 1 and 3) need bombs and the Song of Storms, its Chests 4 to 7 are open from the start.
 
 `--from-user-settings` uses the settings saved by the window. The tool keeps its own `cache` folder next to itself;
 `--no-cache` compresses every file instead (to measure a seed without the cache), for the same mod.
@@ -620,15 +660,29 @@ both, open an issue with the hash the randomizer shows.
 - **Cautious logic:** it may expect an item earlier than strictly needed.
 - **Zelda's Letter and the Cucco share a slot:** while holding the letter you can't use the Weird Egg's Cucco. Show
   the letter to the Kakariko gate soldier first. (With Open Death Mountain the letter isn't in the seed.)
-- **Bag Bombs Open Dodongo's Cavern:** the cavern still plays its opening cutscene.
 - **Boss Keys "Own Dungeon"** (experimental) can fail to place items with some settings.
 
 ## Versions
 
-Versions are `Major.Minor.Patch`: **Minor** goes up for a new setting or feature, **Patch** for fixes. The version is
-part of every seed (the same seed and settings make a different mod in another version), so always say which version
-you used. It's shown under the window's title, in `settings.txt` and at the top of the checklist. What changed in each
-version is in [CHANGELOG.md](CHANGELOG.md).
+Versions are `Major.Minor.Patch`: **Minor** goes up for a new setting or feature, **Patch** for fixes. Always say
+which version you used. It's shown under the window's title, in `settings.txt` and at the top of the checklist. What
+changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+
+**Placement version.** A seed's items, prices, hints and starting items come from its seed number, its settings
+string and its *placement version*, not the version itself. The placement version only changes when a version
+changes where items go (the logic, the item pool, the hints...). A version that only fixes bugs keeps it, so the
+same seed number and settings string put every item in the same place. `settings.txt` shows both:
+
+```
+Goggles of Truth Randomizer 0.7.4
+Placement version: 0.7.3
+```
+
+**Getting a fix into a seed you're playing:** select the seed under ROM Options > Seeds and saves and click
+**Rebuild This Seed** (or run `goggles_cli generate --game <game> --rebuild <seed folder>`). The seed is made again
+with the new version into its own folder: the same items in the same places, with the fixes, and your save loads
+as before (its stored per-seed saves are kept). Only seeds with the same placement version can be rebuilt; the
+window says so otherwise. Seeds from 0.7.3 can be rebuilt with 0.7.4.
 
 ## Credits
 

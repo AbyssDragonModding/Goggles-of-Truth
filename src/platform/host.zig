@@ -37,6 +37,13 @@ pub const folder_opener_command: []const u8 = switch (host_system) {
     .other_unix => "xdg-open",
 };
 
+/// The file dialog pattern of program files (Launch Game's emulator Browse).
+pub const program_file_patterns: [:0]const u8 = switch (host_system) {
+    .windows => "*.exe",
+    .macos => "*.app",
+    .other_unix => "*",
+};
+
 test "the separator matches the drive prefix rule" {
     try std.testing.expectEqual(paths_have_drive_prefix, native_path_separator == '\\');
 }

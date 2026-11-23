@@ -20,6 +20,7 @@ const Env = @import("../platform/Env.zig");
 const longshot = @import("../platform/longshot.zig");
 const saves = @import("../platform/saves.zig");
 const version_mod = @import("../version.zig");
+const seedinfo = @import("../core/seedinfo.zig");
 const Allocator = std.mem.Allocator;
 const Settings = settings_mod.Settings;
 const World = world_mod.World;
@@ -46,6 +47,12 @@ pub const Request = struct {
     /// nothing when no file can be reused and saves a lot when many can. Only `goggles_cli --no-cache` turns it
     /// off, to measure a seed without the cache; the mod is byte for byte the same either way.
     use_file_cache: bool = true,
+    /// Test seeds only (`goggles_cli generate --place`): items put at chosen locations before the fill. Written to
+    /// settings.txt, so a rebuild places them again.
+    test_placements: []const seedinfo.TestPlacement = &.{},
+    /// Rebuild This Seed / `--rebuild`: the same seed made again into its own folder. Its saves stay with it
+    /// (saves.keepSavesForRebuild): the game's slots are never emptied or switched away for it.
+    rebuild: bool = false,
 };
 
 pub const Result = struct {
@@ -113,8 +120,18 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     };
 
     progress.log("Building item pool...", .{});
-    const seed_key = std.fmt.allocPrint(a, "{s}|{s}|{s}", .{ version_mod.version, seed, sstr }) catch return error.OutOfMemory;
+    // why: the placement version, not the release, so a release that only fixes patches places a seed the same way
+    // (version.zig); the text is "<placement version>|<seed>|<settings string>" as before 0.7.4, so seeds made with
+    // 0.7.3 come out the same
+    const seed_key = std.fmt.allocPrint(a, "{s}|{s}|{s}", .{ version_mod.placement_version, seed, sstr }) catch return error.OutOfMemory;
     const plan = fill.Plan.init(a, world, st, seed_key) catch |err| return planError(err, progress);
+    if (request.test_placements.len > 0) {
+        if (plan.applyTestPlacements(request.test_placements) catch return error.OutOfMemory) |problem| {
+            return progress.fail(error.GenerationFailed, "test placement: {s}", .{problem});
+        }
+        plan.test_placements_text = seedinfo.formatTestPlacements(a, request.test_placements) catch return error.OutOfMemory;
+        for (request.test_placements) |placement| progress.log("Test placement: {s} holds {s}", .{ placement.location, placement.item });
+    }
     if (plan.exclusion_ignored.items.len > 0) {
         progress.log("note: {d} excluded location(s) can only hold a song or a boss reward with these settings, so they aren't excluded: {s}", .{
             plan.exclusion_ignored.items.len, std.mem.join(a, ", ", plan.exclusion_ignored.items) catch return error.OutOfMemory,
@@ -145,7 +162,7 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     }
 
     // every attempt gets its own stream from the seed's stream, so a seed always comes out the same
-    const seed_text = std.fmt.allocPrint(a, "{s}|{s}|{s}", .{ version_mod.version, seed, sstr }) catch return error.OutOfMemory;
+    const seed_text = std.fmt.allocPrint(a, "{s}|{s}|{s}", .{ version_mod.placement_version, seed, sstr }) catch return error.OutOfMemory;
     var rng = Rng.fromText(seed_text);
     var filler: ?*fill.Filler = null;
     var last_error: []const u8 = "";
@@ -184,6 +201,9 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
         break;
     }
     const placed_filler = filler orelse {
+        if (request.test_placements.len > 0) {
+            return progress.fail(error.GenerationFailed, "could not place items after 40 attempts: {s} - a test placement may be behind what its own item opens (Kokiri Forest's grotto chests need bombs and the Song of Storms, for example); choose a location that is open sooner.", .{last_error});
+        }
         if (user_excluded > 0) {
             return progress.fail(error.GenerationFailed, "could not place items after 40 attempts: {s} - {d} locations are excluded; the items that have to be placed (progression, dungeon items) may not fit in the rest, or not where they can be reached in time. Exclude fewer locations.", .{ last_error, user_excluded });
         }
@@ -208,6 +228,15 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
         if (fsmod.isInside(game_abs, mod_abs)) return progress.fail(error.GenerationFailed, "The output folder must not be inside the romfs folder.", .{});
     }
 
+    if (request.rebuild) {
+        // why: the game would keep running on the old mod files and could save over the slots being kept
+        if (saves.targetFor(a, env, request.out_dir) catch return error.OutOfMemory) |target| {
+            if (saves.gameRunning(a, env, target)) |running| {
+                if (running.len > 0) return progress.fail(error.GenerationFailed, "{s} is running: close it first, then rebuild the seed (its saves are kept)", .{running});
+            }
+        }
+    }
+    try clearEarlierBuild(a, fs, mod_root, name, progress);
     progress.log("Writing mod files...", .{});
     const placed = placed_filler.contents() catch return error.OutOfMemory;
     // what gets patched: the shuffled placements and the forced items, not the vanilla fixed ones
@@ -241,11 +270,11 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
             progress.log("warning: checklist.xlsx not written ({s})", .{@errorName(err)});
         };
     }
-    const settings_txt = std.fmt.allocPrint(a, "{s} {s}\nSeed: {s}\nSettings string: {s}\n", .{ version_mod.name, version_mod.version, seed, sstr }) catch return error.OutOfMemory;
+    const settings_txt = settingsText(a, seed, sstr, plan.test_placements_text) catch return error.OutOfMemory;
     fs.writeAll(fsmod.join(a, &.{ mod_root, "settings.txt" }) catch return error.OutOfMemory, settings_txt) catch |err|
         return progress.fail(error.GenerationFailed, "couldn't write settings.txt ({s})", .{@errorName(err)});
 
-    try switchOtherSeeds(a, env, request.out_dir, name, st, progress);
+    try switchOtherSeeds(a, env, request.out_dir, name, st, request.rebuild, progress);
 
     const t1 = std.Io.Timestamp.now(fs.io, .awake);
     const ms = @divTrunc(t1.nanoseconds - t0.nanoseconds, std.time.ns_per_ms);
@@ -311,7 +340,7 @@ fn patchError(err: anytype, progress: *Progress) GenerateError {
 
 /// Longshot and emulators load every mod folder: the other seeds are switched off, and with Per-Seed Saves the saves
 /// follow the new seed.
-fn switchOtherSeeds(a: Allocator, env: *const Env, out_dir: []const u8, name: []const u8, st: *const Settings, progress: *Progress) GenerateError!void {
+fn switchOtherSeeds(a: Allocator, env: *const Env, out_dir: []const u8, name: []const u8, st: *const Settings, rebuild: bool, progress: *Progress) GenerateError!void {
     if (longshot.isModsFolder(a, env, out_dir)) {
         // two seeds at once would mix, so the others are switched off
         for (longshot.switchOffOtherSeeds(a, env, out_dir, name) catch return error.OutOfMemory) |r| {
@@ -349,12 +378,70 @@ fn switchOtherSeeds(a: Allocator, env: *const Env, out_dir: []const u8, name: []
     }
     if (st.flag(.per_seed_saves)) {
         var msg = saves.Messages{ .allocator = a };
-        saves.switchSaves(a, env, target, name, &msg) catch |err| switch (err) {
+        const switched = if (rebuild) saves.keepSavesForRebuild(a, env, target, name, &msg) else saves.switchSaves(a, env, target, name, &msg);
+        switched catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.SaveFailed => progress.log("WARNING: per-seed saves not switched ({s}). Your saves weren't changed; once the game is closed, use Play This Seed on the ROM Options tab.", .{msg.failure}),
         };
         for (msg.lines.items) |line| progress.log("Per-seed saves: {s}", .{line});
     }
+}
+
+// ------------------------------------------------------------------------------------------------ seed folders
+
+/// settings.txt (also the top of spoiler.txt): the release, the placement version, the seed and the settings string.
+/// Rebuilding a seed reads it back (core/seedinfo.zig), and per-seed saves compare it to know a seed folder's saves fit.
+/// A test seed adds its chosen placements ("Test placements: ..."); they are only listed there, not in the spoiler's
+/// regions (they aren't shuffled).
+pub fn settingsText(allocator: Allocator, seed: []const u8, settings_string: []const u8, test_placements_text: []const u8) error{OutOfMemory}![]const u8 {
+    const base = try std.fmt.allocPrint(allocator, "{s} {s}\nPlacement version: {s}\nSeed: {s}\nSettings string: {s}\n", .{
+        version_mod.name, version_mod.version, version_mod.placement_version, seed, settings_string,
+    });
+    if (test_placements_text.len == 0) return base;
+    return std.fmt.allocPrint(allocator, "{s}Test placements: {s}\n", .{ base, test_placements_text });
+}
+
+pub const RebuildCheck = union(enum) {
+    /// the folder can be made again with this release: the same seed, settings string and placements
+    ready: seedinfo.SeedInfo,
+    /// no readable settings.txt in the folder
+    not_a_seed,
+    /// made by a release whose placements differ: a rebuild would put items elsewhere, and its saves wouldn't fit
+    other_placements: seedinfo.SeedInfo,
+};
+
+/// Can the seed in `seed_folder` be rebuilt with this release? Strings point into memory from `allocator`.
+pub fn checkRebuild(allocator: Allocator, fs: fsmod.Fs, seed_folder: []const u8) error{OutOfMemory}!RebuildCheck {
+    const path = try fsmod.join(allocator, &.{ seed_folder, "settings.txt" });
+    const text = fs.readAll(allocator, path) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return .not_a_seed,
+    };
+    const info = seedinfo.parseSettingsText(text) orelse return .not_a_seed;
+    if (!std.mem.eql(u8, info.placement_version, version_mod.placement_version)) return .{ .other_placements = info };
+    return .{ .ready = info };
+}
+
+/// What every build writes at the top of a mod folder. Everything else there (the stored per-seed saves in saves/)
+/// is kept when a seed is made again into its own folder.
+const generated_entries = [_][]const u8{ "romfs", "exefs", "settings.txt", "spoiler.txt", "spoiler.json", "checklist.xlsx" };
+
+/// Rebuilding a seed into its folder: the earlier build's files go first, so a file the new build no longer changes
+/// doesn't stay behind. Only the entries a build writes are removed.
+fn clearEarlierBuild(a: Allocator, fs: fsmod.Fs, mod_root: []const u8, name: []const u8, progress: *Progress) GenerateError!void {
+    if (!fs.isDir(mod_root)) return;
+    var removed_any = false;
+    for (generated_entries) |entry| {
+        const path = fsmod.join(a, &.{ mod_root, entry }) catch return error.OutOfMemory;
+        if (fs.isDir(path)) {
+            fs.deleteTree(path) catch |err| return progress.fail(error.GenerationFailed, "couldn't remove the earlier build's {s} ({s}); close the game and try again", .{ path, @errorName(err) });
+            removed_any = true;
+        } else if (fs.exists(path)) {
+            fs.deleteFile(path) catch |err| return progress.fail(error.GenerationFailed, "couldn't remove the earlier build's {s} ({s}); close the game and try again", .{ path, @errorName(err) });
+            removed_any = true;
+        }
+    }
+    if (removed_any) progress.log("{s} already exists: its earlier mod files are replaced (its stored saves are kept)", .{name});
 }
 
 // ------------------------------------------------------------------------------------------------------- spoiler
@@ -459,7 +546,8 @@ fn writeSpoiler(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Fil
     }.less);
 
     var txt: std.ArrayList(u8) = .empty;
-    txt.print(a, "{s} {s}\nSeed: {s}\nSettings string: {s}\n\nSettings:\n", .{ version_mod.name, version_mod.version, seed, sstr }) catch return error.OutOfMemory;
+    try txt.appendSlice(a, settingsText(a, seed, sstr, plan.test_placements_text) catch return error.OutOfMemory);
+    try txt.appendSlice(a, "\nSettings:\n");
     for (settings_mod.specs) |s| {
         try txt.appendSlice(a, "  ");
         try padded(&txt, a, std.fmt.allocPrint(a, "{s}:", .{s.label}) catch return error.OutOfMemory, 28);
@@ -498,8 +586,8 @@ fn writeSpoiler(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Fil
 
     // spoiler.json
     var js: std.ArrayList(u8) = .empty;
-    js.print(a, "{{\n \"version\": {f},\n \"seed\": {f},\n \"settings_string\": {f},\n \"settings\": {{", .{
-        std.json.fmt(version_mod.version, .{}), std.json.fmt(seed, .{}), std.json.fmt(sstr, .{}),
+    js.print(a, "{{\n \"version\": {f},\n \"placement_version\": {f},\n \"seed\": {f},\n \"settings_string\": {f},\n \"settings\": {{", .{
+        std.json.fmt(version_mod.version, .{}), std.json.fmt(version_mod.placement_version, .{}), std.json.fmt(seed, .{}), std.json.fmt(sstr, .{}),
     }) catch return error.OutOfMemory;
     for (settings_mod.specs, 0..) |s, i| {
         js.print(a, "{s}\n  {f}: ", .{ if (i > 0) "," else "", std.json.fmt(@tagName(s.key), .{}) }) catch return error.OutOfMemory;

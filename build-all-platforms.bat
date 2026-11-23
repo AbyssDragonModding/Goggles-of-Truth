@@ -3,6 +3,10 @@
 zig build -Dtarget=x86_64-windows-msvc -Doptimize=ReleaseFast
 @echo Building for x86_64-windows... done.
 
+@echo Building for Aarch64-windows...
+zig build -Dtarget=Aarch64-windows-msvc -Doptimize=ReleaseFast
+@echo Building for Aarch64-windows... done.
+
 @echo Building for macos...
 zig build -Dtarget=x86_64-macos -Doptimize=ReleaseFast
 @echo Building for macos... done.

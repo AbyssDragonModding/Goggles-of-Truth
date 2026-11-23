@@ -55,7 +55,7 @@ const skip_setting = "Event/EventSetting/EventSettingComponent/SkipSetting/Disab
 
 /// Chest "get" events that act out the vanilla item. Get_StoneOfForest_GetSword (the Kokiri Sword chest) plays a scene
 /// where Link swings the sword: he ends up holding a Kokiri Sword that isn't in the save. A randomized chest uses the
-/// normal chest event instead, and so does the vanilla sword chest with Skip Story Scenes.
+/// normal chest event instead, and so does the vanilla sword chest with Skip Cutscenes (skip_story_scenes).
 const item_get_events = [_][]const u8{"Get_StoneOfForest_GetSword"};
 
 const StageEdit = struct {
@@ -129,7 +129,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     var shop_presences: std.ArrayList(gamedata.ShopPresence) = .empty;
     const refills = st.flag(.refill_needs_item);
 
-    // Skip Story Scenes: the Kokiri Sword chest uses the normal chest opening even with the sword in it; its sword scene
+    // Skip Cutscenes: the Kokiri Sword chest uses the normal chest opening even with the sword in it; its sword scene
     // only puts the sword in Link's hand and sets no save flags
     const quick_vanilla = a.alloc(bool, locs.len) catch return error.OutOfMemory;
     @memset(quick_vanilla, false);
@@ -295,7 +295,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
 
     if (st.flag(.skip_story_scenes)) {
         // after the item edits: a skipped scene's item (read from the patched scene) is the randomized one
-        try storyskip.patchStoryScenes(world, &patches, progress, &storyskip.skips, "Skip Story Scenes", false);
+        try storyskip.patchStoryScenes(world, &patches, progress, &storyskip.skips, "Skip Cutscenes", false);
         patches.endStep();
     }
     if (st.flag(.skip_area_intros)) {
@@ -420,9 +420,9 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     }
     if (!st.is(.shuffle_songs, "vanilla")) try qol.patchSongTeaching(world, &patches, progress);
     if (st.flag(.shuffle_weird_egg)) try qol.patchEggHatchGuard(&patches, progress);
-    if (st.flag(.dodongo_bag_bombs) and !try qol.patchDodongoBagBombs(world, &patches, progress)) {
+    if (st.flag(.dodongo_bag_bombs) and !try qol.patchDodongoBagBombs(world, &patches, &restbl, progress)) {
         // the logic already counted bag bombs for the entrance, so the seed would not be safe
-        return progress.fail(error.SettingFailed, "Dodongo's Cavern boulder logic not recognised in this romfs; turn off 'Bag Bombs Open Dodongo's Cavern'", .{});
+        return progress.fail(error.SettingFailed, "Dodongo's Cavern boulder not recognised in this romfs; turn off 'Bag Bombs Open Dodongo's Cavern'", .{});
     }
     if (st.flag(.anju_one_cucco)) try qol.patchAnju(world, &patches, progress, 1);
     if (st.flag(.big_poe_one)) _ = try qol.patchBigPoeOne(&patches, progress);
@@ -524,7 +524,7 @@ fn patchActor(
             const dyn = try actor.ensureDict(a, "Dynamic");
             if (dyn.getString("GetEventName")) |ev| {
                 if (flows.contains(&item_get_events, ev) and (item != loc.vanilla or quick_vanilla)) {
-                    // the chest's own event hands out its vanilla item again (unsaved), so drop it; with Skip Story Scenes
+                    // the chest's own event hands out its vanilla item again (unsaved), so drop it; with Skip Cutscenes
                     // the vanilla sword also comes from the normal chest opening
                     _ = dyn.remove("GetEventName");
                 }

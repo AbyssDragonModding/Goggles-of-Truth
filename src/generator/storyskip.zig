@@ -1,4 +1,5 @@
-//! Skip Story Scenes: the Temple of Time, Chamber of Sages and sage-awakening scenes don't play (and Skip Area Intros
+//! Skip Cutscenes (setting key skip_story_scenes; called Skip Story Scenes before 0.7.4): the Temple of Time,
+//! Chamber of Sages, sage-awakening and Royal Family's Tomb scenes don't play (and Skip Area Intros
 //! for the intros whose arrival also advances a quest).
 //!
 //! Story scenes are not started by the place you are in but by a quest flow (DoorOfTime, AllSage, and the shared
@@ -47,7 +48,15 @@ const gift_entry = "GetPouchContentByActorName";
 pub const SkipList = struct {
     flow: []const u8,
     scenes: []const []const u8,
+    /// Its scenes may play an ocarina lesson (Dm_SY_Ocarina's Learning... entries: the song played for you, then
+    /// played along). A lesson's only gift is the vanilla song, which patchSongTeaching already takes out when songs
+    /// are shuffled, and the song spot's item comes from the scene after it, so skipping the lesson loses nothing.
+    song_lessons: bool = false,
 };
+
+/// The ocarina lessons a song scene may call when its list allows them (SkipList.song_lessons).
+const song_lesson_flow = "Dm_SY_Ocarina";
+const song_lesson_entry_prefix = "LearningOcarina";
 
 /// quest flow -> scenes it plays that are skipped
 pub const skips = [_]SkipList{
@@ -91,6 +100,17 @@ pub const skips = [_]SkipList{
         "Dm_InsideGanonCastle_0080", "Dm_InsideGanonCastle_0085", "Dm_InsideGanonCastle_0090", "Dm_InsideGanonCastle_0110",
     } },
     .{ .flow = "InsideGanonCastle_CommonGimmick", .scenes = &.{"Dm_InsideGanonCastle_0005"} },
+    // Kakariko Graveyard, the Royal Family's Tomb: Zelda's Lullaby at the gravestone (the tomb opening), and the
+    // Sun's Song stone inside (its lesson, the day / night versions for each age, and the song's own scene)
+    .{
+        .flow = "GimmickFlow_RoyalFamilyTomb",
+        .scenes = &.{
+            "Dm_Graveyard_0010",   "Dm_MelodyGet_Sun",    "Dm_MelodyGet_Sun_01", "Dm_MelodyGet_Sun_03",
+            "Dm_MelodyGet_Sun_04", "Dm_MelodyGet_Sun_05", "Dm_MelodyGet_Sun_06", "Dm_MelodyGet_Sun_07",
+            "Dm_MelodyGet_Sun_08", "Dm_MelodyGet_Sun_09", "Dm_MelodyGet_Sun_10",
+        },
+        .song_lessons = true,
+    },
 };
 
 /// Skip Area Intros, for the intros whose arrival entry also advances a quest or sets flags: the intro's transition
@@ -135,7 +155,7 @@ const presentation_words = [_][]const u8{
     "Cloth",      "Bone",       "Bind",       "Attach",       "Shadow",    "Fog",            "Voice",     "Emotion",
     "GoOffstage", "DoNothing",  "NorifyCut",  "ScreenShot",   "DoCommand", "TerrainCalc",    "Culling",   "EquipmentUserRequestChangeState",
     "BootsChange", "PerformanceImportantMenu", "DisplayGet", "Chemical", "SetTime",  "Shading",        "PlayerEventStartWith", "CloseDemoScreen",
-    "Occlusion",
+    "Occlusion",  "SetPerformerSystem",
 };
 
 fn isPresentation(action: []const u8) bool {
@@ -167,7 +187,7 @@ fn locationFlag(allocator: Allocator, path: []const u8) error{OutOfMemory}![]con
 
 /// The items and flags of a skippable scene, or error.NotAsExpected (with the reason). `area_intro`: the scene may
 /// open its area's name banner, which marks the area as visited; that visit flag is added to the flags.
-fn sceneEffects(allocator: Allocator, doc: *evfl.Document, area_intro: bool, progress: *Progress) PatchError!SceneEffects {
+fn sceneEffects(allocator: Allocator, doc: *evfl.Document, area_intro: bool, song_lessons: bool, progress: *Progress) PatchError!SceneEffects {
     var items: std.ArrayList(SceneItem) = .empty;
     var flags: std.ArrayList([]const u8) = .empty;
     const fc = doc.flowchart orelse return SceneEffects{ .items = items.items, .flags = flags.items };
@@ -184,6 +204,8 @@ fn sceneEffects(allocator: Allocator, doc: *evfl.Document, area_intro: bool, pro
                 } else if (std.mem.eql(u8, s.flowchart, gift_flow) and std.mem.eql(u8, s.entry_point, "DisplayGetByActorName")) {
                     // the window for an item already added
                     if (actor_name) |n| shown.append(allocator, n) catch return error.OutOfMemory;
+                } else if (song_lessons and std.mem.eql(u8, s.flowchart, song_lesson_flow) and std.mem.startsWith(u8, s.entry_point, song_lesson_entry_prefix)) {
+                    // the lesson only plays the song (SkipList.song_lessons)
                 } else if (!flows.contains(&dropped_subflows, s.flowchart)) {
                     return progress.fail(error.NotAsExpected, "{s} calls {s}:{s}", .{ fc.name, s.flowchart, s.entry_point });
                 }
@@ -351,7 +373,7 @@ fn setFlagParams(allocator: Allocator, flag: []const u8) PatchError!*Container {
 }
 
 /// Quest flow `data` with each transition to one of `scenes` replaced by its effects.
-fn skipScenes(allocator: Allocator, world: *World, patches: *PatchSet, data: []const u8, scenes: []const []const u8, area_intro: bool, progress: *Progress) PatchError!SkipResult {
+fn skipScenes(allocator: Allocator, world: *World, patches: *PatchSet, data: []const u8, scenes: []const []const u8, area_intro: bool, song_lessons: bool, progress: *Progress) PatchError!SkipResult {
     var doc = try flows.readFlow(allocator, data, "quest flow", progress);
     const fc = doc.flowchart orelse return progress.fail(error.NotAsExpected, "no flowchart", .{});
     var reports: std.ArrayList(Report) = .empty;
@@ -369,7 +391,18 @@ fn skipScenes(allocator: Allocator, world: *World, patches: *PatchSet, data: []c
             reports.append(allocator, .{ .scene = scene, .text = text }) catch return error.OutOfMemory;
             continue;
         }
-        const scene_data = (try patches.read(try flowRel(allocator, scene))).data;
+        const scene_rel = try flowRel(allocator, scene);
+        if (!world.files.exists(scene_rel)) {
+            // why: a scene with no event flow of its own is a timeline played by name (Dm_MelodyGet_Sun_01: the
+            // Sun's Song lesson at night), which can't change the save; only its own played flag is set
+            var timeline_flags: std.ArrayList([]const u8) = .empty;
+            const timeline_seen = std.fmt.allocPrint(allocator, "HavePlayedEvent.{s}", .{scene}) catch return error.OutOfMemory;
+            if (try gamedata.boolExists(world, timeline_seen)) timeline_flags.append(allocator, timeline_seen) catch return error.OutOfMemory;
+            plans.append(allocator, .{ .scene = scene, .hits = hits.items, .items = allocator.alloc(SceneItem, 0) catch return error.OutOfMemory, .flags = timeline_flags.items, .fade = null }) catch return error.OutOfMemory;
+            reports.append(allocator, .{ .scene = scene, .text = "seen (a timeline, no flow of its own)" }) catch return error.OutOfMemory;
+            continue;
+        }
+        const scene_data = (try patches.read(scene_rel)).data;
         var scene_doc = flows.readFlow(allocator, scene_data, scene, progress) catch |err| switch (err) {
             error.NotAsExpected => {
                 const text = std.fmt.allocPrint(allocator, "kept: {s}", .{progress.failureMessage()}) catch return error.OutOfMemory;
@@ -378,7 +411,7 @@ fn skipScenes(allocator: Allocator, world: *World, patches: *PatchSet, data: []c
             },
             else => return err,
         };
-        const effects = sceneEffects(allocator, &scene_doc, area_intro, progress) catch |err| switch (err) {
+        const effects = sceneEffects(allocator, &scene_doc, area_intro, song_lessons, progress) catch |err| switch (err) {
             error.NotAsExpected => {
                 const text = std.fmt.allocPrint(allocator, "kept: {s}", .{progress.failureMessage()}) catch return error.OutOfMemory;
                 reports.append(allocator, .{ .scene = scene, .text = text }) catch return error.OutOfMemory;
@@ -548,16 +581,31 @@ fn readTable(allocator: Allocator, world: *World, patches: *PatchSet, prefix: []
 /// Other flows an entry calls (sub flow calls it reaches), each once, in event order.
 fn externalCalls(allocator: Allocator, fc: *evfl.Flowchart, entry: *const evfl.EntryPoint) PatchError![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
-    const reached = try fc.reach(allocator, entry.main_event);
-    for (reached, 0..) |r, i| {
-        if (!r) continue;
-        const name = switch (fc.events.items[i].kind) {
-            .sub_flow => |s| s.flowchart,
-            .sub_flow_switch => |s| s.flowchart,
-            else => continue,
-        };
-        if (name.len == 0 or std.mem.eql(u8, name, fc.name) or flows.contains(out.items, name)) continue;
-        out.append(allocator, name) catch return error.OutOfMemory;
+    // why: an event also runs the entry points of its own flow that it calls (GimmickFlow_RoyalFamilyTomb's stone
+    // event calls its CheckStone_To_MelodyGet_Sun, where the skipped Sun's Song scene now hands over the item):
+    // their calls to other flows count too, or the new GetPouchContent call would be missing from the event's row
+    var entries_to_visit: std.ArrayList(*const evfl.EntryPoint) = .empty;
+    var visited_entries: std.ArrayList([]const u8) = .empty;
+    entries_to_visit.append(allocator, entry) catch return error.OutOfMemory;
+    while (entries_to_visit.pop()) |current| {
+        const reached = try fc.reach(allocator, current.main_event);
+        for (reached, 0..) |r, i| {
+            if (!r) continue;
+            const call: struct { flowchart: []const u8, entry_point: []const u8 } = switch (fc.events.items[i].kind) {
+                .sub_flow => |s| .{ .flowchart = s.flowchart, .entry_point = s.entry_point },
+                .sub_flow_switch => |s| .{ .flowchart = s.flowchart, .entry_point = s.entry_point },
+                else => continue,
+            };
+            const is_own_flow = call.flowchart.len == 0 or std.mem.eql(u8, call.flowchart, fc.name);
+            if (is_own_flow) {
+                if (flows.contains(visited_entries.items, call.entry_point)) continue;
+                visited_entries.append(allocator, call.entry_point) catch return error.OutOfMemory;
+                if (fc.entryPoint(call.entry_point)) |called| entries_to_visit.append(allocator, called) catch return error.OutOfMemory;
+                continue;
+            }
+            if (flows.contains(out.items, call.flowchart)) continue;
+            out.append(allocator, call.flowchart) catch return error.OutOfMemory;
+        }
     }
     return out.items;
 }
@@ -624,7 +672,7 @@ pub fn patchStoryScenes(world: *World, patches: *PatchSet, progress: *Progress, 
             continue;
         }
         const orig = try patches.read(rel);
-        const result = skipScenes(a, world, patches, orig.data, item.scenes, area_intro, progress) catch |err| switch (err) {
+        const result = skipScenes(a, world, patches, orig.data, item.scenes, area_intro, item.song_lessons, progress) catch |err| switch (err) {
             error.NotAsExpected, error.InvalidData => {
                 progress.log("warning: {s}: {s} not changed ({s}); its scenes still play", .{ label, item.flow, progress.failureMessage() });
                 continue;
@@ -657,7 +705,7 @@ fn emptyIntro(allocator: Allocator, world: *World, data: []const u8, progress: *
     var doc = try flows.readFlow(allocator, data, "intro", progress);
     const fc = doc.flowchart orelse return progress.fail(error.NotAsExpected, "no flowchart", .{});
     if (fc.entry_points.items.len == 0) return progress.fail(error.NotAsExpected, "no flowchart", .{});
-    const effects = try sceneEffects(allocator, &doc, true, progress);
+    const effects = try sceneEffects(allocator, &doc, true, false, progress);
     // its played flag too (Dodongo's Cavern's location area only exists once Dm_DodongoCave_0000 has played)
     var flags: std.ArrayList([]const u8) = .empty;
     const seen = std.fmt.allocPrint(allocator, "HavePlayedEvent.{s}", .{fc.name}) catch return error.OutOfMemory;

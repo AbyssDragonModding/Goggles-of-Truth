@@ -65,10 +65,14 @@ pub fn build(b: *std.Build) void {
     // ---- the window (needs the prebuilt Raven library for the *target*, not the host)
     const raven_lib = ravenLibraryFor(t);
     if (raven_lib) |lib| {
-        // Zig's default Linux target is musl, but the Raven library is built against glibc (it loads libX11 and
-        // the Vulkan driver of the system), so the window is always a glibc program. The command-line tool stays as
-        // asked: a static musl program runs on any Linux.
-        const window_target = if (t.os.tag == .linux and t.abi.isMusl()) blk: {
+        // The window links the prebuilt Raven library, so it uses the ABI that library was built for; the
+        // command-line tool stays as asked.
+        // - Linux: Zig's default target is musl, but Raven is built against glibc (it loads libX11 and the Vulkan
+        //   driver of the system), so the window is always a glibc program (a static musl CLI runs on any Linux).
+        // - Windows: raven.lib is a MinGW (GNU) import library, which the MSVC ABI can't link ("raven.dll: bad file
+        //   type"): with -Dtarget=x86_64-windows-msvc only the CLI was built. The window is always a GNU-ABI program.
+        const window_needs_gnu_abi = (t.os.tag == .linux and t.abi.isMusl()) or (t.os.tag == .windows and t.abi != .gnu);
+        const window_target = if (window_needs_gnu_abi) blk: {
             var query = target.query;
             query.abi = .gnu;
             break :blk b.resolveTargetQuery(query);
