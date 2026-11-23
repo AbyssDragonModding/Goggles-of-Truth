@@ -1,6 +1,0 @@
-@echo off
-@echo Building for x86_64-windows...
-zig build -Dtarget=x86_64-windows-msvc -Doptimize=ReleaseFast
-
-@echo Building for Aarch64-windows...
-zig build -Dtarget=Aarch64-windows-msvc -Doptimize=ReleaseFast
