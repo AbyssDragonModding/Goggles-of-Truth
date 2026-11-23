@@ -64,7 +64,7 @@ differently.
   stay, it inherits the life, 6 HP hurt only by bombs and the hammer, with the blackboard, drops and perception
   that come with it; WallCrack's files are copied unchanged into its pack), so the explosion breaks it, the cavern
   opens for good and the quest moves on to the dungeon as after the cutscene. The bomb flower still plays its cutscene (confirmed
-  in-game). Found with the decrypted game dump; the bag-bomb explosion is not yet tried in-game.
+  in-game).
 
 ## 0.7.3 - 2026-11-22
 
