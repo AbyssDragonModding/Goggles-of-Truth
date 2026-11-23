@@ -7,7 +7,7 @@ different version.
 ## 0.7.3 - 2026-11-22
 
 ### Added
-- ** Skull kid Ocarina minigame **: Now gives all 3 rewards for one song rotation
+- **Skull kid Ocarina minigame**: Now gives all 3 rewards for one song rotation
 - **Key rings and boss keys outside their dungeon** (Dungeon Items tab, all experimental), adapted from
   [OotrR](https://github.com/Mozencaz/OotrR)'s key adapter. The remake's small and boss keys are generic: a key counts
   for the dungeon Link picks it up in, so a key can't simply be placed in another dungeon. So, as in OotrR:
