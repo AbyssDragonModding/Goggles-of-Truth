@@ -59,6 +59,8 @@ const start_deny_prefixes = [_][]const u8{
     "Heart_", "Token_Gold", "Bottle",   "BombBag_", "Quiver_",     "BulletBag_",   "Wallet_", "NutBag_",
     "StickBag_", "Range_",  "FairyBless_", "Arrow_", "Bombchu",     "Bomb",         "Deku",    "Rupee_",
     "MagicJar_", "ArrowBundle", "ScrubBusinessSeed",
+    // a key ring / dungeon boss key only does something through an item get (keyitems.zig: the ActionGuide hook)
+    "KeyRing_",  "BossKey_",
 };
 
 /// Refills that are useless without their container: the item a chest checks for before giving them. Bombchus
@@ -146,6 +148,23 @@ pub fn dungeonItemType(name: []const u8) ?DungeonItem {
     if (std.mem.startsWith(u8, name, "Dungeon_BossKey")) return .boss_keys;
     if (std.mem.startsWith(u8, name, "Dungeon_Map") or std.mem.startsWith(u8, name, "Dungeon_Compass")) return .maps_compasses;
     return null;
+}
+
+/// The Key Ring Dungeons choices, in logic.key_dungeons order.
+const key_ring_settings = [_]settings_mod.Key{ .key_ring_forest, .key_ring_fire, .key_ring_water, .key_ring_shadow, .key_ring_spirit, .key_ring_well, .key_ring_gtg, .key_ring_ganon };
+
+comptime {
+    if (key_ring_settings.len != logic.key_dungeons.len) @compileError("one Key Ring Dungeons setting per key dungeon");
+}
+
+/// Small Keys as key rings (Any Dungeon, Overworld, Anywhere).
+pub fn keyRingMode(st: *const Settings) bool {
+    return st.is(.small_keys, "any_dungeon") or st.is(.small_keys, "overworld") or st.is(.small_keys, "anywhere");
+}
+
+/// Boss Keys as items of their own (Any Dungeon, Anywhere).
+pub fn bossKeyItemMode(st: *const Settings) bool {
+    return st.is(.boss_keys, "any_dungeon") or st.is(.boss_keys, "anywhere");
 }
 
 fn settingOf(d: DungeonItem) settings_mod.Key {
@@ -239,6 +258,7 @@ pub const Plan = struct {
             .sold_once_cache = std.AutoHashMap(ItemId, bool).init(allocator),
             .gs_refuses_cache = std.AutoHashMap(ItemId, bool).init(allocator),
         };
+        self.chooseKeyItems();
         for (world.locations.items, 0..) |*loc, i| self.rules[i] = locationRuleFor(loc, &world.items);
         try self.chooseShopSlots();
         try self.chooseScrubPrices();
@@ -391,6 +411,47 @@ pub const Plan = struct {
         }
     }
 
+    /// Small Keys as key rings / Boss Keys outside their temple: which dungeons' keys become items of their own
+    /// (logic.Options.key_ring / boss_key_item). Random Dungeons draws each one from the seed.
+    fn chooseKeyItems(self: *Self) void {
+        const st = self.st;
+        if (keyRingMode(st)) {
+            const mode = st.choice(.key_rings);
+            var key_buf: [1024]u8 = undefined;
+            var rng = Rng.fromText(std.fmt.bufPrint(&key_buf, "key_rings|{s}", .{self.seed_key}) catch self.seed_key);
+            for (logic.key_dungeons, 0..) |_, i| {
+                self.options.key_ring[i] = if (std.mem.eql(u8, mode, "choose"))
+                    st.flag(key_ring_settings[i])
+                else if (std.mem.eql(u8, mode, "random"))
+                    rng.below(2) == 0
+                else
+                    true;
+            }
+        }
+        if (bossKeyItemMode(st)) {
+            for (logic.key_dungeons, 0..) |d, i| self.options.boss_key_item[i] = d.boss != null;
+        }
+    }
+
+    /// Is the vanilla small key / boss key / map / compass `item` (its location's original item) shuffled?
+    fn dungeonItemShuffled(self: *Self, dtype: DungeonItem, item: []const u8) bool {
+        const st = self.st;
+        const mode = st.choice(settingOf(dtype));
+        if (std.mem.eql(u8, mode, "vanilla")) return false;
+        if (std.mem.eql(u8, mode, "own") or dtype == .maps_compasses) return true;
+        // the item's own dungeon ("Dungeon_SmallKey@ForestTemple"); keys outside the key dungeons (the Thieves'
+        // Hideout's) stay where they are
+        const at = std.mem.indexOfScalar(u8, item, '@') orelse return false;
+        const i = logic.keyDungeonIndex(item[at + 1 ..]) orelse return false;
+        return switch (dtype) {
+            // Removed: every key dungeon's key chests get other items; key rings: only the dungeons with a ring
+            .small_keys => std.mem.eql(u8, mode, "remove") or self.options.key_ring[i],
+            // Ganon's Castle's boss key stays in its chest
+            .boss_keys => logic.key_dungeons[i].boss != null,
+            .maps_compasses => true,
+        };
+    }
+
     fn needsWalletFor(self: *Self, i: usize, p: i64) void {
         if (p > child_wallet) self.needs_wallet[i] = true;
     }
@@ -416,9 +477,7 @@ pub const Plan = struct {
         const st = self.st;
         const item = self.itemName(loc.vanilla);
         if (loc.kind == .shop) return self.shop_chosen[i];
-        if (dungeonItemType(item)) |dtype| {
-            return !st.is(settingOf(dtype), "vanilla");
-        }
+        if (dungeonItemType(item)) |dtype| return self.dungeonItemShuffled(dtype, item);
         if (std.mem.eql(u8, item, "Sword_Kokiri") and !st.flag(.shuffle_kokiri_sword)) return false;
         if (inList(item, &upgrades) and !loc.upgrade_ok) return false;
         if (std.mem.eql(u8, item, "WeirdEgg") and !st.flag(.shuffle_weird_egg)) return false;
@@ -492,6 +551,7 @@ pub const Plan = struct {
                 }
             }
         }
+        try self.keyPool();
         const pool_mode = st.choice(.item_pool);
         if (std.mem.eql(u8, pool_mode, "scarce") or std.mem.eql(u8, pool_mode, "minimal")) {
             const red = try self.world.items.intern("Rupee_Red");
@@ -503,6 +563,57 @@ pub const Plan = struct {
                 counter.* += 1;
                 if (std.mem.eql(u8, pool_mode, "minimal") or counter.* % 2 == 0) item.* = red;
             }
+        }
+    }
+
+    /// The keys in the pool for Small Keys / Boss Keys other than Vanilla and Own Dungeon: a key ring dungeon's small
+    /// keys become its key ring (one of them; the others a Blue Rupee), a temple's boss key its own boss key item,
+    /// and the removed keys Blue Rupees (a new save already holds them, gamedata.plannedChanges).
+    fn keyPool(self: *Self) FillError!void {
+        const st = self.st;
+        const items = &self.world.items;
+        const ring_mode = keyRingMode(st);
+        const remove_keys = st.is(.small_keys, "remove");
+        const boss_mode = bossKeyItemMode(st);
+        const remove_boss = st.is(.boss_keys, "remove");
+        if (!ring_mode and !remove_keys and !boss_mode and !remove_boss) return;
+        const blue = try items.intern("Rupee_Blue");
+        var ring_in_pool: [logic.key_dungeons.len]bool = @splat(false);
+        for (self.pool.items) |*item| {
+            const name = items.name(item.*);
+            const dtype = dungeonItemType(name) orelse continue;
+            const at = std.mem.indexOfScalar(u8, name, '@') orelse continue;
+            const i = logic.keyDungeonIndex(name[at + 1 ..]) orelse continue;
+            const d = logic.key_dungeons[i];
+            switch (dtype) {
+                .small_keys => {
+                    if (remove_keys) {
+                        item.* = blue;
+                    } else if (ring_mode and self.options.key_ring[i]) {
+                        item.* = if (ring_in_pool[i]) blue else d.ring.id();
+                        ring_in_pool[i] = true;
+                    }
+                },
+                .boss_keys => if (d.boss) |b| {
+                    if (remove_boss) {
+                        item.* = blue;
+                    } else if (boss_mode) {
+                        item.* = b.id();
+                    }
+                },
+                .maps_compasses => {},
+            }
+        }
+        if (!ring_mode) return;
+        // a key ring dungeon whose small keys the scan didn't find (none shuffled) still gets its ring, in place of junk
+        var key_buf: [1024]u8 = undefined;
+        var rng = Rng.fromText(std.fmt.bufPrint(&key_buf, "key_ring_junk|{s}", .{self.seed_key}) catch self.seed_key);
+        for (logic.key_dungeons, 0..) |d, i| {
+            if (!self.options.key_ring[i] or ring_in_pool[i]) continue;
+            var junk_at: std.ArrayList(usize) = .empty;
+            for (self.pool.items, 0..) |item, k| if (items.isJunk(item)) try appendItem(usize, &junk_at, self.allocator, k);
+            if (junk_at.items.len == 0) return error.PlacementFailed;
+            self.pool.items[junk_at.items[rng.below(junk_at.items.len)]] = d.ring.id();
         }
     }
 
@@ -580,6 +691,13 @@ pub const Plan = struct {
         // in the new save, any other is handed over when the game starts (faststart.giveAtStart)
         if (self.start_locs[i] and own_dungeon != null) return false;
         if (std.mem.eql(u8, name, progressive_wallet) and loc.kind != .chest) return false;
+        if (logic.keyItemOf(name)) |k| {
+            // handed over at the start (Skip Child Zelda) it would skip the item get that applies it
+            if (self.start_locs[i]) return false;
+            const mode = st.choice(if (k.ring) .small_keys else .boss_keys);
+            if (std.mem.eql(u8, mode, "any_dungeon") and loc.dungeon == null) return false;
+            if (std.mem.eql(u8, mode, "overworld") and loc.dungeon != null) return false;
+        }
         if (loc.kind == .gs and try self.gsRefuses(item)) return false;
         const is_reward_loc = loc.category == .reward;
         const is_song_loc = loc.category == .song;

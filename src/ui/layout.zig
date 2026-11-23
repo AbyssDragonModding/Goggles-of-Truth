@@ -1,5 +1,6 @@
-//! The window's XML layout: src/ui/main.xml with its generated parts filled in from the setting table (the settings
-//! cards, the preset list and tooltip, the Not Supported list). The XML files are built into the program.
+//! The window's XML layout: src/ui/main.xml with every page of its TabView put in from its own file in
+//! src/ui/pages (Agents.md: one XML file per page), then the generated parts filled in from the setting table (the
+//! settings cards, the preset list and tooltip, the Not Supported list). The XML files are built into the program.
 
 const std = @import("std");
 const string = @import("string");
@@ -9,6 +10,48 @@ const Allocator = std.mem.Allocator;
 
 pub const main_xml = @embedFile("main.xml");
 pub const widgets_xml = @embedFile("widgets.xml");
+
+/// Why the window's layout could not be put together.
+pub const LayoutError = error{
+    OutOfMemory,
+    /// main.xml has no <!--@@page ...@@--> marker for a page of `page_definitions`
+    PageMarkerMissing,
+    /// a marker name longer than its format buffer (the names are fixed in this file)
+    NoSpaceLeft,
+};
+
+/// One page (tab) of the window, defined in its own file: src/ui/pages/<marker_name>.xml goes where main.xml has
+/// <!--@@page <marker_name>@@-->.
+pub const PageDefinition = struct {
+    marker_name: []const u8,
+    xml: []const u8,
+};
+
+/// Every page of the window, in tab order.
+pub const page_definitions = [_]PageDefinition{
+    .{ .marker_name = "rom_options", .xml = @embedFile("pages/rom_options.xml") },
+    .{ .marker_name = "world", .xml = @embedFile("pages/world.xml") },
+    .{ .marker_name = "items", .xml = @embedFile("pages/items.xml") },
+    .{ .marker_name = "dungeon_items", .xml = @embedFile("pages/dungeon_items.xml") },
+    .{ .marker_name = "hints", .xml = @embedFile("pages/hints.xml") },
+    .{ .marker_name = "quality_of_life", .xml = @embedFile("pages/quality_of_life.xml") },
+    .{ .marker_name = "exclusions", .xml = @embedFile("pages/exclusions.xml") },
+    .{ .marker_name = "not_supported", .xml = @embedFile("pages/not_supported.xml") },
+};
+
+/// main.xml with every page file put in at its marker. A page whose marker is missing is an error (the window
+/// would silently lose a tab otherwise).
+fn assemblePages(allocator: Allocator) LayoutError!string.String {
+    var window_text = try string.String.from(allocator, main_xml);
+    errdefer window_text.deinit();
+    for (page_definitions) |page| {
+        var marker_buf: [64]u8 = undefined;
+        const page_marker = try std.fmt.bufPrint(&marker_buf, "<!--@@page {s}@@-->", .{page.marker_name});
+        const replaced_count = try window_text.replace(page_marker, page.xml);
+        if (replaced_count == 0) return error.PageMarkerMissing;
+    }
+    return window_text;
+}
 /// The app icon (title bar and task bar). The Windows .exe also carries it as GogglesRandoAppIcon.ico (app.rc).
 pub const app_icon_png = @embedFile("GogglesRandoAppIcon.png");
 
@@ -47,6 +90,7 @@ fn attribute(xml: []const u8, from: usize, name: []const u8) ?[]const u8 {
 pub fn badgeStyles() [3]BadgeStyle {
     var out: [3]BadgeStyle = undefined;
     for (std.meta.tags(settings.Status), 0..) |status, i| {
+        // unreachable is proven: the longest tag, "ExperimentalBadge", makes a 32-byte needle, under the buffer's 64
         var search: [64]u8 = undefined;
         const needle = std.fmt.bufPrint(&search, "<Widget Name=\"{s}\"", .{badgeTag(status)}) catch unreachable;
         const widget = std.mem.indexOf(u8, widgets_xml, needle) orelse 0;
@@ -176,9 +220,9 @@ pub const preset_items = blk: {
     break :blk items;
 };
 
-/// main.xml with its generated parts filled in. Allocated with `allocator`.
-pub fn windowXml(allocator: Allocator) ![]u8 {
-    var text = try string.String.from(allocator, main_xml);
+/// main.xml with its pages put in and its generated parts filled in. Allocated with `allocator`.
+pub fn windowXml(allocator: Allocator) LayoutError![]u8 {
+    var text = try assemblePages(allocator);
     defer text.deinit();
 
     const tabs = [_][]const u8{ "World", "Items", "Dungeon Items", "Hints", "Quality of Life", "ROM Options", "Exclusions" };
@@ -204,8 +248,8 @@ pub fn windowXml(allocator: Allocator) ![]u8 {
 
     var tip_text = string.String.init(allocator);
     defer tip_text.deinit();
-    try tip_text.append("Sets every gameplay setting for a seed difficulty (Excluded Locations and Create Spoiler Log are kept).\n" ++
-        "Only options confirmed in-game are used. Change anything afterwards and the preset shows Custom.\n\n");
+    try tip_text.append("Sets every gameplay setting for a seed difficulty, or for racing (Excluded Locations, Create Spoiler Log and Per-Seed Saves are kept).\n" ++
+        "No experimental option is used. Change anything afterwards and the preset shows Custom. Your own saved presets (\u{2605}) are listed after these.\n\n");
     for (settings.presets, 0..) |p, i| {
         if (i > 0) try tip_text.append("\n\n");
         try tip_text.appendFmt("{s}: {s}", .{ p.name, p.tip });

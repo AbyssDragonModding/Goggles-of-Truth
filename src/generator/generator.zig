@@ -42,6 +42,10 @@ pub const Request = struct {
     mod_name: ?[]const u8 = null,
     /// the exefs folder ("": next to the romfs folder)
     exefs: []const u8 = "",
+    /// Reuse compressed files from the cache folder (filecache.zig). Always on in the window: it costs next to
+    /// nothing when no file can be reused and saves a lot when many can. Only `goggles_cli --no-cache` turns it
+    /// off, to measure a seed without the cache; the mod is byte for byte the same either way.
+    use_file_cache: bool = true,
 };
 
 pub const Result = struct {
@@ -210,10 +214,10 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     const to_patch = a.alloc(?ItemId, placed.len) catch return error.OutOfMemory;
     for (to_patch, 0..) |*p, i| p.* = placed_filler.placed[i] orelse plan.forced[i];
     const out_romfs = fsmod.join(a, &.{ mod_root, "romfs" }) catch return error.OutOfMemory;
-    // Cache Compressed Files: compressing the patched files is most of a seed's time, and many come out the same
-    // from seed to seed (filecache.zig)
+    // the file cache: compressing the patched files is most of a seed's time, and many come out the same from seed
+    // to seed (filecache.zig)
     var cache_state: ?filecache.FileCache = null;
-    if (st.flag(.cache_files)) cache_state = filecache.FileCache.init(a, fs, env.app_dir) catch return error.OutOfMemory;
+    if (request.use_file_cache) cache_state = filecache.FileCache.init(a, fs, env.app_dir) catch return error.OutOfMemory;
     const cache: ?*filecache.FileCache = if (cache_state) |*c| c else null;
     const written = patches.writePatches(gpa, a, .{
         .world = world,

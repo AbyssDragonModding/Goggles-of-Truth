@@ -9,7 +9,7 @@
 //! SHA-256 stored in the package.
 
 const std = @import("std");
-const builtin = @import("builtin");
+const host = @import("../platform/host.zig");
 const nup = @import("../formats/nup.zig");
 const fsmod = @import("../core/fs.zig");
 const Progress = @import("../core/Progress.zig");
@@ -61,7 +61,7 @@ pub fn cleanPath(allocator: Allocator, path: []const u8) error{OutOfMemory}![]u8
         const d = try percentDecode(allocator, rest);
         decoded = d;
         p = d;
-        if (builtin.os.tag == .windows and p.len > 2 and p[0] == '/' and p[2] == ':') p = p[1..]; // /D:/x -> D:/x
+        if (host.paths_have_drive_prefix and p.len > 2 and p[0] == '/' and p[2] == ':') p = p[1..]; // /D:/x -> D:/x
     }
     if (std.mem.startsWith(u8, p, "\\\\?\\") or std.mem.startsWith(u8, p, "//?/")) p = p[4..];
     if (p.len == 0) return allocator.alloc(u8, 0);
@@ -87,11 +87,11 @@ fn percentDecode(allocator: Allocator, s: []const u8) error{OutOfMemory}![]u8 {
 
 /// Like os.path.normpath: the platform's separator, "." and "x/.." parts removed, no trailing separator.
 pub fn normalizePath(allocator: Allocator, p: []const u8) error{OutOfMemory}![]u8 {
-    const sep: u8 = if (builtin.os.tag == .windows) '\\' else '/';
+    const sep: u8 = host.native_path_separator;
     var parts: std.ArrayList([]const u8) = .empty;
     defer parts.deinit(allocator);
     var prefix_len: usize = 0;
-    if (builtin.os.tag == .windows) {
+    if (host.paths_have_drive_prefix) {
         if (p.len >= 2 and p[1] == ':') prefix_len = 2; // drive
         if (p.len >= 2 and (p[0] == '\\' or p[0] == '/') and (p[1] == '\\' or p[1] == '/')) prefix_len = 2; // UNC
     }
@@ -257,6 +257,7 @@ pub const GameFiles = struct {
         const pkg = newest orelse return progress.fail(error.InvalidPackage, "The .nup must hold one game's base or update package.", .{});
         if (count_newest != 1 or pkg.romfs_dir == nup.no_dir) return progress.fail(error.InvalidPackage, "The .nup's newest package has no complete romfs.", .{});
         self.package = pkg;
+        // unreachable is proven: a u64 has at most 16 hex digits and `title_id` holds exactly 16 bytes
         _ = std.fmt.bufPrint(&self.title_id, "{x:0>16}", .{pkg.title_id}) catch unreachable;
         try self.buildTree(pkg.romfs_dir, progress);
     }

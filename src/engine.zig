@@ -6,6 +6,8 @@ pub const bytes = @import("core/bytes.zig");
 pub const hash = @import("core/hash.zig");
 pub const fs = @import("core/fs.zig");
 pub const rng = @import("core/rng.zig");
+pub const threads = @import("core/threads.zig");
+pub const host = @import("platform/host.zig");
 pub const Progress = @import("core/Progress.zig");
 pub const version = @import("version.zig");
 
@@ -30,6 +32,7 @@ pub const world = @import("game/world.zig");
 // ---- settings and logic
 pub const settings = @import("settings/settings.zig");
 pub const usersettings = @import("settings/usersettings.zig");
+pub const custompresets = @import("settings/custompresets.zig");
 pub const logic = @import("logic/logic.zig");
 
 // ---- the generator
@@ -46,6 +49,8 @@ pub const saves = @import("platform/saves.zig");
 
 test {
     _ = bytes;
+    _ = threads;
+    _ = host;
     _ = hash;
     _ = fs;
     _ = zstd;
@@ -64,6 +69,7 @@ test {
     _ = world;
     _ = settings;
     _ = usersettings;
+    _ = custompresets;
     _ = logic;
     _ = generator;
     _ = filecache;

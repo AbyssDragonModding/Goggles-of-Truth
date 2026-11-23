@@ -13,11 +13,8 @@
 const std = @import("std");
 const zstd = @import("../formats/zstd.zig");
 const filecache = @import("filecache.zig");
+const threads = @import("../core/threads.zig");
 const Allocator = std.mem.Allocator;
-
-/// More threads than this hardly help (the files are few and the biggest take the longest), and each one holds a
-/// level-16 zstd context of a few dozen MB while it works.
-pub const max_threads: usize = 8;
 
 /// One file to compress. `out` (allocated with the compressor's allocator) or `failure` is set once it's done.
 pub const Job = struct {
@@ -38,24 +35,28 @@ pub const Compressor = struct {
 
     const Self = @This();
 
-    /// Compresses every job (through the cache when there is one). Uses up to `max_threads` threads, fewer when
-    /// there are fewer CPU cores or jobs; on one core, or if no thread can be started, all of it runs on this one.
+    /// Compresses every job (through the cache when there is one). Uses about 75% of the CPU cores
+    /// (threads.targetThreadCount, Agents.md), never more threads than jobs; with one thread, or if no thread can be
+    /// started, all of it runs on this one. Each working thread holds a level-16 zstd context (a few dozen MB).
     pub fn run(gpa: Allocator, zs: *zstd.Context, cache: ?*filecache.FileCache, jobs: []Job) zstd.ZstdError!void {
         // why: a compression dictionary is built on first use, which two threads must not do at the same time
         for (jobs) |j| try zs.prepare(j.dictionary);
 
         var self = Self{ .gpa = gpa, .zs = zs, .cache = cache, .jobs = jobs };
-        const cores = std.Thread.getCpuCount() catch 1;
-        const wanted = @min(@min(cores, max_threads), jobs.len);
+        const wanted_thread_count = @min(threads.targetThreadCount(), jobs.len);
 
-        var threads: [max_threads]std.Thread = undefined;
+        // this thread works too, so one fewer is started; without memory for the handles it all runs here
+        const extra_thread_count = if (wanted_thread_count > 0) wanted_thread_count - 1 else 0;
+        var no_worker_threads: [0]std.Thread = .{};
+        const worker_threads: []std.Thread = gpa.alloc(std.Thread, extra_thread_count) catch no_worker_threads[0..];
+        // freeing the empty fallback is a no-op (Allocator.free returns early for zero length)
+        defer gpa.free(worker_threads);
         var started: usize = 0;
-        // this thread works too, so one fewer is started
-        while (started + 1 < wanted) : (started += 1) {
-            threads[started] = std.Thread.spawn(.{}, work, .{&self}) catch break;
+        while (started < worker_threads.len) : (started += 1) {
+            worker_threads[started] = std.Thread.spawn(.{}, work, .{&self}) catch break;
         }
         work(&self);
-        for (threads[0..started]) |t| t.join();
+        for (worker_threads[0..started]) |worker_thread| worker_thread.join();
     }
 
     fn work(self: *Self) void {

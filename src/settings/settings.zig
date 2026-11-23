@@ -110,7 +110,8 @@ pub fn keyName(key: Key) []const u8 {
 
 /// Settings that were renamed (old name, new name), and settings now part of every seed or removed.
 pub const renamed = [_][2][]const u8{.{ "free_bombs", "bag_bombs_no_bracelet" }};
-pub const built_in = [_][]const u8{"skip_saria_intro"};
+/// cache_files (Cache Compressed Files, 0.7.2) is always on since 0.7.3: an old user_settings.toml line is ignored.
+pub const built_in = [_][]const u8{ "skip_saria_intro", "cache_files" };
 pub const removed = [_][]const u8{"unrestricted_items"};
 
 /// The current name of a setting that may have been renamed.
@@ -245,12 +246,37 @@ pub fn findPreset(name: []const u8) ?*const Preset {
     return null;
 }
 
-/// `st` with preset `name` applied (Excluded Locations, Create Spoiler Log, Per-Seed Saves and Cache Compressed
-/// Files are kept).
+/// `st` with preset `name` applied (Excluded Locations, Create Spoiler Log and Per-Seed Saves are kept).
 pub fn applyPreset(st: Settings, preset: *const Preset) Settings {
     var out = st;
     for (preset.values) |kv| out.set(kv.key, kv.value);
     return out;
+}
+
+/// The settings a preset leaves alone: they decide what is excluded and where and how things are written, not how
+/// the seed plays.
+pub const non_gameplay_keys = [_]Key{ .excluded_locations, .create_spoiler, .per_seed_saves };
+
+pub fn isGameplayKey(key: Key) bool {
+    for (non_gameplay_keys) |k| if (k == key) return false;
+    return true;
+}
+
+/// `st` with every gameplay setting taken from `source` (a saved custom preset); the others are kept.
+pub fn applyGameplaySettings(st: Settings, source: *const Settings) Settings {
+    var out = st;
+    for (std.meta.tags(Key)) |key| {
+        if (isGameplayKey(key)) out.set(key, source.get(key));
+    }
+    return out;
+}
+
+/// Whether two settings play the same: every gameplay setting is equal.
+pub fn sameGameplaySettings(a: *const Settings, b: *const Settings) bool {
+    for (std.meta.tags(Key)) |key| {
+        if (isGameplayKey(key) and !Value.eql(a.get(key), b.get(key))) return false;
+    }
+    return true;
 }
 
 /// Name of the preset `st` matches exactly, or null (custom).
@@ -284,8 +310,11 @@ comptime {
             }
             count += 1;
         }
-        // the four that aren't gameplay: Excluded Locations, Create Spoiler Log, Per-Seed Saves, Cache Compressed Files
-        if (count != key_count - 4) @compileError("preset " ++ p.name ++ " doesn't set every gameplay setting");
+        // the three that aren't gameplay: Excluded Locations, Create Spoiler Log, Per-Seed Saves
+        for (p.values) |kv| {
+            for (non_gameplay_keys) |k| if (k == kv.key) @compileError("preset " ++ p.name ++ " sets " ++ @tagName(k));
+        }
+        if (count != key_count - non_gameplay_keys.len) @compileError("preset " ++ p.name ++ " doesn't set every gameplay setting");
     }
 }
 
@@ -367,7 +396,7 @@ pub fn settingStatus(key: Key, value: ?[]const u8) Status {
 // ------------------------------------------------------------------------------------------ settings string
 
 /// Settings that only decide where things are written, not what the seed is: left out of the settings string.
-const not_in_string = [_]Key{ .per_seed_saves, .cache_files };
+const not_in_string = [_]Key{.per_seed_saves};
 
 fn lessKeyName(_: void, a: Key, b: Key) bool {
     return std.mem.order(u8, @tagName(a), @tagName(b)) == .lt;
@@ -535,16 +564,44 @@ test "settings string round trip" {
 }
 
 test "output-only settings stay out of the settings string" {
-    // why: the settings string is part of every seed's random stream, so turning the cache or per-seed saves off
-    // must never change the seed
+    // why: the settings string is part of every seed's random stream, so turning per-seed saves off must never
+    // change the seed
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
     const defaults = Settings.defaults();
     var changed = Settings.defaults();
-    changed.set(.cache_files, .{ .boolean = false });
     changed.set(.per_seed_saves, .{ .boolean = false });
     try std.testing.expectEqualStrings(try toString(a, &defaults), try toString(a, &changed));
+}
+
+test "the presets only use options that aren't experimental" {
+    // why: a preset is a one-click choice for players who may not read every tooltip, so it must only pick
+    // options that are known to work in-game
+    for (presets) |p| {
+        for (p.values) |kv| {
+            const value_name: ?[]const u8 = if (kv.value == .choice) kv.value.choice else null;
+            const status = settingStatus(kv.key, value_name);
+            const turned_on = switch (kv.value) {
+                .boolean => |b| b,
+                else => true,
+            };
+            if (status == .experimental and turned_on) {
+                std.debug.print("preset {s}: {s} is experimental\n", .{ p.name, @tagName(kv.key) });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }
+}
+
+test "a custom preset carries the gameplay settings only" {
+    var source = Settings.defaults();
+    source.set(.open_forest, .{ .choice = "open" });
+    source.set(.create_spoiler, .{ .boolean = false });
+    const applied = applyGameplaySettings(Settings.defaults(), &source);
+    try std.testing.expect(applied.is(.open_forest, "open"));
+    try std.testing.expect(applied.flag(.create_spoiler));
+    try std.testing.expect(sameGameplaySettings(&applied, &source));
 }
 
 test "split status" {

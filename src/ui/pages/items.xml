@@ -1,0 +1,5 @@
+<!--
+  The "Items" page of the randomizer window (Raven XML). src/ui/layout.zig puts it into main.xml's
+  TabView, at the page marker of the same name. Its settings cards come from src/settings/table.zig.
+-->
+<ScrollBox Orientation="Vertical" Slot.Title="Items"><VBox Spacing="14"><!--@@settings Items@@--></VBox></ScrollBox>

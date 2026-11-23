@@ -41,6 +41,15 @@ pub const Key = enum {
     refill_needs_item,
     maps_compasses,
     small_keys,
+    key_rings,
+    key_ring_forest,
+    key_ring_fire,
+    key_ring_water,
+    key_ring_shadow,
+    key_ring_spirit,
+    key_ring_well,
+    key_ring_gtg,
+    key_ring_ganon,
     boss_keys,
     hint_distribution,
     gossip_stones,
@@ -61,7 +70,6 @@ pub const Key = enum {
     excluded_locations,
     create_spoiler,
     per_seed_saves,
-    cache_files,
 };
 
 pub const specs = [_]Spec{
@@ -575,11 +583,137 @@ pub const specs = [_]Spec{
         .options = &.{
             .{ .value = "vanilla", .label = "Vanilla" },
             .{ .value = "own", .label = "Own Dungeon (experimental)" },
+            .{ .value = "remove", .label = "Removed: All Keys From the Start (experimental)" },
+            .{ .value = "any_dungeon", .label = "Any Dungeon, as Key Rings (experimental)" },
+            .{ .value = "overworld", .label = "Overworld, as Key Rings (experimental)" },
+            .{ .value = "anywhere", .label = "Anywhere, as Key Rings (experimental)" },
         },
         .default = .{ .choice = "vanilla" },
         .tip =
             \\Own Dungeon shuffles small keys inside their dungeon. The logic has no door-by-door key model,
             \\so a key can end up behind its own locked door.
+            \\Removed: every dungeon starts with all its small keys, so every locked door opens; the small key
+            \\chests hold other items.
+            \\Key rings: the remake's small keys count for whichever dungeon you pick them up in, so a key can't
+            \\be placed in another dungeon. Instead each dungeon with a key ring (see Key Ring Dungeons) gets one
+            \\Key Ring item that gives all of its small keys at once, wherever it is found: in any dungeon, only
+            \\outside dungeons (Overworld), or anywhere. The small key chests of those dungeons hold other items.
+            \\The logic expects the key ring before anything in its dungeon. (From OotrR.)
+        ,
+    },
+    .{
+        .key = .key_rings,
+        .tab = "Dungeon Items",
+        .group = "Dungeon Items",
+        .label = "Key Ring Dungeons",
+        .kind = .choice,
+        .options = &.{
+            .{ .value = "all", .label = "All Dungeons" },
+            .{ .value = "choose", .label = "Chosen Dungeons" },
+            .{ .value = "random", .label = "Random Dungeons" },
+        },
+        .default = .{ .choice = "all" },
+        .tip =
+            \\For Small Keys as key rings: which dungeons get a key ring (Forest, Fire, Water, Shadow and Spirit
+            \\Temples, Bottom of the Well, Gerudo Training Ground, Ganon's Castle). Chosen Dungeons: the ones
+            \\ticked below. Random Dungeons: each one by chance, from the seed. A dungeon without a key ring keeps
+            \\its small keys where they are in the original.
+        ,
+    },
+    .{
+        .key = .key_ring_forest,
+        .tab = "Dungeon Items",
+        .group = "Key Ring Dungeons",
+        .label = "Forest Temple",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\With Key Ring Dungeons: Chosen Dungeons, whether the Forest Temple gets a key ring. Without one its small
+            \\keys stay where they are in the original.
+        ,
+    },
+    .{
+        .key = .key_ring_fire,
+        .tab = "Dungeon Items",
+        .group = "Key Ring Dungeons",
+        .label = "Fire Temple",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\With Key Ring Dungeons: Chosen Dungeons, whether the Fire Temple gets a key ring. Without one its small
+            \\keys stay where they are in the original.
+        ,
+    },
+    .{
+        .key = .key_ring_water,
+        .tab = "Dungeon Items",
+        .group = "Key Ring Dungeons",
+        .label = "Water Temple",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\With Key Ring Dungeons: Chosen Dungeons, whether the Water Temple gets a key ring. Without one its small
+            \\keys stay where they are in the original.
+        ,
+    },
+    .{
+        .key = .key_ring_shadow,
+        .tab = "Dungeon Items",
+        .group = "Key Ring Dungeons",
+        .label = "Shadow Temple",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\With Key Ring Dungeons: Chosen Dungeons, whether the Shadow Temple gets a key ring. Without one its small
+            \\keys stay where they are in the original.
+        ,
+    },
+    .{
+        .key = .key_ring_spirit,
+        .tab = "Dungeon Items",
+        .group = "Key Ring Dungeons",
+        .label = "Spirit Temple",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\With Key Ring Dungeons: Chosen Dungeons, whether the Spirit Temple gets a key ring. Without one its small
+            \\keys stay where they are in the original.
+        ,
+    },
+    .{
+        .key = .key_ring_well,
+        .tab = "Dungeon Items",
+        .group = "Key Ring Dungeons",
+        .label = "Bottom of the Well",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\With Key Ring Dungeons: Chosen Dungeons, whether the Bottom of the Well gets a key ring. Without one its small
+            \\keys stay where they are in the original.
+        ,
+    },
+    .{
+        .key = .key_ring_gtg,
+        .tab = "Dungeon Items",
+        .group = "Key Ring Dungeons",
+        .label = "Gerudo Training Ground",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\With Key Ring Dungeons: Chosen Dungeons, whether the Gerudo Training Ground gets a key ring. Without one its small
+            \\keys stay where they are in the original.
+        ,
+    },
+    .{
+        .key = .key_ring_ganon,
+        .tab = "Dungeon Items",
+        .group = "Key Ring Dungeons",
+        .label = "Ganon's Castle",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\With Key Ring Dungeons: Chosen Dungeons, whether the Ganon's Castle gets a key ring. Without one its small
+            \\keys stay where they are in the original.
         ,
     },
     .{
@@ -591,10 +725,19 @@ pub const specs = [_]Spec{
         .options = &.{
             .{ .value = "vanilla", .label = "Vanilla" },
             .{ .value = "own", .label = "Own Dungeon (experimental)" },
+            .{ .value = "remove", .label = "Removed: Boss Keys From the Start (experimental)" },
+            .{ .value = "any_dungeon", .label = "Any Dungeon (experimental)" },
+            .{ .value = "anywhere", .label = "Anywhere (experimental)" },
         },
         .default = .{ .choice = "vanilla" },
         .tip =
             \\Own Dungeon puts the boss key in a chest of its own dungeon (same caveat as small keys).
+            \\Removed: the five temples (Forest, Fire, Water, Shadow, Spirit) start with their boss key; the boss
+            \\key chests hold other items.
+            \\Any Dungeon / Anywhere: each temple's boss key becomes an item of its own ("Boss Key (Forest
+            \\Temple)") that opens that temple's boss door wherever it is found: in any dungeon, or anywhere.
+            \\The logic expects it before anything in its temple. Ganon's Castle's boss key stays where it is.
+            \\(From OotrR.)
         ,
     },
     .{
@@ -880,33 +1023,17 @@ pub const specs = [_]Spec{
             \\save_backups first. The game's options are shared. Close the game before switching.
         ,
     },
-    .{
-        .key = .cache_files,
-        .tab = "ROM Options",
-        .group = "Output",
-        .label = "Cache Compressed Files",
-        .kind = .boolean,
-        .default = .{ .boolean = true },
-        .tip =
-            \\Most of a seed's time goes to compressing the files written into the mod. With this on, every
-            \\compressed file is also kept in the cache folder next to the randomizer, and a file that comes out
-            \\the same in a later seed is taken from there instead of being compressed again. That saves the
-            \\most when Gossip Stone hints are off: the game text of every language then stays the same from seed
-            \\to seed (with a .nup, about a third of the seed's time). Works with a .nup and an extracted romfs
-            \\alike, and the mod is byte for byte the same either way. The cache is checked before use and kept
-            \\under 1 GB (the files used longest ago go first); delete the cache folder at any time to empty it.
-        ,
-    },
 };
 
 pub const presets = [_]Preset{
     .{
         .name = "Beginner",
         .tip =
-            \\Everything open from the start (Kokiri Forest, Door of Time, Zora's Fountain, Death Mountain),
-            \\child Zelda skipped, songs only at song spots, the stones and medallions where they normally are,
-            \\the Kokiri Sword in its chest, every map and compass from the start, and Balanced hints that
-            \\speak without the Mask of Truth.
+            \\A first randomizer: the world is open from the start (Kokiri Forest, Door of Time, Zora's Fountain,
+            \\Death Mountain), child Zelda is skipped, songs stay at song spots and the stones and medallions where they
+            \\normally are, the Kokiri Sword stays in its chest, no Gold Skulltula, shop or Business Scrub shuffle, every map
+            \\and compass from the start, Strong hints that speak without the Mask of Truth, and every time saver on
+            \\(Ganon's trials skipped, Gold Skulltulas day and night).
         ,
         .values = &.{
             .{ .key = .logic_rules, .value = .{ .choice = "glitchless" } },
@@ -941,8 +1068,17 @@ pub const presets = [_]Preset{
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
             .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .key_rings, .value = .{ .choice = "all" } },
+            .{ .key = .key_ring_forest, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_fire, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_water, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_shadow, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_spirit, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_well, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_gtg, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
-            .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
+            .{ .key = .hint_distribution, .value = .{ .choice = "strong" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "no_mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
             .{ .key = .skip_story_scenes, .value = .{ .boolean = false } },
@@ -963,13 +1099,15 @@ pub const presets = [_]Preset{
     .{
         .name = "Standard",
         .tip =
-            \\Kokiri Forest and the Door of Time open, child Zelda skipped, Business Scrubs and the dungeon Gold
-            \\Skulltulas shuffled, every map and compass from the start, Balanced hints (Mask of Truth needed).
+            \\The usual randomizer: the forest exit open (Mido still wants a sword and shield), the Door of Time open, Zora's Fountain and Death Mountain as in the game, child Zelda skipped, the stones and
+            \\medallions shuffled among the dungeon bosses, the Kokiri Sword, Business Scrubs (game's prices), the dungeon Gold
+            \\Skulltulas and 2 items per shop shuffled, maps and compasses in their own dungeon, Balanced hints (Mask of
+            \\Truth needed), Ganon's trials skipped.
         ,
         .values = &.{
             .{ .key = .logic_rules, .value = .{ .choice = "glitchless" } },
             .{ .key = .reachable_locations, .value = .{ .choice = "all" } },
-            .{ .key = .open_forest, .value = .{ .choice = "open" } },
+            .{ .key = .open_forest, .value = .{ .choice = "closed_deku" } },
             .{ .key = .open_door, .value = .{ .choice = "open" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
             .{ .key = .open_dmt, .value = .{ .boolean = false } },
@@ -979,7 +1117,7 @@ pub const presets = [_]Preset{
             .{ .key = .skip_child_zelda, .value = .{ .boolean = true } },
             .{ .key = .skip_epona_race, .value = .{ .boolean = false } },
             .{ .key = .shuffle_songs, .value = .{ .choice = "song" } },
-            .{ .key = .shuffle_rewards, .value = .{ .choice = "vanilla" } },
+            .{ .key = .shuffle_rewards, .value = .{ .choice = "reward" } },
             .{ .key = .shuffle_ocarinas, .value = .{ .boolean = false } },
             .{ .key = .shuffle_kokiri_sword, .value = .{ .boolean = true } },
             .{ .key = .shuffle_weird_egg, .value = .{ .boolean = false } },
@@ -993,12 +1131,21 @@ pub const presets = [_]Preset{
             .{ .key = .shuffle_fairies, .value = .{ .boolean = true } },
             .{ .key = .shuffle_house, .value = .{ .boolean = true } },
             .{ .key = .tokensanity, .value = .{ .choice = "dungeons" } },
-            .{ .key = .shopsanity, .value = .{ .choice = "off" } },
-            .{ .key = .shop_prices, .value = .{ .choice = "low" } },
+            .{ .key = .shopsanity, .value = .{ .choice = "2" } },
+            .{ .key = .shop_prices, .value = .{ .choice = "random" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
-            .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
+            .{ .key = .maps_compasses, .value = .{ .choice = "own" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .key_rings, .value = .{ .choice = "all" } },
+            .{ .key = .key_ring_forest, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_fire, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_water, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_shadow, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_spirit, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_well, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_gtg, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "mask" } },
@@ -1021,9 +1168,12 @@ pub const presets = [_]Preset{
     .{
         .name = "Expert",
         .tip =
-            \\Everything closed as in the original, songs and the stones and medallions anywhere, both
-            \\ocarinas, the Weird Egg, freestanding rupees, Business Scrubs, every Gold Skulltula and 4 items per
-            \\shop shuffled at random prices, vanilla maps and compasses, and bombs need the Goron Bracelet.
+            \\For experienced players: everything closed as in the game (child Zelda too), the bridge needs all six
+            \\medallions, songs and the stones and medallions anywhere, both ocarinas, the Weird Egg, freestanding rupees,
+            \\every Gold Skulltula, 4 items per shop and Business Scrubs shuffled at random prices up to 200 rupees, maps and
+            \\compasses where they are in the game, Balanced hints (Mask of Truth needed), and the game's own rules: bombs need
+            \\the Goron Bracelet, Gold Skulltulas keep their time and age, Saria needs Zelda's visit, Anju wants all her
+            \\Cuccos and Ganon's trials stay.
         ,
         .values = &.{
             .{ .key = .logic_rules, .value = .{ .choice = "glitchless" } },
@@ -1032,7 +1182,7 @@ pub const presets = [_]Preset{
             .{ .key = .open_door, .value = .{ .choice = "closed" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
             .{ .key = .open_dmt, .value = .{ .boolean = false } },
-            .{ .key = .rainbow_bridge, .value = .{ .choice = "vanilla" } },
+            .{ .key = .rainbow_bridge, .value = .{ .choice = "medallions" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 6 } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
             .{ .key = .skip_child_zelda, .value = .{ .boolean = false } },
@@ -1048,16 +1198,25 @@ pub const presets = [_]Preset{
             .{ .key = .shuffle_npc, .value = .{ .boolean = true } },
             .{ .key = .shuffle_quest, .value = .{ .boolean = true } },
             .{ .key = .shuffle_scrubs, .value = .{ .boolean = true } },
-            .{ .key = .scrub_prices, .value = .{ .choice = "random" } },
+            .{ .key = .scrub_prices, .value = .{ .choice = "random_wallet" } },
             .{ .key = .shuffle_fairies, .value = .{ .boolean = true } },
             .{ .key = .shuffle_house, .value = .{ .boolean = true } },
             .{ .key = .tokensanity, .value = .{ .choice = "all" } },
             .{ .key = .shopsanity, .value = .{ .choice = "4" } },
-            .{ .key = .shop_prices, .value = .{ .choice = "random" } },
+            .{ .key = .shop_prices, .value = .{ .choice = "random_wallet" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
             .{ .key = .maps_compasses, .value = .{ .choice = "vanilla" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .key_rings, .value = .{ .choice = "all" } },
+            .{ .key = .key_ring_forest, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_fire, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_water, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_shadow, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_spirit, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_well, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_gtg, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "mask" } },
@@ -1069,6 +1228,77 @@ pub const presets = [_]Preset{
             .{ .key = .skip_deku_talk, .value = .{ .boolean = true } },
             .{ .key = .quick_chests, .value = .{ .boolean = true } },
             .{ .key = .bag_bombs_no_bracelet, .value = .{ .boolean = false } },
+            .{ .key = .dodongo_bag_bombs, .value = .{ .boolean = false } },
+            .{ .key = .gs_any_time, .value = .{ .boolean = false } },
+            .{ .key = .skip_ganon_trials, .value = .{ .boolean = false } },
+            .{ .key = .saria_song_ocarina, .value = .{ .boolean = false } },
+            .{ .key = .anju_one_cucco, .value = .{ .boolean = false } },
+            .{ .key = .big_poe_one, .value = .{ .boolean = false } },
+        },
+    },
+    .{
+        .name = "Race",
+        .tip =
+            \\For racing: built like the tournament settings of the classic randomizer, fair and fast for everyone.
+            \\The forest exit open (Mido still wants a sword and shield), the Door of Time open, child Zelda skipped, the bridge needs 4
+            \\medallions, the stones and medallions shuffled among the dungeon bosses, songs at song spots, no Gold Skulltula,
+            \\shop or Business Scrub shuffle (fewer places to check), every map and compass from the start, Strong hints
+            \\without the Mask of Truth, and every confirmed time saver on. Make one seed and share its settings string with
+            \\the other racers (turn Create Spoiler Log off on the ROM Options tab if no one should see the spoiler).
+        ,
+        .values = &.{
+            .{ .key = .logic_rules, .value = .{ .choice = "glitchless" } },
+            .{ .key = .reachable_locations, .value = .{ .choice = "all" } },
+            .{ .key = .open_forest, .value = .{ .choice = "closed_deku" } },
+            .{ .key = .open_door, .value = .{ .choice = "open" } },
+            .{ .key = .open_zora, .value = .{ .choice = "closed" } },
+            .{ .key = .open_dmt, .value = .{ .boolean = false } },
+            .{ .key = .rainbow_bridge, .value = .{ .choice = "medallions" } },
+            .{ .key = .bridge_medallions, .value = .{ .int = 4 } },
+            .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
+            .{ .key = .skip_child_zelda, .value = .{ .boolean = true } },
+            .{ .key = .skip_epona_race, .value = .{ .boolean = false } },
+            .{ .key = .shuffle_songs, .value = .{ .choice = "song" } },
+            .{ .key = .shuffle_rewards, .value = .{ .choice = "reward" } },
+            .{ .key = .shuffle_ocarinas, .value = .{ .boolean = false } },
+            .{ .key = .shuffle_kokiri_sword, .value = .{ .boolean = true } },
+            .{ .key = .shuffle_weird_egg, .value = .{ .boolean = false } },
+            .{ .key = .shuffle_freestanding, .value = .{ .boolean = true } },
+            .{ .key = .shuffle_rupees, .value = .{ .boolean = false } },
+            .{ .key = .shuffle_heart_containers, .value = .{ .boolean = true } },
+            .{ .key = .shuffle_npc, .value = .{ .boolean = true } },
+            .{ .key = .shuffle_quest, .value = .{ .boolean = true } },
+            .{ .key = .shuffle_scrubs, .value = .{ .boolean = false } },
+            .{ .key = .scrub_prices, .value = .{ .choice = "low" } },
+            .{ .key = .shuffle_fairies, .value = .{ .boolean = true } },
+            .{ .key = .shuffle_house, .value = .{ .boolean = true } },
+            .{ .key = .tokensanity, .value = .{ .choice = "off" } },
+            .{ .key = .shopsanity, .value = .{ .choice = "off" } },
+            .{ .key = .shop_prices, .value = .{ .choice = "low" } },
+            .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
+            .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
+            .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
+            .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .key_rings, .value = .{ .choice = "all" } },
+            .{ .key = .key_ring_forest, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_fire, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_water, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_shadow, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_spirit, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_well, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_gtg, .value = .{ .boolean = true } },
+            .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
+            .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .hint_distribution, .value = .{ .choice = "strong" } },
+            .{ .key = .gossip_stones, .value = .{ .choice = "no_mask" } },
+            .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
+            .{ .key = .skip_story_scenes, .value = .{ .boolean = false } },
+            .{ .key = .skip_area_intros, .value = .{ .boolean = false } },
+            .{ .key = .skip_kaepora, .value = .{ .boolean = true } },
+            .{ .key = .skip_opening, .value = .{ .boolean = true } },
+            .{ .key = .skip_deku_talk, .value = .{ .boolean = true } },
+            .{ .key = .quick_chests, .value = .{ .boolean = true } },
+            .{ .key = .bag_bombs_no_bracelet, .value = .{ .boolean = true } },
             .{ .key = .dodongo_bag_bombs, .value = .{ .boolean = true } },
             .{ .key = .gs_any_time, .value = .{ .boolean = true } },
             .{ .key = .skip_ganon_trials, .value = .{ .boolean = true } },
@@ -1080,16 +1310,13 @@ pub const presets = [_]Preset{
 };
 
 pub const unsupported = [_]Unsupported{
-    .{ .name = "Keysanity (small keys / boss keys / Ganon's keys anywhere)", .why = "The remake has one generic small key and one generic boss key; the stage you pick a key up in decides which dungeon it counts for, and no event can add a key to another dungeon. Use 'Own Dungeon' on the Dungeon Items tab instead." },
     .{ .name = "Bunny Hood speed boost (Majora's Mask style)", .why = "Run speed comes from the animations; the only speed value in the data is a global scale. Masks have no movement parameter and the equipment effect list (e.g. UnderwaterBreathing) has no speed effect that can be confirmed." },
     .{ .name = "Fast climbing", .why = "Climb speed is computed by the player code and passed to the climb animation at runtime; no data file holds it." },
-    .{ .name = "Scrubsanity (all Business Scrubs)", .why = "Only the four one-time scrubs are shuffled (Business Scrubs). The others sell refills through the Scrub Business Seed trading system, can be bought again and again, and their goods and prices are fixed per item type inside one shared event flow." },
     .{ .name = "Cow Shuffle / Beans", .why = "Cows use one shared event; the bean seller isn't mapped yet." },
     .{ .name = "Shuffle the Gerudo Membership Card", .why = "The guards, the wasteland gate, the Training Ground and horseback archery check the carpenter rescue, not the card, so a card found elsewhere does nothing. It stays vanilla." },
     .{ .name = "Shuffle the adult trade items", .why = "All trade items share one slot and adult items take priority: an adult trade item found as a child hides the Cucco for good. Only Biggoron's reward is shuffled." },
     .{ .name = "Other capacity upgrades (Deku Seed bag from the Deku Tree)", .why = "Stays vanilla: the logic needs the Slingshot from its chest. The stick and nut upgrades are shuffled with Character Gifts and Minigames and Business Scrubs." },
     .{ .name = "Entrance Randomizer", .why = "Not supported." },
-    .{ .name = "Hints (Gossip Stones)", .why = "Gossip Stone text editing is not implemented; use the spoiler log." },
     .{ .name = "Ice Traps / Chest Appearance Matches Contents / Cosmetics", .why = "Not implemented." },
     .{ .name = "Master Quest dungeons", .why = "Not present in the remake." },
 };

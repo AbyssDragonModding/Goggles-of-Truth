@@ -1,0 +1,14 @@
+<!--
+  The "Not Supported" page of the randomizer window (Raven XML). src/ui/layout.zig puts it into main.xml's
+  TabView, at the page marker of the same name. The list of classic options comes from settings.unsupported in src/settings/table.zig.
+-->
+<ScrollBox Orientation="Vertical" Slot.Title="Not Supported">
+  <VBox Spacing="14">
+    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,10">
+      <VBox Spacing="10">
+        <Label Text="Classic options not available for the remake yet" TextSize="16" Color="#F5CC61"/>
+        <!--@@unsupported@@-->
+      </VBox>
+    </Border>
+  </VBox>
+</ScrollBox>

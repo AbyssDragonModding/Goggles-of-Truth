@@ -66,6 +66,21 @@ pub const Item = enum(ItemId) {
     Stone_Forest,
     Stone_Fire,
     Stone_Water,
+    // Small Keys as key rings / Boss Keys outside their temple (key_dungeons): items of their own, made by the
+    // generator (keyitems.zig); the actor is "Item_" + the name
+    KeyRing_ForestTemple,
+    KeyRing_FireTemple,
+    KeyRing_WaterTemple,
+    KeyRing_ShadowTemple,
+    KeyRing_SpiritTemple,
+    KeyRing_Well,
+    KeyRing_GTG,
+    KeyRing_Ganon,
+    BossKey_ForestTemple,
+    BossKey_FireTemple,
+    BossKey_WaterTemple,
+    BossKey_ShadowTemple,
+    BossKey_SpiritTemple,
     // not progression: only the rainbow bridge setting reads them
     Medal_Forest,
     Medal_Fire,
@@ -111,6 +126,39 @@ pub fn isForestRegion(region: []const u8) bool {
     return false;
 }
 
+/// A dungeon with small keys: its key ring (every small key at once, wherever it is found) and, for the five temples,
+/// a boss key of its own. `keys`: how many small keys a key ring gives, the Archipelago counts OotrR uses (never fewer
+/// than the remake's locked doors; an extra key is harmless). Ganon's Castle's boss key always stays in its chest.
+pub const KeyDungeon = struct { folder: []const u8, name: []const u8, ring: Item, keys: u8, boss: ?Item };
+
+pub const key_dungeons = [_]KeyDungeon{
+    .{ .folder = "ForestTemple", .name = "Forest Temple", .ring = .KeyRing_ForestTemple, .keys = 5, .boss = .BossKey_ForestTemple },
+    .{ .folder = "FireTemple", .name = "Fire Temple", .ring = .KeyRing_FireTemple, .keys = 8, .boss = .BossKey_FireTemple },
+    .{ .folder = "WaterTemple", .name = "Water Temple", .ring = .KeyRing_WaterTemple, .keys = 6, .boss = .BossKey_WaterTemple },
+    .{ .folder = "ShadowTemple", .name = "Shadow Temple", .ring = .KeyRing_ShadowTemple, .keys = 5, .boss = .BossKey_ShadowTemple },
+    .{ .folder = "SpiritTemple", .name = "Spirit Temple", .ring = .KeyRing_SpiritTemple, .keys = 5, .boss = .BossKey_SpiritTemple },
+    .{ .folder = "BottomOfTheWell", .name = "Bottom of the Well", .ring = .KeyRing_Well, .keys = 3, .boss = null },
+    .{ .folder = "GerudoTrainingGround", .name = "Gerudo Training Ground", .ring = .KeyRing_GTG, .keys = 9, .boss = null },
+    .{ .folder = "InsideGanonCastle", .name = "Ganon's Castle", .ring = .KeyRing_Ganon, .keys = 2, .boss = null },
+};
+
+/// A key ring or dungeon boss key item, by its item key ("KeyRing_ForestTemple").
+pub const KeyItem = struct { dungeon: usize, ring: bool };
+
+pub fn keyItemOf(name: []const u8) ?KeyItem {
+    for (key_dungeons, 0..) |d, i| {
+        if (std.mem.eql(u8, name, @tagName(d.ring))) return .{ .dungeon = i, .ring = true };
+        if (d.boss) |b| if (std.mem.eql(u8, name, @tagName(b))) return .{ .dungeon = i, .ring = false };
+    }
+    return null;
+}
+
+/// The index of dungeon `folder` in key_dungeons, or null.
+pub fn keyDungeonIndex(folder: []const u8) ?usize {
+    for (key_dungeons, 0..) |d, i| if (std.mem.eql(u8, d.folder, folder)) return i;
+    return null;
+}
+
 /// Generation options the rules depend on (set from the seed's settings before filling).
 pub const Options = struct {
     bag_bombs_no_bracelet: bool = true,
@@ -127,6 +175,11 @@ pub const Options = struct {
     bridge_medallions: i64 = 6,
     bridge_tokens: i64 = 100,
     skip_epona_race: bool = false,
+    /// per key_dungeons entry: the dungeon's small keys are its key ring (the Plan sets these: Random Dungeons
+    /// depends on the seed)
+    key_ring: [key_dungeons.len]bool = @splat(false),
+    /// per key_dungeons entry: its boss key is an item of its own (Boss Keys: Any Dungeon / Anywhere)
+    boss_key_item: [key_dungeons.len]bool = @splat(false),
 
     pub const OpenForest = enum { closed, closed_deku, open };
     pub const Bridge = enum { vanilla, medallions, stones, tokens };
@@ -322,6 +375,17 @@ pub fn maskShop(s: *State) bool {
 pub fn giantWallet(s: *State) bool {
     return s.has(.Wallet_Large) or s.hasN(.Wallet_Medium, 2);
 }
+/// The keys of key_dungeons[`index`] when they are items of their own: its key ring and its boss key. Why the whole
+/// dungeon needs them: the logic has no door-by-door model, so like every other item a dungeon needs, they are
+/// expected before anything in it (a key ring or boss key is never placed inside its own dungeon then).
+pub fn dungeonKeys(s: *State, index: usize) bool {
+    const d = key_dungeons[index];
+    if (s.options.key_ring[index] and !s.has(d.ring)) return false;
+    if (s.options.boss_key_item[index]) {
+        if (d.boss) |b| if (!s.has(b)) return false;
+    }
+    return true;
+}
 
 // --------------------------------------------------------------------------------------- the derived rules
 
@@ -373,19 +437,19 @@ fn evalDerived(s: *State, d: Derived) bool {
             break :blk s.is(.dmt_child) and entry;
         },
         .jabu_done => s.is(.zf_child) and bottle(s) and s.has(.Boomerang),
-        .botw_done => s.is(.hf_child) and song(s, .Melody_StormSong) and lens(s) and bombs(s),
-        .forest_done => s.is(.adult) and hookshot(s) and bow(s),
+        .botw_done => s.is(.hf_child) and song(s, .Melody_StormSong) and lens(s) and bombs(s) and dungeonKeys(s, 5),
+        .forest_done => s.is(.adult) and hookshot(s) and bow(s) and dungeonKeys(s, 0),
         .fire_done => s.is(.dmc_adult) and s.is(.goron_tunic) and s.has(.Hammer) and bombs(s) and hookshot(s) and
-            bow(s) and song(s, .Melody_TimeSong),
+            bow(s) and song(s, .Melody_TimeSong) and dungeonKeys(s, 1),
         .water_done => s.is(.adult) and s.has(.HeavyBoot) and s.is(.zora_tunic) and song(s, .Melody_ZeldaLullaby) and
-            longshot(s) and bow(s) and song(s, .Melody_TimeSong),
+            longshot(s) and bow(s) and song(s, .Melody_TimeSong) and dungeonKeys(s, 2),
         .shadow_done => s.is(.adult) and song(s, .Melody_ShadowNocturne) and dins(s) and lens(s) and s.has(.HoverBoot) and
-            hookshot(s) and bombs(s) and song(s, .Melody_ZeldaLullaby),
+            hookshot(s) and bombs(s) and song(s, .Melody_ZeldaLullaby) and dungeonKeys(s, 3),
         .spirit_done => s.is(.colossus_adult) and song(s, .Melody_SpiritRequiem) and str2(s) and hookshot(s) and bombs(s) and
-            lens(s) and s.has(.Shield_Mirror) and bow(s) and s.has(.Boomerang),
+            lens(s) and s.has(.Shield_Mirror) and bow(s) and s.has(.Boomerang) and dungeonKeys(s, 4),
         .ice_done => s.is(.zf_adult) and bottle(s),
         .gtg_done => s.is(.gf_adult) and s.is(.card) and bow(s) and hookshot(s) and lens(s) and s.has(.HeavyBoot) and
-            s.has(.Hammer) and str2(s) and song(s, .Melody_TimeSong) and bombs(s),
+            s.has(.Hammer) and str2(s) and song(s, .Melody_TimeSong) and bombs(s) and dungeonKeys(s, 6),
 
         // The rainbow bridge (Rainbow Bridge Requirement). Every option also needs the Bow and the Light Arrows: the
         // bridge checks them in the game too (gamedata.rainbowBridge), and Ganon needs them.
@@ -408,7 +472,7 @@ fn evalDerived(s: *State, d: Derived) bool {
         },
         .ganon_done => s.is(.bridge) and hookshot(s) and lens(s) and s.has(.Hammer) and str3(s) and s.has(.HoverBoot) and
             bombs(s) and s.has(.Arrow_Fire) and s.has(.Arrow_Light) and bow(s) and bottle(s) and s.has(.Shield_Mirror) and
-            song(s, .Melody_ZeldaLullaby) and song(s, .Melody_TimeSong),
+            song(s, .Melody_ZeldaLullaby) and song(s, .Melody_TimeSong) and dungeonKeys(s, 7),
         // Skip Ganon's Trials: the tower is open; Ganondorf needs the Light Arrows (the Master Sword comes with adult)
         .ganon_tower => if (o.skip_ganon_trials) s.is(.bridge) and bow(s) and s.has(.Arrow_Light) else s.is(.ganon_done),
         .win => s.is(.ganon_tower),
@@ -735,6 +799,26 @@ pub fn check(s: *State, rule: LocationRule) bool {
         .overworld => |o| (o.adult and overworldCheck(s, o, .adult)) or (o.child and overworldCheck(s, o, .child)),
         .never => false,
     };
+}
+
+test "a dungeon with a key ring or boss key item needs them" {
+    var options = Options{};
+    var s = try State.init(std.testing.allocator, item_count, &options);
+    defer s.deinit(std.testing.allocator);
+    // the Bottom of the Well (index 5): Song of Storms, Lens, bombs, from Hyrule Field as child
+    for ([_]Item{ .Sword_Kokiri, .Range_SlingShot, .Ocarina_Fairy, .Melody_StormSong, .GlassTruth, .BombBag_Small }) |it| s.add(it.id());
+    try std.testing.expect(s.is(.botw_done));
+    options.key_ring[5] = true;
+    s.clearCache();
+    try std.testing.expect(!s.is(.botw_done));
+    s.add(Item.KeyRing_Well.id());
+    try std.testing.expect(s.is(.botw_done));
+    // every key dungeon's ring and boss key name a real dungeon folder of keyDungeonIndex
+    for (key_dungeons, 0..) |d, i| {
+        try std.testing.expectEqual(@as(?usize, i), keyDungeonIndex(d.folder));
+        try std.testing.expectEqual(@as(?KeyItem, .{ .dungeon = i, .ring = true }), keyItemOf(@tagName(d.ring)));
+        try std.testing.expect(@tagName(d.ring).len + "Item_".len <= 25);
+    }
 }
 
 test "an empty state can't win, the derived cache works" {

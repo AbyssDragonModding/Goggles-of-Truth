@@ -4,6 +4,79 @@ All notable changes to the randomizer. Versions are `Major.Minor.Patch`: a new s
 minor version, a fix raises the patch version. The same seed and settings string make a different mod in a
 different version.
 
+## 0.7.3 - 2026-11-22
+
+### Added
+- **Key rings and boss keys outside their dungeon** (Dungeon Items tab, all experimental), adapted from
+  [OotrR](https://github.com/Mozencaz/OotrR)'s key adapter. The remake's small and boss keys are generic: a key counts
+  for the dungeon Link picks it up in, so a key can't simply be placed in another dungeon. So, as in OotrR:
+  - **Small Keys: Any Dungeon / Overworld / Anywhere, as key rings.** A dungeon gets one Key Ring item
+    (`Item_KeyRing_<dungeon>`) that gives all of its small keys at once (Forest 5, Fire 8, Water 6, Shadow 5,
+    Spirit 5, Bottom of the Well 3, Gerudo Training Ground 9, Ganon's Castle 2), wherever it is found: in any
+    dungeon, only outside dungeons, or anywhere. The small key chests of those dungeons hold other items.
+  - **Key Ring Dungeons:** All Dungeons, Chosen Dungeons (eight ticks, greyed out otherwise) or Random Dungeons
+    (each by chance, from the seed). A dungeon without a key ring keeps its small keys where they are.
+  - **Boss Keys: Any Dungeon / Anywhere.** Each temple's boss key becomes an item of its own
+    (`Item_BossKey_<dungeon>`, "Boss Key (Forest Temple)") that opens that temple's boss door wherever it is found.
+    Ganon's Castle's boss key stays in its chest.
+  - **Small Keys: Removed / Boss Keys: Removed.** A new save starts with every key dungeon's small keys
+    (`DungeonInfo.<dungeon>.SmallKeyNum` and `SmallKeyTotalNum`) or the five temples' boss keys (`IsGetBossKey`); their
+    chests hold other items.
+  - How it works: the new items are key items built on the Forest Medallion with the native key's model, with their
+    own name, RSDB rows, get texts in every language, and a saved `IsGet.<item>` flag listed in the game's IsGet
+    structure (so the item is recorded from a chest, a pickup or a gift). Every item get ends in
+    `ActionGuide/ActionGuide`, which now first checks each key item of the seed: a key ring got and not yet applied
+    adds its keys once (saved flag `RandoKeyRing.<dungeon>`), a boss key got sets `IsGetBossKey`. The save data's
+    size fields grow by 8 bytes per new saved flag, as OotrR does. OotrR also gives each new item a cloned pickup event
+    (an AI graph) that writes its flag; that part isn't ported, the IsGet structure entry is what records it.
+  - The logic expects a dungeon's key ring and boss key before anything in that dungeon (it has no door-by-door
+    model), so they are never placed inside their own dungeon. Neither is ever a Skip Child Zelda start item or sold
+    in a shop.
+  - Checked on the files: the packs, rows, save flags, IsGet entries and hook are written as described; seeds
+    generate on the first attempt with every mode (romfs and `.nup`). **Not tested in-game yet** (OotrR: not
+    validated in-game either).
+
+- **THIRD_PARTY.md** in the repository and in every download: which file took what from Clawshot, OotrR and nup,
+  with their license notices (the README's link pointed at the Python version's copy, no longer on `main`).
+- **Your own presets**: type a name and click **Save Preset** (next to the Seed preset list) to keep your settings as
+  a preset; it shows in the list with a star and is kept in `custom_presets.toml` next to the program. **Delete
+  Preset** removes it.
+- **Race preset**: a fast, fair seed for racing, after the classic randomizer's tournament settings (forest exit and
+  Door of Time open, 4 medallions for the bridge, rewards on the dungeon bosses, no token, shop or scrub shuffle,
+  maps and compasses from the start, Strong hints without the Mask of Truth).
+- **`goggles_cli generate --preset NAME`** applies a built-in preset.
+
+### Changed
+- **Generate Mod always makes a new seed**: when the seed number in the box was already made, a new one is picked, before in the zig rewrite 0.7.0 -> 0.7.2 this was not the case and considered a bug lost in the translation between the original python implementation and the zig one. 
+- **Beginner, Standard and Expert are refreshed** to match how hard each option is: Beginner gets Strong hints and
+  every time saver; Standard closes the Deku Tree until you have a sword and shield, puts the stones and medallions
+  on the dungeon bosses, shuffles 2 items per shop and keeps maps and compasses in their own dungeon; Expert needs
+  all six medallions for the bridge, prices up to 200 rupees and plays by the game's own rules (bombs need the
+  Goron Bracelet, Gold Skulltulas keep their time and age, Saria needs Zelda, Anju wants all her Cuccos, Ganon's
+  trials stay). A test now checks that no preset uses an experimental option.
+- **The Not Supported tab no longer lists Gossip Stone hints, keysanity and scrubsanity**: hints have been in since
+  0.5.0, Business Scrubs since 0.5.0, and dungeon keys can now leave their dungeon as key rings and boss key items.
+- **The file cache is always on**: the Cache Compressed Files switch is gone from ROM Options > Output. It costs next
+  to nothing when no file can be reused and saves a lot when many can, and the mod is the same either way. An old
+  `cache_files` line in `user_settings.toml` is ignored; `goggles_cli --no-cache` still skips the cache for
+  measuring.
+- **Compressing uses about 75% of the CPU cores**, with no fixed limit (on 0.7.2 it was at most 8 threads), so the computer
+  stays responsive, and CPUS with more cores make seeds faster. A seed is still byte for byte the same.
+- **Builds for Windows and Linux on ARM** (`windows-arm64-cli`, `linux-arm64-cli`): the command-line tool only, since
+  the window's library (Raven) has no ARM build for those yet.
+- **`zig build` makes a release build** (ReleaseFast) by default; a debug build needs `-Doptimize=Debug`.
+- **Each page of the window has its own XML file** (`src/ui/pages`); the window looks the same to the end user, this is purely a maintainability thing.
+
+### Fixed
+- **A Gold Skulltula's drop could play its pickup and give nothing** (reported with a token-looking drop). Upgrade
+  items such as the Bigger Deku Stick Bag, Nut Bag, Quiver and Wallet inherit their pickup settings
+  (`PouchContentRef`) and game parameters from the smaller version's file through `$parent`; the drop was built from
+  the item's own file only, so it had no pickup settings. Drops, freestanding pickups and shop shelves are now built
+  from the item with everything it inherits, as OotrR does (`item_forms.resolve_components`), and the item's game
+  parameters are added to the pickup's own instead of replacing them. An item without a PouchActorInfo row gets the
+  template's (OotrR too). Checked on the reported seed's files: the Bigger Deku Stick Bag drop now has its pickup
+  settings.
+
 ## 0.7.2 - 2026-11-22
 
 Seeds are made 3–6× faster: a `.nup` seed takes 1.5–2.5 s instead of 9–10 s, an extracted romfs 1.3–1.7 s instead

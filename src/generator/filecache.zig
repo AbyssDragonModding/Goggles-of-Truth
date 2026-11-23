@@ -1,4 +1,4 @@
-//! The file cache (Cache Compressed Files): compressed mod files kept between seeds.
+//! The file cache (always on since 0.7.3): compressed mod files kept between seeds.
 //!
 //! Most of a seed's time goes to compressing the patched files again (zstd level 16 with the game's dictionaries);
 //! reading the game, from a .nup or an extracted romfs, is a small part of it. Many patched files come out the same
@@ -180,6 +180,8 @@ pub const FileCache = struct {
 /// the same data, level, dictionary and library version, so equal keys mean an equal file.
 fn keyOf(data: []const u8, dictionary: ?[]const u8) [32]u8 {
     var h = Sha256.init(.{});
+    // unreachable is proven: the longest head is 17 + 1 ("1") + 7 + 11 (any c_int level) + 6 + 10 (any u32 version)
+    // + 6 = 58 bytes, under the buffer's 64
     var buf: [64]u8 = undefined;
     const head = std.fmt.bufPrint(&buf, "goggles-zs-cache {s}|level {d}|zstd {d}|dict ", .{ key_version, zstd.level, zstd.libraryVersion() }) catch unreachable;
     h.update(head);

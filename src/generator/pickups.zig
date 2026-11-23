@@ -17,6 +17,11 @@
 //! its item in mid-air, where Link climbing can touch it but can't press A). Pickups with their own AI (heart pieces)
 //! keep needing A.
 //!
+//! Adapted from OotrR (https://github.com/Mozencaz/OotrR, src/oot_rando/game/item_forms.py and
+//! patching/soul_adapter.py; MIT License, Copyright (c) 2026 Mozencaz): the token-based Gold Skulltula drops, the
+//! shop shelves, reading an item through its $parent chain (resolvedComponents), the game parameter merge, and the
+//! new key items (keyItem). See THIRD_PARTY.md.
+//!
 //! Gold Skulltula drops ("Obj_RandoGS_") are built on the token's own pickup, as OotrR does: the drop floats like a
 //! token, is collected by touching it, and keeps the token's AI, which sets the Skulltula's save flag when the drop's
 //! get event ends; so the event plays on every pickup (TOKEN_POUCH_FLAGS), even for items without an IsGet flag.
@@ -91,6 +96,43 @@ fn workPath(allocator: Allocator, file_path: []const u8) error{OutOfMemory}![]co
     return std.fmt.allocPrint(allocator, "Work/{s}.gyml", .{file_path[0 .. file_path.len - ".bgyml".len]});
 }
 
+/// The inverse of workPath: a reference -> the file inside the pack ("?X.bgyml" -> "X.bgyml", "Work/X.gyml" ->
+/// "X.bgyml"), or null for anything else.
+fn packPathOfWork(allocator: Allocator, ref: []const u8) error{OutOfMemory}!?[]const u8 {
+    if (std.mem.startsWith(u8, ref, "?")) return ref[1..];
+    if (std.mem.startsWith(u8, ref, "Work/") and std.mem.endsWith(u8, ref, ".gyml")) {
+        return try std.fmt.allocPrint(allocator, "{s}.bgyml", .{ref["Work/".len .. ref.len - ".gyml".len]});
+    }
+    return null;
+}
+
+/// The "Components" of a pack file and of every file it inherits from through `$parent` (inside the same pack), the
+/// child's own entries winning. Why: many items only inherit what makes them an item. The bigger bags, quivers and
+/// wallets take their PouchContentRef from the smaller one's ActorParam (Item_StickBag_Medium from
+/// Item_StickBag_Small), so reading only the item's own file made a Gold Skulltula drop of a Bigger Deku Stick Bag with
+/// no pouch settings at all: its pickup played and gave nothing (OotrR resolves the chain the same way,
+/// item_forms.resolve_components). Allocated with `allocator`; the file itself must be in the pack.
+fn resolvedComponents(allocator: Allocator, files: Files, path: []const u8) PatchError!*byml.Dict {
+    const out = try byml.Dict.create(allocator);
+    var current: ?[]const u8 = path;
+    var depth: usize = 0;
+    // a chain is a handful of files long (Item_Quiver_Large > _Medium > _Small > Item_EventObject_Base); the limit only
+    // guards against a loop
+    while (current) |p| : (depth += 1) {
+        if (depth >= 16) break;
+        const bytes = files.get(p) orelse break;
+        const doc = try byml.loadDict(allocator, bytes);
+        if (doc.getDict("Components")) |c| {
+            for (c.entries.items) |e| {
+                if (!out.contains(e.key)) try out.put(allocator, e.key, e.value);
+            }
+        }
+        const parent = doc.getString("$parent") orelse break;
+        current = try packPathOfWork(allocator, parent);
+    }
+    return out;
+}
+
 /// A pack's files by name.
 const Files = struct {
     entries: []const sarc.Entry,
@@ -127,7 +169,22 @@ fn versionOf(data: []const u8) u16 {
     return std.mem.readInt(u16, data[2..4], if (data[0] == 'B') .big else .little);
 }
 
-const RowClone = struct { clone: []const u8, src: []const u8, template: []const u8 };
+const RowClone = struct {
+    clone: []const u8,
+    src: []const u8,
+    template: []const u8,
+    /// a new key item (keyItem): its own ActorName, `src` only lends the model, the pouch row is the template's
+    key_item: bool = false,
+};
+
+/// New key items (key rings, dungeon boss keys) are built like OotrR's: the Forest Medallion's pack (a key item that
+/// is shown and held up like any other), with the model of the item they stand for (soul_adapter.build_item_files).
+const key_item_template = "Item_Medal_Forest";
+/// ActorInfo fields a key item takes from the actor lending its model (OotrR's list).
+const key_item_model_keys = [_][]const u8{ "FmdbName", "ModelProjectName", "ModelAabbMax", "ModelAabbMin", "ModelVariationFmabName", "AnimationResources", "ASInfoAutoPlayMaterials" };
+/// Generated actor names stay within the length OotrR saw working in the game: an item get of a 30- or 33-character
+/// generated actor crashed (null read, Link holding nothing), 25 characters worked.
+pub const max_key_item_name = 25;
 const AutoRow = struct { clone: []const u8, src: []const u8 };
 const SizeEntry = struct { path: []const u8, size: ?u32 };
 
@@ -203,6 +260,48 @@ pub const PickupCloner = struct {
         const k = try self.key("shop", actor, price);
         if (!self.made.contains(k)) self.made.put(k, try self.build(actor, shop_template, shop_prefix, price)) catch return error.OutOfMemory;
         return self.made.get(k).? orelse self.progress.fail(error.NotAsExpected, "no shop shelf could be built for {s}", .{actor});
+    }
+
+    /// Makes key item `actor` (e.g. Item_KeyRing_ForestTemple) with the model of `model` (Item_Dungeon_SmallKey or
+    /// Item_Dungeon_BossKey): its pack, size table entries and (in finish) its RSDB rows. Its save flags, texts and
+    /// what it does when got are keyitems.zig's.
+    pub fn keyItem(self: *Self, actor: []const u8, model: []const u8) PatchError!void {
+        if (actor.len > max_key_item_name) return self.progress.fail(error.NotAsExpected, "key item name too long for the game: {s}", .{actor});
+        const a = self.patches.allocator;
+        const tmpl_raw = try self.patches.read(try packOf(a, key_item_template));
+        const tmpl = try listFiles(a, tmpl_raw.data);
+        const model_files = try listFiles(a, (try self.patches.read(try packOf(a, model))).data);
+        const tmpl_param_path = try paramOf(a, key_item_template);
+        const model_path = std.fmt.allocPrint(a, "Component/ModelInfo/{s}.engine__component__ModelInfo.bgyml", .{model}) catch return error.OutOfMemory;
+        const tmpl_param_bytes = tmpl.get(tmpl_param_path) orelse return self.progress.fail(error.NotAsExpected, "{s} has no ActorParam", .{key_item_template});
+        const model_bytes = model_files.get(model_path) orelse return self.progress.fail(error.NotAsExpected, "{s} has no ModelInfo", .{model});
+
+        const param = try byml.loadDict(a, tmpl_param_bytes);
+        const comps = try param.ensureDict(a, "Components");
+        const new_model_path = std.fmt.allocPrint(a, "Component/ModelInfo/{s}.engine__component__ModelInfo.bgyml", .{actor}) catch return error.OutOfMemory;
+        try comps.put(a, "ModelInfoRef", .{ .string = std.fmt.allocPrint(a, "?{s}", .{new_model_path}) catch return error.OutOfMemory });
+        // Why its own name: the game tells pouch items apart by their ActorName; with the template's, every new item
+        // counted as the Forest Medallion and its IsGet flag was never set (OotrR, in-game test of the souls).
+        if (!comps.contains("ActorNameRef")) return self.progress.fail(error.NotAsExpected, "{s} has no ActorNameRef", .{key_item_template});
+        try comps.put(a, "ActorNameRef", .{ .string = std.fmt.allocPrint(a, "?ActorSystem/ActorName/{s}.engine__actor__ActorName.bgyml", .{actor}) catch return error.OutOfMemory });
+        const new_param = try byml.dump(a, .{ .dict = param }, versionOf(tmpl_param_bytes), false);
+        const new_param_path = try paramOf(a, actor);
+
+        var add: std.ArrayList(sarc.NewFile) = .empty;
+        add.append(a, .{ .name = new_param_path, .data = new_param }) catch return error.OutOfMemory;
+        add.append(a, .{ .name = new_model_path, .data = model_bytes }) catch return error.OutOfMemory;
+        // the template's own ActorParam and ModelInfo stay in the pack unused (the archive writer only replaces or
+        // adds files); the game loads the actor by its own name
+        const data = try rebuildWith(a, tmpl_raw.data, &.{}, add.items);
+        try self.patches.emit(try packOf(a, actor), data, data, tmpl_raw.dictionary, true);
+
+        const clone_key = try packKey(a, actor);
+        var entries: std.ArrayList(SizeEntry) = .empty;
+        entries.append(a, .{ .path = clone_key, .size = self.newSize(clone_key, try packKey(a, key_item_template), @as(i64, @intCast(data.len)) - @as(i64, @intCast(tmpl_raw.data.len))) }) catch return error.OutOfMemory;
+        entries.append(a, .{ .path = new_param_path, .size = self.newSize(new_param_path, tmpl_param_path, @as(i64, @intCast(new_param.len)) - @as(i64, @intCast(tmpl_param_bytes.len))) }) catch return error.OutOfMemory;
+        entries.append(a, .{ .path = new_model_path, .size = self.newSize(new_model_path, model_path, 0) }) catch return error.OutOfMemory;
+        try self.setSizes(entries.items, false);
+        self.rows.append(self.allocator, .{ .clone = try self.keepText(actor), .src = try self.keepText(model), .template = key_item_template, .key_item = true }) catch return error.OutOfMemory;
     }
 
     /// The size for a new path: the fallback path's entry plus `delta` (never less), or null when `path` already has
@@ -285,7 +384,7 @@ pub const PickupCloner = struct {
         const token = std.mem.eql(u8, template, token_template);
         const shop = std.mem.eql(u8, template, shop_template);
         const src_pack = try packOf(a, src);
-        if (!self.world.files.exists(src_pack)) {
+        if (!self.world.files.exists(src_pack) and !self.patches.current.contains(src_pack)) {
             self.progress.log("warning: no pack for {s}; it can't be made into a world pickup", .{src});
             return null;
         }
@@ -296,16 +395,16 @@ pub const PickupCloner = struct {
         const item = try listFiles(a, (try self.patches.read(src_pack)).data);
         const src_param_path = try paramOf(a, src);
         const tmpl_param_path = try paramOf(a, template);
-        const src_param_bytes = item.get(src_param_path) orelse {
+        if (!item.has(src_param_path)) {
             self.progress.log("warning: {s} has no ActorParam; it can't be made into a world pickup", .{src});
             return null;
-        };
+        }
         const tmpl_param_bytes = tmpl.get(tmpl_param_path) orelse {
             self.progress.log("warning: {s} has no ActorParam; it can't be made into a world pickup", .{src});
             return null;
         };
-        const src_param = try byml.loadDict(a, src_param_bytes);
-        const src_comps = src_param.getDict("Components") orelse try byml.Dict.create(a);
+        // with what the item inherits through $parent (resolvedComponents says why)
+        const src_comps = try resolvedComponents(a, item, src_param_path);
         const param = try byml.loadDict(a, tmpl_param_bytes);
         const comps = try param.ensureDict(a, "Components");
         const refs: []const []const u8 = if (shop) &shop_refs else if (token) &token_refs else &copied_refs;
@@ -374,11 +473,21 @@ pub const PickupCloner = struct {
                 return self.progress.fail(error.NotAsExpected, "the token pack has no item parameter table", .{});
             const base = try byml.loadDict(a, base_bytes);
             const src_ref = src_comps.getString("GameParameterTableRef");
-            const table = if (src_ref != null and item.has(refFile(src_ref.?))) try byml.loadDict(a, item.get(refFile(src_ref.?)).?) else try byml.Dict.create(a);
+            const src_table_path = if (src_ref) |r| try packPathOfWork(a, r) else null;
+            const has_table = src_table_path != null and item.has(src_table_path.?);
+            const table = if (has_table) try byml.loadDict(a, item.get(src_table_path.?).?) else try byml.Dict.create(a);
             _ = table.remove("$parent");
             if (!table.contains("Category")) try table.put(a, "Category", base.get("Category") orelse byml.Value{ .string = "GameParameterTableDefault" });
+            // the pickup's own parameters (drop, physics, menu) stay; the item adds what it has beyond them (bag
+            // capacity, equipment, ...), its inherited ones included. As OotrR merges them
+            // (item_forms._merge_game_parameters).
             const merged = if (base.getDict("Components")) |bc| (try (byml.Value{ .dict = bc }).clone(a)).dict else try byml.Dict.create(a);
-            if (table.getDict("Components")) |tc| for (tc.entries.items) |e| try merged.put(a, e.key, e.value);
+            if (has_table) {
+                const item_table = try resolvedComponents(a, item, src_table_path.?);
+                for (item_table.entries.items) |e| {
+                    if (!merged.contains(e.key)) try merged.put(a, e.key, e.value);
+                }
+            }
             try table.put(a, "Components", .{ .dict = merged });
             add.append(a, .{ .name = table_path, .data = try byml.dumpDefault(a, .{ .dict = table }) }) catch return error.OutOfMemory;
             try comps.put(a, "GameParameterTableRef", .{ .string = std.fmt.allocPrint(a, "?{s}", .{table_path}) catch return error.OutOfMemory });
@@ -482,8 +591,27 @@ pub const PickupCloner = struct {
             for (&tables) |*t| {
                 if (findRow(t.rows, r.clone) != null) continue;
                 var row: *byml.Dict = undefined;
-                if (std.mem.eql(u8, t.name, "PouchActorInfo")) {
-                    const base = findRow(t.rows, r.src) orelse continue;
+                if (r.key_item) {
+                    // a new key item: the template's rows, with the model's fields and its own ActorName
+                    const base = findRow(t.rows, r.template) orelse {
+                        self.progress.log("warning: no {s} row for {s}", .{ t.name, r.template });
+                        continue;
+                    };
+                    row = (try (byml.Value{ .dict = base }).clone(a)).dict;
+                    if (std.mem.eql(u8, t.name, "ActorInfo")) {
+                        const m = findRow(t.rows, r.src);
+                        if (m) |md| for (key_item_model_keys) |k| if (md.get(k)) |v| try row.put(a, k, try v.clone(a));
+                        try row.put(a, "ActorName", .{ .string = r.clone });
+                        if (m) |md| for (heap_keys) |k| {
+                            const sv = md.get(k) orelse continue;
+                            const current = row.get(k) orelse sv;
+                            try row.put(a, k, current.sameIntType(@max(current.asInt() orelse 0, sv.asInt() orelse 0)));
+                        };
+                    }
+                } else if (std.mem.eql(u8, t.name, "PouchActorInfo")) {
+                    // the row describes the item; an item without one falls back on the template's (as OotrR does),
+                    // so the pickup is still a pouch item
+                    const base = findRow(t.rows, r.src) orelse findRow(t.rows, r.template) orelse continue;
                     row = (try (byml.Value{ .dict = base }).clone(a)).dict;
                     if (self.prices.get(r.clone)) |p| {
                         const buying = row.get("BuyingPrice") orelse byml.Value{ .int = 0 };

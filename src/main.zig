@@ -4,7 +4,6 @@
 //! reason is shown in a message box and written to error_log.txt next to the program.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const r = @import("raven");
 const engine = @import("engine");
 const App = @import("ui/App.zig");
@@ -29,7 +28,7 @@ pub fn main(init: std.process.Init) u8 {
 /// an .app would break its code signature and be lost when the .app is replaced by a new version, so they go next to
 /// the .app instead, the same place they have next to the program on Windows and Linux.
 fn bundleFolder(exe_dir: []const u8) []const u8 {
-    if (builtin.os.tag != .macos) return exe_dir;
+    if (!engine.host.runs_from_app_bundle) return exe_dir;
     const contents = std.fs.path.dirname(exe_dir) orelse return exe_dir; // .../X.app/Contents
     const bundle = std.fs.path.dirname(contents) orelse return exe_dir; // .../X.app
     const is_bundle = std.mem.eql(u8, std.fs.path.basename(exe_dir), "MacOS") and

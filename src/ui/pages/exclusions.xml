@@ -1,0 +1,22 @@
+<!--
+  The "Exclusions" page of the randomizer window (Raven XML). src/ui/layout.zig puts it into main.xml's
+  TabView, at the page marker of the same name. The list of excluded locations (filled in by src/ui/App.zig after a scan).
+-->
+<VBox Spacing="12" Slot.Title="Exclusions">
+  <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Fill="1" Slot.Padding="6,10,6,10">
+    <VBox Spacing="10">
+      <HBox Spacing="12">
+        <Label Text="Excluded locations" TextSize="16" Color="#F5CC61" Slot.Fill="1" Slot.VAlign="Center"/>
+        <StableBadge/>
+      </HBox>
+      <Label TextSize="13" Color="#C7D1DBD9" Wrap="true"
+             Text="Excluded locations never hold progression items, keys or boss rewards: only rupees, ammo, hearts and the like (a map or compass may land there). A song or boss reward spot that can only hold a song or reward with your settings stays included (the log says so). Excluding very many locations can leave too little room for the required items; the error then says to exclude fewer. Double-click a location to toggle it. Scan the game on the ROM Options tab to fill this list."/>
+      <HBox Spacing="10">
+        <TextInput Name="filter_in" Placeholder="Filter locations..." OnChanged="rando.filter" Slot.Fill="1"/>
+        <Label Name="excl_count" Text="0 excluded" TextSize="13" Color="#C7D1DBD9" Slot.Auto="true" Slot.VAlign="Center"/>
+        <Button Text="Clear all" Style="Flat" OnClicked="rando.clear_excluded" Slot.Auto="true"/>
+      </HBox>
+      <ListView Name="excl_list" OnActivated="rando.toggle_excluded" Slot.Fill="1"/>
+    </VBox>
+  </Border>
+</VBox>

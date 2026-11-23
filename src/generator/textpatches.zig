@@ -32,7 +32,7 @@ fn messageArchives(allocator: Allocator, world: *World) PatchError![][]const u8 
 }
 
 /// Adds `new_texts` to message file `messages` in every UTF-8 language archive. Returns how many archives changed.
-fn addToArchives(world: *World, patches: *patchset.PatchSet, messages: []const u8, new_texts: []const msbt.NewText, what: []const u8, progress: *Progress) PatchError!usize {
+pub fn addToArchives(world: *World, patches: *patchset.PatchSet, messages: []const u8, new_texts: []const msbt.NewText, what: []const u8, progress: *Progress) PatchError!usize {
     var done: usize = 0;
     for (try messageArchives(patches.allocator, world)) |fname| {
         // one language at a time: an archive's original and rebuilt copy are freed before the next language

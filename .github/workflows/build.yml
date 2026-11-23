@@ -35,6 +35,9 @@ jobs:
           - { name: linux-x64,     target: x86_64-linux,   folder: linux }
           - { name: macos-x64,     target: x86_64-macos,   folder: macos }
           - { name: macos-arm64,   target: aarch64-macos,  folder: macos-aarch64 }
+          # Raven has no prebuilt library for Windows or Linux on ARM: these two hold the command-line tool only
+          - { name: windows-arm64-cli, target: aarch64-windows, folder: windows-aarch64 }
+          - { name: linux-arm64-cli,   target: aarch64-linux,   folder: linux-aarch64 }
     steps:
       - uses: actions/checkout@v4
 
@@ -60,7 +63,7 @@ jobs:
           name="Goggles-of-Truth-${{ steps.version.outputs.version }}-${{ matrix.name }}"
           mkdir -p dist
           cp -r "zig-out/${{ matrix.folder }}" "dist/$name"
-          cp README.md CHANGELOG.md LICENSE "dist/$name/"
+          cp README.md CHANGELOG.md LICENSE THIRD_PARTY.md "dist/$name/"
           (cd dist && zip -r -y -q "$name.zip" "$name")
 
       - uses: actions/upload-artifact@v4

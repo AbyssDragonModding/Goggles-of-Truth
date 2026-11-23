@@ -2,7 +2,7 @@
 
 **An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26), attempting to bring back most of the settings from the classic randomizer (with some additional qol settings).**
 
-## Version **0.7.2** (public beta) · [Discord](https://discord.gg/adSV8cWfBY) ·
+## Version **0.7.3** · [Discord](https://discord.gg/adSV8cWfBY) ·
 [Source](https://github.com/AbyssDragonModding/Goggles-of-Truth)
 
 Goggles of Truth shuffles chests, songs, dungeon rewards, NPC gifts, shop items, Gold Skulltulas and more, and
@@ -99,8 +99,13 @@ When only some choices of an option have a different status, they're named in th
 | | Remove (replaced by junk) | 🔴 Not tested |
 | Small Keys | Vanilla | 🟢 Stable |
 | | Own Dungeon | 🔴 Not tested |
+| | Removed (every dungeon starts with all its small keys) | 🔴 Not tested |
+| | Key rings, in Any Dungeon, the Overworld or Anywhere (all of a dungeon's small keys at once) | 🔴 Not tested |
+| Key Ring Dungeons | All, Chosen (eight dungeons to tick), Random | 🔴 Not tested |
 | Boss Keys | Vanilla | 🟢 Stable |
 | | Own Dungeon (can fail to place items with some settings) | 🔴 Not tested |
+| | Removed (the five temples start with their boss key) | 🔴 Not tested |
+| | Any Dungeon, Anywhere (each temple's boss key becomes an item of its own) | 🔴 Not tested |
 
 ### Hints
 
@@ -135,24 +140,25 @@ When only some choices of an option have a different status, they're named in th
 | Feature | Status |
 |---|---|
 | Reads a `.nup` package or an extracted romfs and exefs, and checks the game version | 🟢 Stable |
-| Seeds, settings strings and seed presets (Beginner, Standard, Expert) | 🟢 Stable |
+| Seeds, settings strings and seed presets (Beginner, Standard, Expert, Race) | 🟢 Stable |
+| Your own saved presets | 🟡 Semi-tested |
 | Excluded Locations (checks that only ever hold minor items) | 🟢 Stable |
 | Spoiler log (`spoiler.txt`, `spoiler.json`) and test checklist (`checklist.xlsx`) | 🟢 Stable |
 | Longshot support: finds the game, follows its updates, switches older seeds off | 🟢 Stable |
 | Per-Seed Saves (Longshot, and Lichii and other yuzu-family emulators) | 🟢 Stable |
-| Cache Compressed Files: later seeds reuse files compressed before (the mod is byte for byte the same) | 🟢 Stable |
+| File cache (always on): later seeds reuse files compressed before (the mod is byte for byte the same) | 🟢 Stable |
 | Command-line tool (`goggles_cli`) | 🟢 Stable |
 | Windows, Linux | 🟢 Stable |
 | macOS (Intel and Apple Silicon) | 🔴 Not tested (built, but not yet run on a Mac) |
 
-Options the randomizer doesn't support yet (need more investigation) (keysanity, entrance randomizer, cows, ...) are listed with the
+Options the randomizer doesn't support yet (need more investigation) (entrance randomizer, cows, ice traps, ...) are listed with the
 reason on the window's **Not Supported** tab. The [changelog](CHANGELOG.md) says which version each setting was
 confirmed in.
 
 ## Why Zig?
 
 Up to 0.6.2 the randomizer was a Python program. It is now written in [Zig](https://ziglang.org): one small program
-per system, with nothing to install, that opens straight away and makes seeds 8.6–12.4× faster, Insane speed gains due to zigs compiled nature and adding multi-threading (uses multiple cpu cores to generate seeds) and caching.
+per system, with nothing to install, that opens straight away and makes seeds 9–14× faster, Insane speed gains due to zigs compiled nature and adding multi-threading (uses multiple cpu cores to generate seeds) and caching.
 
 The Python version is deprecated and no longer updated. Its last state is kept under the tag
 [`python-legacy`](https://github.com/AbyssDragonModding/Goggles-of-Truth/tree/python-legacy).
@@ -160,19 +166,62 @@ The Python version is deprecated and no longer updated. Its last state is kept u
 ### Benchmark
 
 The same settings, the same game files and the same machine, every generator making a complete mod folder
-(including the spoiler log and checklist). Three runs per case, each with its own seed; times are wall-clock from
-start to exit, averaged.
+(including the spoiler log and checklist).
 
-| Game files | Settings | Python 0.6.2 | Zig 0.7.0 | Zig 0.7.2 | Zig 0.7.2, cache filled | Faster than Python |
+> **Note:** these were measured on an AMD Ryzen 9 9950X, which has 16 cores (32 threads). The Zig versions spread
+> the compressing over the CPU's cores (0.7.3 uses about 75% of them: 24 threads here), so on a CPU with fewer cores
+> the results may vary: seeds take longer, and the gain over Python is smaller.
+
+#### In the window and on the command line
+
+Each cell is **first seed / each seed after it**:
+
+| Game files | Settings | Python 0.6.2 window | Zig 0.7.2 command line | Zig 0.7.2 window | Zig 0.7.3 window | Zig 0.7.3 window vs. Python window |
 |---|---|---|---|---|---|---|
-| Extracted romfs | Defaults | 11.6 s | 3.8 s | **1.3 s** | 1.4 s | **8.6×** |
-| Extracted romfs | Expert preset | 17.5 s | 4.8 s | **1.6 s** | 1.7 s | **10.9×** |
-| `.nup` package | Defaults | 18.5 s | 8.9 s | 2.1 s | **1.5 s** | **12.4×** |
-| `.nup` package | Expert preset | 24.0 s | 10.3 s | **2.5 s** | **2.5 s** | **9.7×** |
+| Extracted romfs | Defaults | 12.4 s / 11.3 s | 1.5 s / 1.5 s | 1.2 s / 1.1 s | **1.2 s / 1.2 s** | **9.7× faster** |
+| Extracted romfs | Expert preset | 20.8 s / 18.9 s | 2.1 s / 2.1 s | 2.6 s / 2.2 s | **1.5 s / 1.4 s** | **13.3× faster** |
+| `.nup` package | Defaults | 19.3 s / 17.5 s | 2.3 s / 1.5 s | 2.3 s / 1.5 s | **1.7 s / 1.2 s** | **14.1× faster** |
+| `.nup` package | Expert preset | 24.1 s / 22.7 s | 2.8 s / 2.5 s | 2.6 s / 2.8 s | **1.9 s / 2.0 s** | **11.4× faster** |
 
-"Zig 0.7.2" is a seed with an empty cache (or Cache Compressed Files off: the same within ±0.05 s). "Cache filled"
+- **Window, first seed:** reading (scanning) the game plus the seed, as right after opening the window. Both windows
+  scan the game once, keep it, and make every seed on a background thread; later seeds skip the scan. The Zig
+  window's cache starts empty.
+- **Window, each seed after it:** the game is already scanned, and for Zig the cache holds what the earlier seeds
+  of the same settings compressed.
+- **Command line:** a whole `goggles_cli generate` run per seed (start, version check, scan, seed). The first run
+  starts with an empty cache.
+- The "faster" column compares the seeds after the first, the usual case when making several seeds.
+- **0.7.3** was measured later than the other columns. To compare it fairly, 0.7.2 was run again right next to
+  it, in the same sessions: there 0.7.3 was 15–30% faster in every case (window, later seeds: romfs 1.37 → 1.16 s
+  and 1.64 → 1.42 s, `.nup` 1.48 → 1.24 s and 2.79 → 2.00 s), mostly because it compresses on 24 threads instead
+  of 8. "Expert preset" is the Expert preset of 0.7.2 in every column (0.7.3 changed the presets), so all columns
+  make the same seeds' worth of work.
+
+In Zig the scan takes well under a second, so the window and the command line are about as fast; the differences
+between them in the table are within how much the runs varied (up to ±0.5 s for Zig, and up to ±4 s for the
+Python romfs runs). Python saves 1–2 s per seed by keeping the game in its window.
+
+<sub>The window times come from each window's own seed code (scan once with `_ensure_world` / `ensureWorld`, keep
+the game, each seed on a worker thread with the kept game, exactly as clicking Generate does), run without drawing the
+window, so the time to click and for the log to update isn't included. Three window sessions of three seeds each per
+case, each seed with its own number; times are averaged.</sub>
+
+#### The command line, by version
+
+Three runs per case, each with its own seed; times are wall-clock from start to exit, averaged.
+
+| Game files | Settings | Python 0.6.2 | Zig 0.7.0 | Zig 0.7.2 | Zig 0.7.2, cache filled | Zig 0.7.3 (empty / filled cache) | Faster than Python |
+|---|---|---|---|---|---|---|---|
+| Extracted romfs | Defaults | 11.6 s | 3.8 s | 1.3 s | 1.4 s | **1.3 s / 1.3 s** | **9.1×** |
+| Extracted romfs | Expert preset | 17.5 s | 4.8 s | 1.6 s | 1.7 s | **1.6 s / 1.7 s** | **10.7×** |
+| `.nup` package | Defaults | 18.5 s | 8.9 s | 2.1 s | 1.5 s | **1.7 s / 1.4 s** | **13.5×** |
+| `.nup` package | Expert preset | 24.0 s | 10.3 s | 2.5 s | 2.5 s | **2.0 s / 2.0 s** | **12.0×** |
+
+"Zig 0.7.2" is a seed with an empty cache (or `goggles_cli --no-cache`: the same within ±0.05 s). "Cache filled"
 means one seed with the same settings (and another seed number) was made before, as when you make several seeds in a
-row.
+row. (These runs were on a quieter machine than the window runs above, so they came out slightly faster.)
+"Faster than Python" compares Python with the faster of the two 0.7.3 times. In 0.7.3 the cache is always on, so its
+first seed is the empty-cache time.
 
 **Where the time goes:** in 0.7.0, about 90% of a seed was compressing the changed files again for the mod (zstd at
 level 16, with the game's dictionaries), one file after another. Reading the game is a small part: a `.nup` costs
@@ -184,23 +233,27 @@ extracted romfs used here only has English.
 - **The files are compressed on several threads at once** (up to 8, one per CPU core). This is most of the gain,
   for every seed and every setting. Each file is still compressed on its own and written in the same order, so a
   seed comes out byte for byte the same as when the files were compressed one at a time.
-- **Cache Compressed Files** reuses files that come out the same as in an earlier seed. With the default settings
+- **The file cache** (an option in 0.7.2, always on since 0.7.3) reuses files that come out the same as in an
+  earlier seed. With the default settings
   that's the text of all 16 languages, so a `.nup` seed saves another 0.6 s. Gossip Stone hints are written into
   every language's text and differ from seed to seed, so with hints on (Standard and Expert presets) there is
   little to reuse. Making the same seed again (same seed and settings) reuses every file.
 
-Peak memory use (RAM). Compressing eight files at once takes more memory than one at a time:
+#### Memory
 
-| Game files | Settings | Python 0.6.2 | Zig 0.7.0 | Zig 0.7.2 |
-|---|---|---|---|---|
-| Extracted romfs | Defaults / Expert | 186 / 215 MB | 172 / 236 MB | 310 / 354 MB |
-| `.nup` package | Defaults / Expert | 377 / 415 MB | 326 / 441 MB | 572 / 689 MB |
+Peak memory use (RAM). Compressing several files at once takes more memory than one at a time, and 0.7.3 compresses
+more at once than 0.7.2 (24 threads instead of 8 on this CPU; fewer cores use fewer threads and less memory):
+
+| Game files | Settings | Python 0.6.2 window | Zig 0.7.0 command line | Zig 0.7.2 command line | Zig 0.7.2 window | Zig 0.7.3 command line | Zig 0.7.3 window |
+|---|---|---|---|---|---|---|---|
+| Extracted romfs | Defaults / Expert | 213 / 234 MB | 172 / 236 MB | 308 / 354 MB | 309 / 357 MB | 384 / 424 MB | 366 / 420 MB |
+| `.nup` package | Defaults / Expert | 408 / 442 MB | 326 / 441 MB | 573 / 689 MB | 573 / 690 MB | 934 / 1054 MB | 934 / 1057 MB |
 
 <sub>Test machine: AMD Ryzen 9 9950X (16 cores), 64 GB RAM, Windows 11, game files on a local drive. Python 3.15.0
-with the 0.6.2 Python randomizer; Zig 0.17.1 `ReleaseFast` builds of `goggles_cli generate` (0.7.0 from its tag).
-Seeds `BENCH1`–`BENCH3`. With fewer cores 0.7.2 uses fewer threads, and the gain is smaller. Python 0.6.2 crashes in
-its small-chest patch (`qol.py`), so the Python runs used an in-memory fix of that one function (the same fix the
-Zig version has). The game files and the Python source were not changed.</sub>
+with the 0.6.2 Python randomizer; Zig 0.17.1 `ReleaseFast` builds of 0.7.3 and 0.7.2 (and of 0.7.0 from its tag).
+With fewer cores the Zig versions use fewer threads, and the gain is smaller. Python 0.6.2 crashes in its small-chest patch (`qol.py`),
+so the Python runs used an in-memory fix of that one function (the same fix the Zig version has). The game files
+and the Python source were not changed.</sub>
 
 ### What else changed for players
 
@@ -271,7 +324,9 @@ with your seeds. (The Python version's git auto-updater isn't part of the Zig ve
    so it never holds an important item.
 3. Pick settings on the **World**, **Items**, **Dungeon Items**, **Hints** and **Quality of Life** tabs (hover over an
    option to see what it does), or start from a [seed preset](#seed-presets).
-4. Click **Generate Mod**. **Open Folder** opens the output folder. Each seed gets its own folder:
+4. Click **Generate Mod**. Every click makes a new seed: if the seed number was already made, a new one is picked
+   first, so an earlier seed is never overwritten. **Open Folder** opens the output folder. Each seed gets its own
+   folder:
 
 ```
 <output folder>/GogglesOfTruth_<seed>/
@@ -297,10 +352,10 @@ On macOS it's next to `Goggles of Truth Randomizer.app`, not inside it (as are `
   string) resets only the settings.
 - **Edit by hand:** close the randomizer first; every setting is listed with its allowed values and default. An
   invalid value is ignored and the log says so.
-- **The `cache` folder** holds compressed files kept by **Cache Compressed Files** (ROM Options > Output, on by
-  default): a later seed that writes the same file takes it from there instead of compressing it again. It stays under 1 GB on its own (the files used longest ago go first) and can be deleted at any
-  time; it is filled again as you make seeds. Turning the option off makes every seed compress every file, with the
-  same result.
+- **The `cache` folder** holds compressed files kept between seeds (always on): a later seed that writes the same
+  file takes it from there instead of compressing it again. When nothing can be reused it costs next to nothing, and
+  the mod is byte for byte the same either way. It stays under 1 GB on its own (the files used longest ago go first)
+  and can be deleted at any time; it is filled again as you make seeds.
 - Versions before 0.5.0 kept settings in `.ootr_remake.json` in your user folder. It is read once if
   `user_settings.toml` doesn't exist yet.
 
@@ -407,7 +462,7 @@ not confirmed). For a drop-down, the badge follows the chosen option (Item Pool 
 | **ROM Options** | Game and output folders, mod name, seed, spoiler log, per-seed saves, the file cache |
 | **World** | Logic (glitchless or none); open Kokiri Forest, Door of Time, Zora's Fountain and Death Mountain; the Rainbow Bridge requirement (vanilla, medallions, Spiritual Stones or Gold Skulltula tokens, shown at the Temple of Time altar); skip child Zelda; skip Epona's race |
 | **Items** | Songs, Spiritual Stones and Medallions, ocarinas, Kokiri Sword, Weird Egg; freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards, Great Fairies, Skulltula House, Tokensanity, items shuffled per shop, Business Scrubs; item pool size; ammo chests needing their bag |
-| **Dungeon Items** | Maps & Compasses, small keys, boss keys |
+| **Dungeon Items** | Maps & Compasses; small keys (also removed, or as key rings in any dungeon, the overworld or anywhere) and which dungeons get key rings; boss keys (also removed, or anywhere as items of their own) |
 | **Hints** | Gossip Stone hints (none, balanced, strong, useless) and whether stones need the Mask of Truth |
 | **Quality of Life** | Cutscene skips, bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina, Gold Skulltulas at any time, skip Ganon's trials, easier minigames |
 | **Exclusions** | Locations that only ever hold minor items |
@@ -415,29 +470,42 @@ not confirmed). For a drop-down, the badge follows the chosen option (Item Pool 
 
 ### Seed presets
 
-The **Seed preset** drop-down (bottom of the window) sets every gameplay setting at once; Excluded Locations and
-Create Spoiler Log are kept. Presets only use options confirmed in-game. Change anything afterwards and it shows
-**Custom** (it shows the preset's name again whenever your settings match one).
+The **Seed preset** drop-down (bottom of the window) sets every gameplay setting at once; Excluded Locations, Create
+Spoiler Log and Per-Seed Saves are kept. Presets never use an experimental option. Change anything afterwards and it
+shows **Custom** (it shows the preset's name again whenever your settings match one).
 
-| | Beginner | Standard | Expert |
-|---|---|---|---|
-| Kokiri Forest / Door of Time | Open / Open | Open / Open | Closed / Closed |
-| Zora's Fountain / Death Mountain | Open / Open | Closed / Closed | Closed / Closed |
-| Skip Child Zelda | On | On | Off |
-| Songs | Song Locations | Song Locations | Anywhere |
-| Spiritual Stones / Medallions | Vanilla | Vanilla | Anywhere |
-| Ocarinas, Weird Egg, freestanding rupees | Not shuffled | Not shuffled | Shuffled |
-| Kokiri Sword | In its chest | Shuffled | Shuffled |
-| Business Scrubs | Off | On (game's price) | On (random price) |
-| Tokensanity | Off | Dungeons Only | All Tokens |
-| Items Shuffled Per Shop | Off | Off | 4 items, random prices |
-| Maps & Compasses | Start With | Start With | Vanilla |
-| Hints | Balanced, no Mask of Truth | Balanced | Balanced |
-| Bombs without the Goron Bracelet | On | On | Off |
+| | Beginner | Standard | Expert | Race |
+|---|---|---|---|---|
+| Kokiri Forest | Open | Closed Deku (exit open) | Closed | Closed Deku (exit open) |
+| Door of Time | Open | Open | Closed | Open |
+| Zora's Fountain / Death Mountain | Open / Open | Closed / Closed | Closed / Closed | Closed / Closed |
+| Rainbow Bridge | Vanilla | Vanilla | All 6 medallions | 4 medallions |
+| Skip Child Zelda | On | On | Off | On |
+| Songs | Song Locations | Song Locations | Anywhere | Song Locations |
+| Spiritual Stones / Medallions | Vanilla | Dungeon Reward Locations | Anywhere | Dungeon Reward Locations |
+| Ocarinas, Weird Egg, freestanding rupees | Not shuffled | Not shuffled | Shuffled | Not shuffled |
+| Kokiri Sword | In its chest | Shuffled | Shuffled | Shuffled |
+| Business Scrubs | Off | On (game's price) | On (10-200 rupees) | Off |
+| Tokensanity | Off | Dungeons Only | All Tokens | Off |
+| Items Shuffled Per Shop | Off | 2 items, 10-99 rupees | 4 items, 10-200 rupees | Off |
+| Maps & Compasses | Start With | Own Dungeon | Vanilla | Start With |
+| Hints | Strong, no Mask of Truth | Balanced | Balanced | Strong, no Mask of Truth |
+| Bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern | On | On | Off | On |
+| Gold Skulltulas any time, Saria's Song with an ocarina, Anju 1 Cucco | On | On | Off | On |
+| Skip Ganon's Trials | On | On | Off | On |
 
-All three: glitchless logic with every location reachable, balanced item pool, freestanding items, boss Heart
+All four: glitchless logic with every location reachable, balanced item pool, freestanding items, boss Heart
 Containers, character gifts, quest rewards, Great Fairies and Skulltula House shuffled, vanilla keys, refills need
-their item, and every confirmed cutscene skip and Quality of Life option on.
+their item, and every confirmed cutscene skip on.
+
+**Race** follows the idea of the classic randomizer's tournament settings: a fast, fair seed with few places to check
+and strong hints anyone can read. Make the seed once and give the other racers its settings string (and seed
+number); turn **Create Spoiler Log** off if no one should be able to look.
+
+**Your own presets:** type a name next to **Your presets** and click **Save Preset**. It shows in the Seed preset
+list with a star (★), after the built-in ones; choosing it sets its gameplay settings, like a built-in preset.
+Saving under the same name updates it, and **Delete Preset** removes the one chosen in the list. They are kept in
+`custom_presets.toml` next to the program, each as a name and a settings string.
 
 ## Command-line tool
 
@@ -454,8 +522,8 @@ goggles_cli dump-plan <game> <settings> <out>   the item pool a settings string 
 goggles_cli selftest <game>                     read and rewrite every event flow, byte for byte
 ```
 
-`--from-user-settings` uses the settings saved by the window. The tool keeps its own `cache` folder next to itself
-(Cache Compressed Files); `--no-cache` compresses every file instead, for the same mod.
+`--from-user-settings` uses the settings saved by the window. The tool keeps its own `cache` folder next to itself;
+`--no-cache` compresses every file instead (to measure a seed without the cache), for the same mod.
 
 ## For developers
 
@@ -465,8 +533,8 @@ You need [Zig 0.17.1](https://ziglang.org/download/). Nothing else: zstd is comp
 0.3 comes with prebuilt libraries in `vendor/Raven/lib`.
 
 ```bash
-zig build                              # debug build of this system: zig-out/<system>
-zig build -Doptimize=ReleaseFast       # release build
+zig build                              # release build (ReleaseFast) of this system: zig-out/<system>
+zig build -Doptimize=Debug             # debug build, only when debugging
 zig build run                          # build and open the window
 zig build cli                          # only the command-line tool
 zig build test                         # unit tests
@@ -475,11 +543,15 @@ zig build test                         # unit tests
 Cross-compiling works from any system, and every system gets its own folder in `zig-out`:
 
 ```bash
-zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows   # zig-out/windows
-zig build -Doptimize=ReleaseFast -Dtarget=x86_64-linux     # zig-out/linux
-zig build -Doptimize=ReleaseFast -Dtarget=x86_64-macos     # zig-out/macos
-zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos    # zig-out/macos-aarch64
+zig build -Dtarget=x86_64-windows    # zig-out/windows
+zig build -Dtarget=aarch64-windows   # zig-out/windows-aarch64 (command-line tool only)
+zig build -Dtarget=x86_64-linux      # zig-out/linux
+zig build -Dtarget=aarch64-linux     # zig-out/linux-aarch64 (command-line tool only)
+zig build -Dtarget=x86_64-macos      # zig-out/macos
+zig build -Dtarget=aarch64-macos     # zig-out/macos-aarch64
 ```
+
+Raven has no prebuilt library for Windows or Linux on ARM yet, so those two builds have the command-line tool only.
 
 Each folder holds the window, the command-line tool and the Raven library, under the name the program loads:
 `raven.dll`, `libraven.so.0` or `libraven.0.dylib` (the macOS library is universal: Intel and Apple Silicon). On
@@ -564,10 +636,14 @@ version is in [CHANGELOG.md](CHANGELOG.md).
 - GUI built with [Raven](https://github.com/oscar-soirey/Raven) (Apache-2.0).
 - Event flow writer, start-of-game skips, Gossip Stone hints and the Gerudo card / small chest findings from
   [Clawshot](https://github.com/hiKareeem/Clawshot) by Kareem (MIT).
-- Chests without cutscene, token-based Gold Skulltula drops, items shuffled per shop, Business Scrubs and the
-  character gift list from [OotrR](https://github.com/Mozencaz/OotrR) by Mozencaz (MIT).
+- From [OotrR](https://github.com/Mozencaz/OotrR) by Mozencaz (MIT):
+  - **Key rando** (0.7.3): key rings, Key Ring Dungeons, dungeon boss keys and removed keys, including the way the
+    new key items are built and applied (OotrR's key adapter);
+  - **Gold Skulltula drops**: building every drop on the token's own pickup, and (0.7.3) reading each item with
+    everything it inherits, which fixed drops that gave nothing;
+  - chests without cutscene, items shuffled per shop, Business Scrubs and the character gift list.
 - NUP package reader based on [nup](https://github.com/a55uka/nup).
 - [zstd](https://github.com/facebook/zstd) (BSD) for the game's compressed files.
-- License details: the original repository's
-  [docs/THIRD_PARTY.md](https://github.com/AbyssDragonModding/Goggles-of-Truth/blob/main/docs/THIRD_PARTY.md).
+- Which file took what from where, and the license notices: [THIRD_PARTY.md](THIRD_PARTY.md) (also in every
+  download).
 - A fan project, not affiliated with or endorsed by Nintendo. Use your own copy of the game.

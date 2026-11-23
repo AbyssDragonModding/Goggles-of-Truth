@@ -24,6 +24,7 @@ const pickups = @import("pickups.zig");
 const flows = @import("flows.zig");
 const filecache = @import("filecache.zig");
 const compressor = @import("compressor.zig");
+const keyitems = @import("keyitems.zig");
 const zstd = @import("../formats/zstd.zig");
 const Progress = @import("../core/Progress.zig");
 const Allocator = std.mem.Allocator;
@@ -100,7 +101,7 @@ pub const Inputs = struct {
     placed: []const ?ItemId,
     hint_list: []const hints.Hint,
     out_romfs: []const u8,
-    /// Cache Compressed Files: where compressed files are reused from, or null to compress every file
+    /// the file cache: where compressed files are reused from, or null to compress every file
     cache: ?*filecache.FileCache = null,
 };
 
@@ -167,6 +168,10 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
 
     // items lying in the world need a real pickup actor (pickups.zig)
     var cloner = pickups.PickupCloner.init(world, &patches, &restbl, progress);
+    // key rings and dungeon boss keys first: the chests, drops and gifts below place them
+    const key_items = try keyitems.build(world, &patches, &cloner, &plan.options, progress);
+    patches.endStep();
+    if (key_items > 0) progress.log("Dungeon keys: {d} key rings / boss keys made", .{key_items});
 
     for (try sortedKeys(std.ArrayList(StageEdit), a, &stage_edits)) |rel| {
         const edits = stage_edits.get(rel).?.items;

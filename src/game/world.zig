@@ -481,6 +481,11 @@ pub const World = struct {
 
     /// The English name of item key `key` ("Dungeon_SmallKey@ForestTemple" -> "Small Key (Forest Temple)").
     pub fn itemName(self: *const Self, allocator: Allocator, key: []const u8) error{OutOfMemory}![]const u8 {
+        // the key rings and dungeon boss keys are made by the generator: the game has no name for them
+        if (logic.keyItemOf(key)) |k| {
+            const d = logic.key_dungeons[k.dungeon];
+            return std.fmt.allocPrint(allocator, "{s} ({s})", .{ if (k.ring) "Key Ring" else "Boss Key", d.name });
+        }
         const at = std.mem.indexOfScalar(u8, key, '@');
         const base = if (at) |i| key[0..i] else key;
         const prefixes = [_][]const u8{ "Item_", "Obj_", "Weapon_", "TBox_", "Shop_", "Armor_", "Armor_Adult_", "Armor_Child_" };
@@ -517,6 +522,8 @@ pub const World = struct {
     /// The actor to write for item `key` in a placement context ("Hookshot" -> "Item_Hookshot"), or null when the
     /// game has none. Allocated with `allocator`.
     pub fn actorFor(self: *const Self, allocator: Allocator, key: []const u8, context: Context) error{OutOfMemory}!?[]const u8 {
+        // a key ring or dungeon boss key: the actor the generator makes for it (keyitems.zig), in every context
+        if (logic.keyItemOf(key) != null) return try std.fmt.allocPrint(allocator, "Item_{s}", .{key});
         const base = if (std.mem.indexOfScalar(u8, key, '@')) |i| key[0..i] else key;
         const order: []const []const u8 = switch (context) {
             .chest => &.{ "TBox_", "Item_", "Obj_", "Tbox_", "Weapon_" },

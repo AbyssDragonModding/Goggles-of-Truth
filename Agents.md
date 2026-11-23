@@ -1,104 +1,92 @@
-# AGENTS.md — Development Guidelines for AI Assistants
+# AI Agent Guidelines & Development Rules
 
-This document provides context, coding conventions, architectural rules, and cross-compilation workflows for AI agents (e.g., Claude, Cursor, Copilot) working on this repository.
-
----
-
-## 1. Project Overview & Context
-
-- **Language:** Zig (migrating from Python)
-- **Domain:** Seed / Item Randomizer Engine with UI
-- **Goal:** High-performance, deterministic seed generation with zero runtime dependencies and instant start times.
-- **Priority:** Maintainability and readability above cleverness. The human maintainer must be able to manually edit and extend all generated code without wrestling with overly complex metaprogramming.
+This document outlines the mandatory architecture, coding standards, performance rules, and translation strategies for developing this project in Zig.
 
 ---
 
-## 2. Core Architectural & Code Style Principles
+## 1. Zig Idioms & Code Style
 
-### 2.1 Readability & Structure
-- **Explicit over Implicit:** Prefer clear, step-by-step imperatively written logic over dense or trick-based implementations.
-- **No Complex Metaprogramming (`comptime`):** Limit `comptime` to necessary type parameters or UI binding requirements. Avoid macro-style abstractions or heavy generic type metaprogramming.
-- **Explicit Struct Method Call Signatures:** Always use clean, named structs with explicit `Self` pointer receiver syntax:
+- **Strict Explicitness:**
+  - Avoid implicit behaviors, implicit casts, or undisclosed allocations.
+  - All allocations must explicitly accept an `Allocator` parameter.
+  - Never suppress errors using `catch unreachable` unless mathematically proven impossible, and document the reason.
+
+- **Struct Method Signatures & Instantiation:**
+  - Method calls must explicitly use struct namespace or explicit method receiver syntax.
+  - Use explicit field names when initializing structs (no positional struct initialization).
   ```zig
-  pub const LogicSolver = struct {
-      seed: u64,
-
-      const Self = @This();
-
-      pub fn init(seed: u64) Self {
-          return Self{ .seed = seed };
-      }
-
-      pub fn generate(self: *Self) !void {
-          // Explicit logic execution
-      }
+  // Preferred
+  const config = GenerationConfig{
+      .seed = 12345,
+      .thread_count = 6,
   };
-  ```
-- **Named Field Initialization:** Always use explicit field names when initializing structs:
-  ```zig
-  // PREFERRED
-  const item = Item{ .id = 1, .name = "Hookshot", .flag = .key_item };
-
-  // AVOID
-  const item = Item{ 1, "Hookshot", .key_item };
+  GenerationConfig.init(allocator, config);
   ```
 
-### 2.2 Memory Management
-- **Explicit Allocator Passing:** Pass an `std.mem.Allocator` parameter to any function or struct method that requires allocation. Never rely on hidden dynamic memory allocation.
-- **Use Arena Allocators for Generation Passes:** Use `std.heap.ArenaAllocator` for seed generation routines so memory can be allocated rapidly during generation and freed in a single operation upon completion:
-  ```zig
-  pub fn generateSeed(base_allocator: std.mem.Allocator, config: Config) !SeedResult {
-      var arena = std.heap.ArenaAllocator.init(base_allocator);
-      defer arena.deinit(); // Clean up entire generation run easily
-      const allocator = arena.allocator();
+- **String Handling:**
+  - Direct primitive slice types like `[]u8` and `[]const u8` are forbidden for high-level string handling.
+  - Always use the project's dedicated String library/wrapper for string manipulations, ownership management, and formatting.
 
-      // Generation logic using allocator...
-  }
-  ```
-
-### 2.3 Error Handling
-- **Explicit Custom Error Sets:** Avoid using `anyerror` in library code. Define concrete enum error sets for failure modes:
-  ```zig
-  pub const RandomizerError = error{
-      InvalidSeed,
-      UnsolvableLogic,
-      ItemPoolExhausted,
-      OutMemory,
-  };
-  ```
-- **Visible Failure Paths:** Handle error propagation clearly with `try` or explicit `catch` blocks rather than hiding errors inside complex error-union chains.
+- **Readability & Intent-Driven Naming:**
+  - High human readability and future maintainability are **top priorities**.
+  - Variable and function names must explicitly describe their business logic/intent (e.g., `calculateOptimalItemPlacement` over `calcPlacement`).
+  - Code must be self-documenting. Use clear comment blocks for non-obvious logic decisions.
 
 ---
 
-## 3. Cross-Compilation & Build Instructions
+## 2. High Performance Architecture (Priority Rules)
 
-Ensure all code remains fully compatible with Zig's built-in cross-compilation pipeline. Avoid non-standard OS-specific dependencies unless isolated behind `@import("builtin").target`.
+- **Multithreading & Core Utilization (PRIORITY):**
+  - Concurrency must be utilized wherever possible (e.g., seed generation, logic checking, asset processing).
+  - Do not hardcode fixed thread limits. Dynamically calculate CPU threads to utilize approximately **75% of available CPU cores**.
+  - Formula: `target_threads = max(1, @as(usize, @floatToInt(usize, @intToFloat(f32, std.Thread.getCpuCount() catch 1) * 0.75)))`
+  - Leave ~25% headroom to maintain system responsiveness during intensive generation.
 
-### Build Targets Command Reference
-```bash
-# Debug Build (Host)
-zig build
+- **Caching Strategy (PRIORITY):**
+  - Implement aggressive memoization and cache layers for repetitive operations (e.g., world reachability graphs, parsed XML layout trees, static rom tables).
+  - Invalidate caches cleanly when generation parameters change.
 
-# ReleaseFast - Native
-zig build -Doptimize=ReleaseFast
-
-# Windows x86_64
-zig build-exe src/main.zig -target x86_64-windows -O ReleaseFast
-
-# macOS Apple Silicon (ARM64)
-zig build-exe src/main.zig -target aarch64-macos -O ReleaseFast
-
-# Linux x86_64
-zig build-exe src/main.zig -target x86_64-linux -O ReleaseFast
-```
+- **Build Configuration:**
+  - Default build targets must always default to **Release** mode (`ReleaseFast` or `ReleaseSafe`) unless an active debug session is explicitly requested.
 
 ---
 
-## 4. Instructions for AI Code Edits
+## 3. Platform & Target Support
 
-When adding new features or responding to refactoring requests:
+- **Cross-Platform Compatibility:**
+  - Code must compile natively for:
+    - **Linux** (`x86_64`, `aarch64`)
+    - **Windows** (`x86_64`, `aarch64`)
+    - **macOS** (`x86_64`, `aarch64`)
+  - Avoid OS-specific conditional code unless isolated inside dedicated platform abstraction modules.
 
-1. **Preserve UI Bindings:** Do not break existing bindings between the main UI logic and the Zig solver engine.
-2. **Comment Intent:** Write brief explanations above complex logic checks explaining *why* the check exists (especially when porting graph verification routines from Python).
-3. **Avoid Pythonic Idioms in Zig:** Convert Python list comprehensions, runtime dynamic checks, and implicit dynamic dicts into fixed arrays, slices, explicit maps (`std.AutoHashMap`), or lookup structs.
-4. **Deterministic PRNG:** Use explicit PRNG streams (such as `std.rand.DefaultPrng`) anchored strictly to the seed value to guarantee identical results across target OS platforms.
+---
+
+## 4. GUI Architecture (ELM & XML-Driven)
+
+- **Architecture:**
+  - GUI implementation strictly follows the **ELM Architecture** (Model-View-Update pattern).
+    - **Model:** Represents state deterministically.
+    - **Update:** Pure functions returning updated state given a message.
+    - **View:** Declarative rendering based on Model state.
+
+- **Modular Page Definitions:**
+  - Every UI page/screen must be fully defined in its own independent XML file.
+  - The UI framework loads and parses XML modularly to construct the view components.
+
+---
+
+## 5. Python-to-Zig Translation & Reference Resolution
+
+- **Explicit Type & Logic Translation:**
+  - When porting logic from Python reference implementations, retain exact algorithmic behavior while converting dynamically-typed logic into explicit, strongly-typed Zig types.
+  - Map Python primitives to explicit Zig types (`i32`, `u32`, `usize`, etc.). Avoid generic untyped representations.
+
+- **Reference Repositories:**
+  - Reference 1 (Primary): [OotrR (Mozencaz/OotrR)](https://github.com/Mozencaz/OotrR)
+  - Reference 2 (Secondary): [Clawshot (hiKareeem/Clawshot)](https://github.com/hiKareeem/Clawshot)
+
+- **Conflict & Logic Resolution Standard:**
+  1. **Feature Alignment:** If a feature exists in both references, analyze both Python implementations.
+  2. **Averaging Logic:** Determine the common/average behavioral logic between both implementations.
+  3. **Priority Tie-Breaker:** Prioritize **OotrR** whenever discrepancies or architectural conflicts arise between the two.

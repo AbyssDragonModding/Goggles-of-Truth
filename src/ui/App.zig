@@ -5,7 +5,6 @@
 //! and results to a queue that a 0.1 s timer drains on the UI thread (Raven belongs to the thread that started it).
 
 const std = @import("std");
-const builtin = @import("builtin");
 const r = @import("raven");
 const engine = @import("engine");
 const layout = @import("layout.zig");
@@ -35,6 +34,14 @@ const Dependent = struct { key: Key, other: Key, value: []const u8 };
 const dependents = [_]Dependent{
     .{ .key = .bridge_medallions, .other = .rainbow_bridge, .value = "medallions" },
     .{ .key = .bridge_tokens, .other = .rainbow_bridge, .value = "tokens" },
+    .{ .key = .key_ring_forest, .other = .key_rings, .value = "choose" },
+    .{ .key = .key_ring_fire, .other = .key_rings, .value = "choose" },
+    .{ .key = .key_ring_water, .other = .key_rings, .value = "choose" },
+    .{ .key = .key_ring_shadow, .other = .key_rings, .value = "choose" },
+    .{ .key = .key_ring_spirit, .other = .key_rings, .value = "choose" },
+    .{ .key = .key_ring_well, .other = .key_rings, .value = "choose" },
+    .{ .key = .key_ring_gtg, .other = .key_rings, .value = "choose" },
+    .{ .key = .key_ring_ganon, .other = .key_rings, .value = "choose" },
 };
 
 // ------------------------------------------------------------------------------------------ the worker's queue
@@ -111,6 +118,7 @@ progress_bar: r.ProgressBar,
 log: r.ListView,
 preset_in: r.ComboBox,
 preset_lab: r.Label,
+preset_name_in: r.TextInput,
 saves_lab: r.Label,
 seeds_list: r.ListView,
 gen_btn: r.Widget,
@@ -120,6 +128,12 @@ badges: [settings.key_count]?struct { border: r.Border, label: r.Label } = @spla
 badge_styles: [3]layout.BadgeStyle,
 
 st: Settings,
+/// the presets the player saved (custom_presets.toml); the drop-down lists them after the built-in ones
+custom_presets: engine.custompresets.CustomPresetList,
+/// each saved preset's settings, read once from its settings string when the drop-down is filled (cached: the
+/// drop-down is matched against them on every settings change). Allocated in `custom_preset_arena`.
+custom_preset_settings: std.ArrayList(Settings) = .empty,
+custom_preset_arena: std.heap.ArenaAllocator,
 /// the excluded location names (owned)
 excluded: std.array_hash_map.String(void) = .empty,
 /// owned copies of the text fields' paths
@@ -233,7 +247,10 @@ pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
     // the widgets main.xml uses (status badges): declared once in src/ui/widgets.xml
     if (r.xmlRegisterWidgets(layout.widgets_xml) < 1) return fail("src/ui/widgets.xml could not be loaded: {s}", .{ravenError()});
 
-    const xml = layout.windowXml(gpa) catch return error.OutOfMemory;
+    const xml = layout.windowXml(gpa) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.PageMarkerMissing, error.NoSpaceLeft => return fail("A page of the window layout (src/ui/pages) could not be put into src/ui/main.xml: {s}", .{@errorName(err)}),
+    };
     defer gpa.free(xml);
     const window = r.Window.createFromXml(xml) catch return fail("The window layout (src/ui/main.xml) could not be loaded: {s}", .{ravenError()});
     const root = window.getContent() orelse return fail("The window layout (src/ui/main.xml) has no content.", .{});
@@ -267,11 +284,14 @@ pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
         .log = try find(root, r.ListView, "log"),
         .preset_in = try find(root, r.ComboBox, "preset_in"),
         .preset_lab = try find(root, r.Label, "preset_lab"),
+        .preset_name_in = try find(root, r.TextInput, "preset_name_in"),
         .saves_lab = try find(root, r.Label, "saves_lab"),
         .seeds_list = try find(root, r.ListView, "seeds_list"),
         .gen_btn = try find(root, r.Widget, "generate"),
         .badge_styles = layout.badgeStyles(),
         .st = Settings.defaults(),
+        .custom_presets = engine.custompresets.CustomPresetList.init(gpa),
+        .custom_preset_arena = std.heap.ArenaAllocator.init(gpa),
         .check_arena = std.heap.ArenaAllocator.init(gpa),
         .queue = .{ .allocator = gpa, .io = io },
     };
@@ -302,6 +322,9 @@ fn deinit(self: *App) void {
     for (self.queue.items.items) |m| self.queue.freeMessage(m);
     self.queue.items.deinit(self.gpa);
     self.check_arena.deinit();
+    self.custom_presets.deinit();
+    self.custom_preset_settings.deinit(self.gpa);
+    self.custom_preset_arena.deinit();
     self.frame.deinit();
 }
 
@@ -332,6 +355,13 @@ fn bind(self: *App) AppError!void {
     self.romfs_in.setText(self.z(self.game_path));
     self.out_in.setText(self.z(self.out_path));
 
+    // custom_presets.toml
+    var preset_messages: std.ArrayList([]const u8) = .empty;
+    const saved_presets = engine.custompresets.load(self.gpa, load_arena.allocator(), &self.env, &preset_messages) catch return error.OutOfMemory;
+    self.custom_presets.deinit();
+    self.custom_presets = saved_presets;
+    self.fillPresetCombo();
+
     const actions = [_]struct { name: [:0]const u8, f: fn (*App, ?r.Widget, [:0]const u8) void }{
         .{ .name = "rando.open_folder", .f = onOpenFolder },
         .{ .name = "rando.generate", .f = onGenerate },
@@ -350,6 +380,8 @@ fn bind(self: *App) AppError!void {
         .{ .name = "rando.path.name", .f = onPathChanged },
         .{ .name = "rando.path.seed", .f = onPathChanged },
         .{ .name = "rando.preset", .f = onPreset },
+        .{ .name = "rando.save_preset", .f = onSavePreset },
+        .{ .name = "rando.delete_preset", .f = onDeletePreset },
         .{ .name = "rando.filter", .f = onFilter },
         .{ .name = "rando.refresh_seeds", .f = onRefreshSeeds },
         .{ .name = "rando.play_selected", .f = onPlaySelected },
@@ -377,6 +409,7 @@ fn bind(self: *App) AppError!void {
     self.refreshString();
     self.write("Ready. Pick your romfs and an output folder, then Generate.");
     for (loaded.messages) |m| self.write(m);
+    for (preset_messages.items) |m| self.write(m);
     if (std.mem.trim(u8, self.out_path, " \t").len == 0) {
         self.useLongshot(true); // first start with Longshot installed: use its mods folder
     } else {
@@ -495,25 +528,115 @@ fn refreshString(self: *App) void {
 /// After any change: show which preset matches and save user_settings.toml.
 fn settingsChanged(self: *App, st: *const Settings) void {
     if (!self.loaded) return;
-    const preset = settings.matchingPreset(st) orelse "Custom";
     self.syncing = true;
-    for (layout.preset_items, 0..) |p, i| {
-        if (std.mem.eql(u8, p, preset)) self.preset_in.setSelected(@intCast(i));
-    }
+    self.preset_in.setSelected(@intCast(self.presetIndexFor(st)));
     self.syncing = false;
     self.preset_lab.setText(if (self.save()) "Saved to user_settings.toml" else "Couldn't save user_settings.toml");
+}
+
+/// The preset drop-down: "Custom", the built-in presets, then the saved ones (with a star). Each saved preset's
+/// settings are read here once, so matching them on every change doesn't parse a settings string.
+fn fillPresetCombo(self: *App) void {
+    _ = self.custom_preset_arena.reset(.retain_capacity);
+    self.custom_preset_settings.clearRetainingCapacity();
+    self.syncing = true;
+    defer self.syncing = false;
+    self.preset_in.clearItems();
+    for (layout.preset_items) |name| _ = self.preset_in.addItem(self.z(name));
+    for (self.custom_presets.presets.items) |preset| {
+        // custompresets.load and onSavePreset only keep settings strings that read, so the fallback is never used
+        const saved_settings = settings.fromString(self.custom_preset_arena.allocator(), preset.settings_string) catch Settings.defaults();
+        // why: the drop-down's items and this list must stay index for index, so stop adding both at once
+        self.custom_preset_settings.append(self.gpa, saved_settings) catch return;
+        _ = self.preset_in.addItem(self.fmtZ("\u{2605} {s}", .{preset.name}));
+    }
+}
+
+/// The drop-down index for `st`: a built-in preset it matches, else a saved one, else 0 ("Custom").
+fn presetIndexFor(self: *App, st: *const Settings) usize {
+    if (settings.matchingPreset(st)) |name| {
+        for (layout.preset_items, 0..) |item, index| {
+            if (std.mem.eql(u8, item, name)) return index;
+        }
+    }
+    for (self.custom_preset_settings.items, 0..) |*saved_settings, custom_index| {
+        if (settings.sameGameplaySettings(st, saved_settings)) return layout.preset_items.len + custom_index;
+    }
+    return 0;
+}
+
+/// The saved preset chosen in the drop-down, or null (Custom or a built-in preset).
+fn selectedCustomPresetIndex(self: *App) ?usize {
+    const index = self.preset_in.getSelected();
+    if (index < layout.preset_items.len) return null;
+    const custom_index: usize = @as(usize, @intCast(index)) - layout.preset_items.len;
+    if (custom_index >= self.custom_preset_settings.items.len) return null;
+    return custom_index;
 }
 
 fn onPreset(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
     const combo = (sender orelse return).as(r.ComboBox) orelse return;
     const index = combo.getSelected();
     // "Custom", or set from code
-    if (self.syncing or index <= 0 or index >= layout.preset_items.len) return;
-    const name = layout.preset_items[@intCast(index)];
-    const preset = settings.findPreset(name) orelse return;
+    if (self.syncing or index <= 0) return;
     const st = self.currentSettings(self.frame.allocator()) catch return;
-    self.applySettings(settings.applyPreset(st, preset));
-    self.writeFmt("Preset {s} applied.", .{name});
+    if (index < layout.preset_items.len) {
+        const name = layout.preset_items[@intCast(index)];
+        const preset = settings.findPreset(name) orelse return;
+        self.applySettings(settings.applyPreset(st, preset));
+        self.writeFmt("Preset {s} applied.", .{name});
+        return;
+    }
+    const custom_index = self.selectedCustomPresetIndex() orelse return;
+    const saved = self.custom_presets.presets.items[custom_index];
+    // the name box shows it, so Save Preset updates this preset
+    self.preset_name_in.setText(self.z(saved.name));
+    self.applySettings(settings.applyGameplaySettings(st, &self.custom_preset_settings.items[custom_index]));
+    self.writeFmt("Your preset {s} applied.", .{saved.name});
+}
+
+fn onSavePreset(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    const name = std.mem.trim(u8, self.preset_name_in.getText(), " \t");
+    engine.custompresets.validatePresetName(name) catch {
+        self.messageBox("Save preset", "Type a name for your preset first (up to 40 characters, without |). It can't be Custom or the name of a built-in preset (Beginner, Standard, Expert, Race).");
+        return;
+    };
+    const a = self.frame.allocator();
+    const st = self.currentSettings(a) catch return;
+    const settings_string = settings.toString(a, &st) catch return;
+    const existed = self.custom_presets.indexOfName(name) != null;
+    _ = self.custom_presets.savePreset(name, settings_string) catch {
+        self.write("Couldn't save the preset (out of memory).");
+        return;
+    };
+    self.storeCustomPresets();
+    self.fillPresetCombo();
+    self.settingsChanged(&st);
+    if (existed) self.writeFmt("Your preset {s} updated.", .{name}) else self.writeFmt("Your preset {s} saved.", .{name});
+}
+
+fn onDeletePreset(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    const custom_index = self.selectedCustomPresetIndex() orelse {
+        self.messageBox("Delete preset", "Choose one of your saved presets (marked with a star) in the Seed preset list first. The built-in presets can't be deleted.");
+        return;
+    };
+    const name = self.z(self.custom_presets.presets.items[custom_index].name);
+    self.custom_presets.removePreset(custom_index);
+    self.storeCustomPresets();
+    self.fillPresetCombo();
+    self.preset_name_in.setText("");
+    const st = self.currentSettings(self.frame.allocator()) catch return;
+    self.settingsChanged(&st);
+    self.writeFmt("Your preset {s} deleted.", .{name});
+}
+
+/// Writes custom_presets.toml (the log says when it can't).
+fn storeCustomPresets(self: *App) void {
+    const failure = engine.custompresets.save(self.frame.allocator(), &self.env, &self.custom_presets) catch {
+        self.write("Couldn't save custom_presets.toml (out of memory).");
+        return;
+    };
+    if (failure) |reason| self.writeFmt("Couldn't save custom_presets.toml: {s}", .{reason});
 }
 
 fn onReset(self: *App, _: ?r.Widget, _: [:0]const u8) void {
@@ -776,11 +899,7 @@ fn onOpenFolder(self: *App, _: ?r.Widget, _: [:0]const u8) void {
         self.messageBox("Output", "The output folder doesn't exist yet.\nChoose one on the ROM Options tab, or generate a seed first.");
         return;
     }
-    const opener: []const u8 = switch (builtin.os.tag) {
-        .windows => "explorer",
-        .macos => "open",
-        else => "xdg-open",
-    };
+    const opener: []const u8 = engine.host.folder_opener_command;
     _ = std.process.spawn(self.io, .{ .argv = &.{ opener, out }, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore }) catch |err| {
         self.messageBox("Output", self.fmtZ("Couldn't open the folder:\n{s}", .{@errorName(err)}));
     };
@@ -795,6 +914,22 @@ fn randomSeed(self: *App) void {
 
 fn onRandomSeed(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     self.randomSeed();
+}
+
+/// The mod folder name to write: "" (named after the seed, which is new) as it is; a chosen name that is already a
+/// folder in the output folder gets " (2)", " (3)"... so a new seed never overwrites the earlier one. Null when
+/// out of memory.
+fn unusedModName(self: *App, allocator: Allocator, out: []const u8, chosen_name: []const u8) ?[]const u8 {
+    if (chosen_name.len == 0) return chosen_name;
+    var candidate: []const u8 = chosen_name;
+    var copy_number: usize = 2;
+    while (true) : (copy_number += 1) {
+        const folder = fsmod.join(allocator, &.{ out, candidate }) catch return null;
+        if (!self.env.fs.exists(folder)) break;
+        candidate = std.fmt.allocPrint(allocator, "{s} ({d})", .{ chosen_name, copy_number }) catch return null;
+    }
+    if (candidate.ptr != chosen_name.ptr) self.writeFmt("Mod folder {s} already exists: writing {s} instead.", .{ chosen_name, candidate });
+    return candidate;
 }
 
 const CheckedPaths = struct { game: []const u8, out: []const u8 };
@@ -947,8 +1082,17 @@ fn onGenerate(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     if (!self.requireGame()) return;
     const a = self.frame.allocator();
     const st = self.currentSettings(a) catch return;
+    // why: every Generate makes a new seed. A seed number that was already made (this session, or a seed folder in
+    // the output folder) gets a new random number instead, so the earlier seed's mod is never overwritten. A number
+    // typed in that wasn't made yet (someone else's seed, say) is used as it is.
+    const typed_seed = std.mem.trim(u8, self.seed_in.getText(), " \t");
+    if (typed_seed.len > 0 and self.seedUsed(typed_seed)) {
+        const old_seed = self.z(typed_seed);
+        self.randomSeed();
+        self.writeFmt("New seed number {s} (seed {s} is already made).", .{ self.seed_text, old_seed });
+    }
     const seed = std.mem.trim(u8, self.seed_in.getText(), " \t");
-    const name = std.mem.trim(u8, self.name_in.getText(), " \t");
+    const name = self.unusedModName(a, paths.out, std.mem.trim(u8, self.name_in.getText(), " \t")) orelse return;
     self.setOwned(&self.game_path, paths.game);
     self.setOwned(&self.out_path, paths.out);
     _ = self.save();

@@ -4,6 +4,7 @@
 //! also accepts). Every std error is mapped to FsError so callers have one short list of failure modes.
 
 const std = @import("std");
+const host = @import("../platform/host.zig");
 const Io = std.Io;
 const Dir = std.Io.Dir;
 
@@ -207,10 +208,9 @@ pub fn basename(path: []const u8) []const u8 {
     return std.fs.path.basename(path);
 }
 
-/// Case-insensitive on Windows and macOS (their default file systems), exact elsewhere.
+/// Case-insensitive on Windows and macOS (their default file systems), exact elsewhere (platform/host.zig).
 pub fn samePath(a: []const u8, b: []const u8) bool {
-    const builtin = @import("builtin");
-    if (builtin.os.tag == .windows or builtin.os.tag == .macos) {
+    if (host.file_names_ignore_case) {
         if (a.len != b.len) return false;
         for (a, b) |x, y| {
             const xs = if (x == '\\') '/' else std.ascii.toLower(x);

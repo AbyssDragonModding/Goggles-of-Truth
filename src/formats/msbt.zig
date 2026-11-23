@@ -277,8 +277,8 @@ fn plainText(allocator: Allocator, text: []const u8, utf8: bool) MsbtError![]con
             if (c == 0) break;
             var buf: [4]u8 = undefined;
             // a lone surrogate half becomes U+FFFD, as Python's "replace" decoding did
-            const n = std.unicode.utf8Encode(c, &buf) catch std.unicode.utf8Encode(0xFFFD, &buf) catch unreachable;
-            out.appendSlice(allocator, buf[0..n]) catch return error.OutOfMemory;
+            const encoded_character: []const u8 = if (std.unicode.utf8Encode(c, &buf)) |n| buf[0..n] else |_| "\u{FFFD}";
+            out.appendSlice(allocator, encoded_character) catch return error.OutOfMemory;
             j += 2;
         }
     }

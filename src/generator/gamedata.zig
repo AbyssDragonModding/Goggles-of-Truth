@@ -9,6 +9,7 @@ const byml = @import("../formats/byml.zig");
 const hash = @import("../core/hash.zig");
 const settings_mod = @import("../settings/settings.zig");
 const world_mod = @import("../game/world.zig");
+const logic = @import("../logic/logic.zig");
 const patchset = @import("patchset.zig");
 const Progress = @import("../core/Progress.zig");
 const Allocator = std.mem.Allocator;
@@ -418,6 +419,65 @@ pub const GameDataPatcher = struct {
         return self.expRef(tmpl, helper);
     }
 
+    /// Adds a saved Bool flag `name` starting at `default`, shaped like Bool `like` (or, with null, like the first
+    /// Bool of the main save file that resets as the ones in progress.sav do, ResetTypeValue 8). Every saved Bool takes
+    /// an eight-byte record in its save file, so that file's size and the offsets after it grow too (MetaData), as
+    /// OotrR does (tracking_metadata.add_saved_flags, soul_adapter.build_item_files); without that the game reads the
+    /// saves wrong. Returns false (nothing changed) when the flag already exists.
+    pub fn addSavedBool(self: *Self, name: []const u8, default: bool, like: ?[]const u8) PatchError!bool {
+        const h = mm3(name);
+        if (self.index.contains(h)) return false;
+        const data = self.root.getDict("Data") orelse return error.InvalidData;
+        const rows = data.getArray("Bool") orelse return error.InvalidData;
+        const tmpl: *byml.Dict = blk: {
+            if (like) |l| break :blk self.get(l, .Bool) orelse return error.NotAsExpected;
+            for (rows.items.items) |r| {
+                const d = r.asDict() orelse continue;
+                if ((d.getInt("SaveFileIndex") orelse -1) == 0 and (d.getInt("ResetTypeValue") orelse -1) == 8) break :blk d;
+            }
+            return error.NotAsExpected;
+        };
+        const row = (try (byml.Value{ .dict = tmpl }).clone(self.allocator)).dict;
+        try row.put(self.allocator, "Hash", (tmpl.get("Hash") orelse byml.Value{ .uint = 0 }).sameIntType(h));
+        try row.put(self.allocator, "DefaultValue", .{ .bool = default });
+        try rows.append(self.allocator, .{ .dict = row });
+        self.index.put(h, Row{ .kind = .Bool, .kind_name = "Bool", .row = row }) catch return error.OutOfMemory;
+
+        const file: usize = @intCast(@max(0, tmpl.getInt("SaveFileIndex") orelse 0));
+        const meta = self.root.getDict("MetaData") orelse return error.InvalidData;
+        try growIndexed(meta, "SaveDataSize", file, 8);
+        try growIndexed(meta, "SaveDataOffsetPos", file, 8);
+        try growScalar(self.allocator, meta, "AllDataSaveSize", 8);
+        try growScalar(self.allocator, meta, "AllDataSaveOffset", 8);
+        self.changed += 1;
+        return true;
+    }
+
+    /// Lists `actor` in the IsGet structure, so the game writes IsGet.<actor> whenever the item reaches the pouch
+    /// (chests, pickups and gifts alike). Why: the native pouch code only records the names the structure holds (member
+    /// murmur3(name) -> flag murmur3("IsGet." + name)); a new item missing from it is silently never recorded (OotrR,
+    /// soul_adapter.build_item_files). The IsGet.<actor> flag itself must be added first (addSavedBool).
+    pub fn addIsGetMember(self: *Self, actor: []const u8) PatchError!bool {
+        const s = self.get("IsGet", .Struct) orelse return error.NotAsExpected;
+        const members = s.getArray("DefaultValue") orelse return error.NotAsExpected;
+        const h = mm3(actor);
+        var shape: ?*byml.Dict = null;
+        for (members.items.items) |m| {
+            const d = m.asDict() orelse continue;
+            if ((d.getInt("Hash") orelse -1) == h) return false;
+            if (shape == null) shape = d;
+        }
+        const tmpl = shape orelse return error.NotAsExpected;
+        var buf: [256]u8 = undefined;
+        const flag = std.fmt.bufPrint(&buf, "IsGet.{s}", .{actor}) catch return error.NotAsExpected;
+        const member = try byml.Dict.create(self.allocator);
+        try member.put(self.allocator, "Hash", (tmpl.get("Hash") orelse byml.Value{ .uint = 0 }).sameIntType(h));
+        try member.put(self.allocator, "Value", (tmpl.get("Value") orelse byml.Value{ .uint = 0 }).sameIntType(mm3(flag)));
+        try members.append(self.allocator, .{ .dict = member });
+        self.changed += 1;
+        return true;
+    }
+
     /// Adds Int flag `name` (0, not saved), shaped like the game's UI_TokenGoldNumAfterGetting.
     pub fn addTempInt(self: *Self, name: []const u8) PatchError!void {
         const h = mm3(name);
@@ -571,6 +631,20 @@ pub const GameDataPatcher = struct {
     }
 };
 
+/// meta[key][index] += by (an array of sizes, one per save file).
+fn growIndexed(meta: *byml.Dict, key: []const u8, index: usize, by: i128) PatchError!void {
+    const arr = meta.getArray(key) orelse return error.InvalidData;
+    if (index >= arr.items.items.len) return error.InvalidData;
+    const v = arr.items.items[index];
+    arr.items.items[index] = v.sameIntType((v.asInt() orelse return error.InvalidData) + by);
+}
+
+/// meta[key] += by.
+fn growScalar(allocator: Allocator, meta: *byml.Dict, key: []const u8, by: i128) PatchError!void {
+    const v = meta.get(key) orelse return error.InvalidData;
+    try meta.put(allocator, key, v.sameIntType((v.asInt() orelse return error.InvalidData) + by));
+}
+
 fn appendValue(list: *std.ArrayList(byml.Value), allocator: Allocator, v: byml.Value) PatchError!void {
     list.append(allocator, v) catch return error.OutOfMemory;
 }
@@ -696,6 +770,23 @@ pub fn plannedChanges(allocator: Allocator, st: *const Settings, ocarina_bridge_
             for ([_][]const u8{ "IsGetMap", "IsGetCompass" }) |f| {
                 try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = try std.fmt.allocPrint(allocator, "DungeonInfo.{s}.{s}", .{ d, f }) });
             }
+        }
+    }
+    // Small Keys: Removed / Boss Keys: Removed. A dungeon's keys are in its DungeonInfo save entry: SmallKeyNum (held,
+    // what the locked doors use), SmallKeyTotalNum (found) and IsGetBossKey. A new save starts with all of them, so
+    // every door opens as if the keys were found (an extra key is harmless). As OotrR does
+    // (key_adapter.start_dungeon_values).
+    if (st.is(.small_keys, "remove")) {
+        for (logic.key_dungeons) |d| {
+            for ([_][]const u8{ "SmallKeyNum", "SmallKeyTotalNum" }) |f| {
+                try addChange(&out, allocator, .{ .kind = .int_flag, .flag = try std.fmt.allocPrint(allocator, "DungeonInfo.{s}.{s}", .{ d.folder, f }), .int_value = d.keys });
+            }
+        }
+    }
+    if (st.is(.boss_keys, "remove")) {
+        for (logic.key_dungeons) |d| {
+            if (d.boss == null) continue;
+            try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = try std.fmt.allocPrint(allocator, "DungeonInfo.{s}.IsGetBossKey", .{d.folder}) });
         }
     }
     if (st.flag(.shuffle_ocarinas) and !ocarina_bridge_patched) {

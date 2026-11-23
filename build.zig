@@ -1,11 +1,13 @@
 //! Build script for the Goggles of Truth Randomizer.
 //!
-//!   zig build                         the window and the command-line tool in zig-out/<system>, with the Raven
-//!                                     library beside them
+//!   zig build                         a release build (ReleaseFast) of the window and the command-line tool in
+//!                                     zig-out/<system>, with the Raven library beside them
 //!   zig build cli                     the command-line tool only (no window, no Raven needed)
 //!   zig build run                     build and start the window
 //!   zig build test                    unit tests of the engine (no game files needed)
-//!   zig build -Dtarget=x86_64-linux   cross-compile (x86_64-windows, x86_64-linux, x86_64-macos, aarch64-macos)
+//!   zig build -Doptimize=Debug        a debug build (only when debugging; every other build is a release build)
+//!   zig build -Dtarget=x86_64-linux   cross-compile (x86_64/aarch64 for windows, linux and macos; the window needs a
+//!                                     prebuilt Raven library, so aarch64 windows/linux get the command-line tool only)
 //!
 //! One folder per system: zig-out/windows, zig-out/linux, zig-out/macos (Intel) and zig-out/macos-aarch64 (Apple
 //! Silicon), so builds for several systems can share one zig-out. Ship a folder as it is: the program finds the
@@ -19,7 +21,17 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    // Agents.md: a plain `zig build` makes a release build (ReleaseFast). A debug build is only made when asked for:
+    // `zig build -Doptimize=Debug`. `--release=safe` / `--release=small` still choose those modes.
+    const optimize: std.builtin.Optimize = b.option(
+        std.builtin.Optimize,
+        "optimize",
+        "Debug, ReleaseSafe, ReleaseFast (the default) or ReleaseSmall",
+    ) orelse switch (b.graph.release_mode) {
+        .off, .any, .fast => .fast,
+        .safe => .safe,
+        .small => .small,
+    };
     const t = target.result;
 
     // Release builds are the ones shipped: without debug information, which holds the source paths of the machine

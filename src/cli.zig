@@ -1,7 +1,7 @@
 //! goggles_cli: the randomizer without a window.
 //!
 //!   goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
-//!                        [--from-user-settings] [--exefs <folder>] [--no-cache] [--dump-placement <file.json>]
+//!                        [--from-user-settings] [--exefs <folder>] [--no-cache] [--preset NAME] [--dump-placement <file.json>]
 //!   goggles_cli check <.nup, romfs or exefs>          game version check (prints the exefs/main SHA-256)
 //!   goggles_cli scan <.nup or romfs>                  scan the game and list a sample of the locations
 //!   goggles_cli vanilla-test <.nup or romfs>          is the vanilla placement beatable under the logic?
@@ -10,8 +10,8 @@
 //!   goggles_cli selftest <game>                       read and write back every event flow (byte check)
 //!
 //! Without --settings, generate uses user_settings.toml next to the program with --from-user-settings, else the
-//! defaults. Compressed files are cached in the cache folder next to the program (Cache Compressed Files) unless
-//! --no-cache is given or user_settings.toml turns it off (with --from-user-settings).
+//! defaults. Compressed files are always cached in the cache folder next to the program, unless --no-cache is
+//! given (to measure a seed without the cache).
 
 const std = @import("std");
 const engine = @import("engine");
@@ -20,7 +20,7 @@ const Allocator = std.mem.Allocator;
 const usage =
     \\usage:
     \\  goggles_cli generate --game <.nup or romfs> --out <folder> [--seed S] [--name N] [--settings STRING]
-    \\                       [--from-user-settings] [--exefs <folder>] [--no-cache]
+    \\                       [--from-user-settings] [--exefs <folder>] [--no-cache] [--preset NAME]
     \\  goggles_cli check <.nup, romfs or exefs>
     \\  goggles_cli scan <.nup or romfs>
     \\  goggles_cli vanilla-test <.nup or romfs>
@@ -94,6 +94,7 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
     var from_user = false;
     var no_cache = false;
     var dump_placement: ?[]const u8 = null;
+    var preset_name: ?[]const u8 = null;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
@@ -106,6 +107,7 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         else if (std.mem.eql(u8, arg, "--from-user-settings")) from_user = true
         else if (std.mem.eql(u8, arg, "--no-cache")) no_cache = true
         else if (std.mem.eql(u8, arg, "--dump-placement")) dump_placement = try optionValue(args, &i)
+        else if (std.mem.eql(u8, arg, "--preset")) preset_name = try optionValue(args, &i)
         else return error.BadArguments;
     }
     if (game.len == 0 or out.len == 0) return error.BadArguments;
@@ -120,7 +122,6 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         if (from_user) {
             const file = (try engine.usersettings.load(a, env)).settings;
             st.set(.per_seed_saves, file.get(.per_seed_saves));
-            st.set(.cache_files, file.get(.cache_files));
         }
     } else if (from_user) {
         const loaded = try engine.usersettings.load(a, env);
@@ -128,7 +129,14 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         st = loaded.settings;
     }
 
-    if (no_cache) st.set(.cache_files, .{ .boolean = false });
+    // --preset: a built-in preset's gameplay settings on top of the settings chosen so far
+    if (preset_name) |chosen| {
+        const preset = engine.settings.findPreset(chosen) orelse {
+            std.debug.print("error: no built-in preset named {s} (Beginner, Standard, Expert, Race)\n", .{chosen});
+            return error.Failed;
+        };
+        st = engine.settings.applyPreset(st, preset);
+    }
 
     var progress = engine.Progress.stderrPrinter();
     const result = engine.generator.generate(gpa, a, env, .{
@@ -138,6 +146,7 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         .seed = seed,
         .mod_name = name,
         .exefs = exefs,
+        .use_file_cache = !no_cache,
     }, null, &progress) catch |err| {
         std.debug.print("Generation failed: {s}\n", .{if (progress.failureMessage().len > 0) progress.failureMessage() else @errorName(err)});
         return error.Failed;
