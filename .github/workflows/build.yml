@@ -2,7 +2,7 @@
 # src/version.zig has none yet.
 #
 #   every push / pull request   tests, then the four builds, kept as downloadable artifacts of the run
-#   (pushes to main, 0.7.x and 0.8.0-dev)
+#   (pushes to main, 0.7.x-dev and 0.8.0-dev)
 #   a push to main with a new   also a Release named after the version (tag "<version>", e.g. 0.7.0) with one ZIP
 #   version in src/version.zig  per system, and the notes of that version from CHANGELOG.md
 #
@@ -14,9 +14,9 @@ name: Build
 
 on:
   push:
-    # main releases; 0.7.x (bug fixes) and 0.8.0-dev (new features) get the tests and builds only (the release job
+    # main releases; 0.7.x-dev (bug fixes) and 0.8.0-dev (new features) get the tests and builds only (the release job
     # runs on main alone)
-    branches: [main, 0.7.x, 0.8.0-dev]
+    branches: [main, 0.7.x-dev, 0.8.0-dev]
   pull_request:
   workflow_dispatch:
 
