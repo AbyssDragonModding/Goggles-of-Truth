@@ -2,7 +2,7 @@
 
 **An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26), attempting to bring back most of the settings from the classic randomizer (with some additional qol settings).**
 
-## Version **0.7.4** · [Discord](https://discord.gg/adSV8cWfBY) ·
+## Version **0.7.5** · [Discord](https://discord.gg/adSV8cWfBY) ·
 [Source](https://github.com/AbyssDragonModding/Goggles-of-Truth)
 
 Goggles of Truth shuffles chests, songs, dungeon rewards, NPC gifts, shop items, Gold Skulltulas and more, and
@@ -674,7 +674,7 @@ changes where items go (the logic, the item pool, the hints...). A version that 
 same seed number and settings string put every item in the same place. `settings.txt` shows both:
 
 ```
-Goggles of Truth Randomizer 0.7.4
+Goggles of Truth Randomizer 0.7.5
 Placement version: 0.7.3
 ```
 
@@ -682,7 +682,7 @@ Placement version: 0.7.3
 **Rebuild This Seed** (or run `goggles_cli generate --game <game> --rebuild <seed folder>`). The seed is made again
 with the new version into its own folder: the same items in the same places, with the fixes, and your save loads
 as before (its stored per-seed saves are kept). Only seeds with the same placement version can be rebuilt; the
-window says so otherwise. Seeds from 0.7.3 can be rebuilt with 0.7.4.
+window says so otherwise. Seeds from 0.7.3 and 0.7.4 can be rebuilt with 0.7.5.
 
 ## Credits
 

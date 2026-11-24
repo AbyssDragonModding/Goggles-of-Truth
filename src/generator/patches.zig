@@ -190,10 +190,15 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
                     try patchActor(s, a, world, plan, &cloner, &shop_presences, actor, edit, quick_vanilla[edit.loc], refills, progress);
                 }
             }
+            try hideBoardsOfSoldShelves(s, actors, edits, world, shop_presences.items);
         }
         if (hits != edits.len) return progress.fail(error.NotAsExpected, "{s}: expected {d} actors, patched {d}", .{ rel, edits.len, hits });
         try patches.emitZs(rel, orig, try byml.dumpDefault(s, .{ .dict = root }));
         patches.endStep();
+    }
+
+    if (cloner.heights_moved > 0) {
+        progress.log("Item heights: {d} placements raised or lowered to rest like the item they replace (largest move {d:.2})", .{ cloner.heights_moved, cloner.largest_height_move });
     }
 
     if (st.flag(.gs_any_time)) {
@@ -369,6 +374,10 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         } else {
             start_gifts.append(a, actor) catch return error.OutOfMemory;
         }
+    }
+    // the base seed bag and quiver on every new save (faststart.base_bags_at_start), added silently like an ocarina
+    for (faststart.base_bags_at_start) |bag| {
+        if (world.actorExists(bag) and !flows.contains(start_by_event.items, bag)) start_by_event.append(a, bag) catch return error.OutOfMemory;
     }
     // the shelves' computed flags, each once, sorted
     std.mem.sort(gamedata.ShopPresence, shop_presences.items, {}, lessPresence);
@@ -548,14 +557,49 @@ fn patchActor(
                     return;
                 }
             }
-            try dyn.put(a, "Drop__DropActor", .{ .string = try requireActor(a, world, item, .chest, progress) });
+            const chest_actor = try requireActor(a, world, item, .chest, progress);
+            // an item not drawn held up out of a chest gets a display actor of its own (pickups.chestDisplayActor)
+            // (an Ocarina is only in a chest with Shuffle Ocarinas; the check names the setting it belongs to)
+            const shown_actor = if (std.mem.startsWith(u8, chest_actor, "Pouch_") and plan.st.flag(.shuffle_ocarinas))
+                (try cloner.chestDisplayActor(chest_actor["Pouch_".len..])) orelse chest_actor
+            else if (std.mem.startsWith(u8, chest_actor, "Item_Melody_") and plan.st.is(.shuffle_songs, "anywhere"))
+                // a song: the harp, turning (pickups.songChestActor)
+                (try cloner.songChestActor(chest_actor)) orelse chest_actor
+            else
+                chest_actor;
+            try dyn.put(a, "Drop__DropActor", .{ .string = shown_actor });
             _ = dyn.remove("Drop__CheckActor");
             _ = dyn.remove("Drop__DropActor_Substitute");
         },
         .shop => {
             // a new shelf actor that sells the item once, at its price (pickups.zig, OotrR)
             const event_actor = try requireActor(a, world, item, .event, progress);
-            try actor.put(a, "Gyaml", .{ .string = try cloner.shopActor(event_actor, plan.shop_prices[edit.loc].?) });
+            const shelf_actor = try cloner.shopActor(event_actor, plan.shop_prices[edit.loc].?);
+            // a big item (a Heart Container, a permanent upgrade) at half size on the shelf (pickups.shopShelfScale)
+            const shelf_scale = try cloner.shopShelfScale(shelf_actor);
+            try restOnOriginalModelBottom(a, cloner, actor, shelf_actor, shelf_scale, true);
+            if (shelf_scale != 1.0) {
+                const scale = try byml.Array.create(a);
+                for (0..3) |_| try scale.append(a, .{ .float = @floatCast(shelf_scale) });
+                try actor.put(a, "Scale", .{ .array = scale });
+            }
+            // an item whose model faces sideways (Sheik's harp for a song) turned to face the front (shopShelfTurn)
+            // (a song is only on a shelf with Songs Anywhere; the check names the setting it belongs to)
+            const shelf_turn = if (plan.st.is(.shuffle_songs, "anywhere")) cloner.shopShelfTurn(shelf_actor) else 0.0;
+            if (shelf_turn != 0.0) {
+                const rotation = try byml.Array.create(a);
+                const old_rotation = actor.getArray("Rotate");
+                for (0..3) |axis| {
+                    var angle: f64 = 0.0;
+                    if (old_rotation) |old| if (axis < old.items.items.len) {
+                        angle = old.items.items[axis].asFloat() orelse 0.0;
+                    };
+                    if (axis == 1) angle += shelf_turn;
+                    try rotation.append(a, .{ .float = @floatCast(angle) });
+                }
+                try actor.put(a, "Rotate", .{ .array = rotation });
+            }
+            try actor.put(a, "Gyaml", .{ .string = shelf_actor });
             // sold once: the shelf is gone once the item is owned (its IsGet flag; Plan.soldOnce)
             const owned = std.fmt.allocPrint(keep, "IsGet.{s}", .{event_actor}) catch return error.OutOfMemory;
             const presence = try byml.Dict.create(a);
@@ -588,9 +632,120 @@ fn patchActor(
         else => {
             // an unchanged vanilla pickup keeps its own actor (and its own A/walk-over behaviour)
             const world_actor = try requireActor(a, world, item, .world, progress);
-            try actor.put(a, "Gyaml", .{ .string = try cloner.worldActor(world_actor, item != loc.vanilla) });
+            const placed_actor = try cloner.worldActor(world_actor, item != loc.vanilla);
+            try restOnOriginalModelBottom(a, cloner, actor, placed_actor, 1.0, false);
+            try actor.put(a, "Gyaml", .{ .string = placed_actor });
         },
     }
+}
+
+/// A shuffled shop shelf links to its board (Shop_Board_Bundle_*, the "x 10" sign under it: a Links entry of the
+/// shelf, Name "Reference"). The shelf is hidden once its item is owned (its Presence, set in patchActor), but the
+/// board is an actor of its own and stayed (test report, 0.7.5: the Echo Gem bought, its board left). Each such
+/// board gets the shelf's Presence, so it goes with it.
+/// A shelf without a link (the Kokiri Shop's before-the-Deku-Tree copies) has its board standing at the same spot as
+/// an actor of its own, with the same story condition as the shelf had: the nearest such board within 0.75 m is
+/// taken. `shop_presences` gives each computed shelf flag's story condition.
+fn hideBoardsOfSoldShelves(a: Allocator, actors: *byml.Array, edits: []const StageEdit, world: *World, shop_presences: []const gamedata.ShopPresence) PatchError!void {
+    for (actors.items.items) |shelf_value| {
+        const shelf = shelf_value.asDict() orelse continue;
+        const hash: u64 = @truncate(@as(u128, @bitCast(shelf.getInt("Hash") orelse 0)));
+        var is_shuffled_shelf = false;
+        for (edits) |edit| if (edit.hash == hash and world.locations.items[edit.loc].kind == .shop) {
+            is_shuffled_shelf = true;
+        };
+        if (!is_shuffled_shelf) continue;
+        const presence = shelf.getDict("Presence") orelse continue;
+        var board_found = false;
+        if (shelf.getArray("Links")) |links| for (links.items.items) |link_value| {
+            const link = link_value.asDict() orelse continue;
+            if (!std.mem.eql(u8, link.getString("Name") orelse "", "Reference")) continue;
+            const target: u64 = @truncate(@as(u128, @bitCast(link.getInt("Dst") orelse continue)));
+            for (actors.items.items) |board_value| {
+                const board = board_value.asDict() orelse continue;
+                const board_hash: u64 = @truncate(@as(u128, @bitCast(board.getInt("Hash") orelse 0)));
+                if (board_hash != target) continue;
+                if (!std.mem.startsWith(u8, board.getString("Gyaml") orelse "", "Shop_Board_")) continue;
+                try board.put(a, "Presence", try (byml.Value{ .dict = presence }).clone(a));
+                board_found = true;
+            }
+        };
+        if (board_found) continue;
+
+        // the story condition the shelf had before its sold-once flag (none: a shelf shown at all times)
+        const shelf_flag = presence.getString("FlagName") orelse "";
+        var story_condition: []const u8 = "";
+        var story_negated = false;
+        for (shop_presences) |p| if (std.mem.eql(u8, p.name, shelf_flag)) {
+            story_condition = p.condition;
+            story_negated = p.negated;
+        };
+        const shelf_pos = placementPosition(shelf) orelse continue;
+        var nearest: ?*byml.Dict = null;
+        var nearest_distance: f64 = 0.75;
+        for (actors.items.items) |board_value| {
+            const board = board_value.asDict() orelse continue;
+            if (!std.mem.startsWith(u8, board.getString("Gyaml") orelse "", "Shop_Board_Bundle")) continue;
+            const board_story = board.getDict("Presence");
+            const board_flag = if (board_story) |bs| bs.getString("FlagName") orelse "" else "";
+            const board_negated = if (board_story) |bs| (if (bs.get("IsNegation")) |v| v.isTruthy() else false) else false;
+            if (!std.mem.eql(u8, board_flag, story_condition) or board_negated != story_negated) continue;
+            const board_pos = placementPosition(board) orelse continue;
+            const distance = @sqrt((board_pos[0] - shelf_pos[0]) * (board_pos[0] - shelf_pos[0]) +
+                (board_pos[1] - shelf_pos[1]) * (board_pos[1] - shelf_pos[1]) +
+                (board_pos[2] - shelf_pos[2]) * (board_pos[2] - shelf_pos[2]));
+            if (distance < nearest_distance) {
+                nearest_distance = distance;
+                nearest = board;
+            }
+        }
+        if (nearest) |board| try board.put(a, "Presence", try (byml.Value{ .dict = presence }).clone(a));
+    }
+}
+
+fn placementPosition(actor: *const byml.Dict) ?[3]f64 {
+    const translate = actor.getArray("Translate") orelse return null;
+    if (translate.items.items.len != 3) return null;
+    return .{
+        translate.items.items[0].asFloat() orelse return null,
+        translate.items.items[1].asFloat() orelse return null,
+        translate.items.items[2].asFloat() orelse return null,
+    };
+}
+
+/// Moves a placement up or down so `new_actor`'s model rests where the placed actor's model did: by the difference
+/// of their model bottoms (pickups.PickupCloner.modelBottom), times the placement's height scale. A placement that
+/// keeps its actor, or a model without a known box, is left as it is. Only the height changes, along the world's
+/// up axis (Translate's second value; the scenes stand items upright, turned only about that axis).
+/// `new_scale`: the scale the new item gets on top of the placement's own (shop shelves: shopShelfScale).
+/// `on_shelf`: a shop shelf, which adds the shelf-only corrections (pickups.shelfMeasuredLift).
+fn restOnOriginalModelBottom(a: Allocator, cloner: *pickups.PickupCloner, actor: *byml.Dict, new_actor: []const u8, new_scale: f64, on_shelf: bool) PatchError!void {
+    const old_actor = actor.getString("Gyaml") orelse return;
+    if (std.mem.eql(u8, old_actor, new_actor)) return;
+    const old_bottom = (try cloner.modelBottom(old_actor)) orelse return;
+    const new_bottom = (try cloner.modelBottom(new_actor)) orelse return;
+    const height_scale: f64 = if (actor.get("Scale")) |scale| switch (scale) {
+        .array => |values| if (values.items.items.len == 3) values.items.items[1].asFloat() orelse 1.0 else 1.0,
+        else => scale.asFloat() orelse 1.0,
+    } else 1.0;
+    // why the floor: a pickup is collected at its origin. The worn-armour models (Lens of Truth 0.92 m, Gauntlets
+    // 1.17 m above their origin) would need their origin a metre under the surface, where Link can't reach it
+    // (HEIGHTTEST1: the Lens in the Kokiri Forest stream couldn't be picked up). Lowered at most 0.35 m, such an item
+    // floats a little instead.
+    const max_lowering: f64 = 0.35;
+    // plus, after that floor, the corrections measured in test seeds (pickups.measuredExtraLift)
+    const box_lift = (@as(f64, old_bottom) - @as(f64, new_bottom) * new_scale) * height_scale;
+    const measured = cloner.measuredExtraLift(new_actor) + if (on_shelf) cloner.shelfMeasuredLift(new_actor) else 0.0;
+    const lift: f64 = @max(-max_lowering, box_lift) + measured * height_scale * new_scale;
+    // why: a few millimetres are rounding between two models made to rest the same way; leave those placements alone
+    if (@abs(lift) < 0.005) return;
+    const translate = actor.getArray("Translate") orelse return;
+    if (translate.items.items.len != 3) return;
+    const height = translate.items.items[1].asFloat() orelse return;
+    translate.items.items[1] = .{ .float = @floatCast(height + lift) };
+    cloner.heights_moved += 1;
+    if (@abs(lift) > @abs(cloner.largest_height_move)) cloner.largest_height_move = lift;
+    _ = a;
 }
 
 /// `data` compressed with `dictionary`: through the file cache when there is one (the bytes are the same).

@@ -4,6 +4,7 @@ const std = @import("std");
 const byml = @import("../formats/byml.zig");
 const sarc = @import("../formats/sarc.zig");
 const restbl = @import("../formats/restbl.zig");
+const pickups = @import("pickups.zig");
 const evfl = @import("../formats/evfl.zig");
 const evfl_view = @import("../formats/evfl_view.zig");
 const ainb = @import("../formats/ainb.zig");
@@ -189,6 +190,14 @@ pub fn patchDodongoBagBombs(world: *World, patches: *PatchSet, resource_sizes: *
         else => return error.InvalidData,
     };
     try patches.emitZs(dodongo_boulder_pack, boulder_raw, new_pack);
+
+    // why: a WallCrack child needs WallCrack's memory (its ActorInfo InstanceHeapSize: 130,080 bytes, the Goron City
+    // rocks 114,624; the boulder had 97,640). Without it the game overran the boulder's memory creating it, a crash
+    // loading Death Mountain Trail (an access violation in BaseProcCreateAndDeleteThread)
+    if (!try pickups.raiseActorMemoryToFit(world, patches, dodongo_boulder, "WallCrack")) {
+        progress.log("warning: no ActorInfo row for {s} or WallCrack; bag-bomb patch skipped", .{dodongo_boulder});
+        return false;
+    }
 
     // the resource size table lists files inside packs too: the bigger ActorParam needs a bigger entry (the copied
     // files are the WallCrack pack's own, already listed with their sizes)

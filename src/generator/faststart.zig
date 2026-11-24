@@ -213,6 +213,12 @@ const start_item_entry = "Opening_Introduction";
 /// start items that need the pouch action (an ocarina)
 pub const start_by_event = [_][]const u8{ "Item_Ocarina_Fairy", "Item_Ocarina_Time" };
 
+/// The base Deku Seed bag and quiver, given on every new save. Why: they are items of their own (Item_BulletBag_Small,
+/// Item_Quiver_Small: the ammo's SmallBagActor, which sets how much Link can carry), and nothing hands them out with
+/// the Slingshot or the Bow (the Slingshot's chest event is only a Navi hint), so a Slingshot found anywhere came
+/// without seeds (test report, 0.7.4). On their own they do nothing; the Bigger bags stay in the item pool.
+pub const base_bags_at_start = [_][]const u8{ "Item_BulletBag_Small", "Item_Quiver_Small" };
+
 /// OpeningEvent with `actors` added to the pouch (one each), then `gifts` handed over (one each, with their item
 /// window), just before the opening's autosave.
 pub fn giveAtStart(allocator: Allocator, data: []const u8, actors: []const []const u8, gifts: []const []const u8, progress: *Progress) PatchError![]u8 {

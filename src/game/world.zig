@@ -519,12 +519,29 @@ pub const World = struct {
 
     pub const Context = enum { chest, event, world };
 
+    /// Items whose Item_ actor is equipment Link wears; a chest shows their Pouch_ actor instead (actorFor).
+    const equipment_shown_by_pouch_actor = [_][]const u8{ "Ocarina_Fairy", "Ocarina_Time" };
+
+    fn isListed(list: []const []const u8, name: []const u8) bool {
+        for (list) |entry| if (std.mem.eql(u8, entry, name)) return true;
+        return false;
+    }
+
     /// The actor to write for item `key` in a placement context ("Hookshot" -> "Item_Hookshot"), or null when the
     /// game has none. Allocated with `allocator`.
     pub fn actorFor(self: *const Self, allocator: Allocator, key: []const u8, context: Context) error{OutOfMemory}!?[]const u8 {
         // a key ring or dungeon boss key: the actor the generator makes for it (keyitems.zig), in every context
         if (logic.keyItemOf(key) != null) return try std.fmt.allocPrint(allocator, "Item_{s}", .{key});
         const base = if (std.mem.indexOfScalar(u8, key, '@')) |i| key[0..i] else key;
+        // why: the Ocarinas' Item_ actors are the equipment Link wears (accessory, equipment death and blackboard, no
+        // item-get animation set), so held up out of a chest they were invisible. Their Pouch_ actors are the shown
+        // item: the same model with the item-get set, and named Item_Ocarina_* so the same item is given (dump:
+        // Pack/Actor/Pouch_Ocarina_*.pack). Only chests: a shop shelf's sold flag is named after its actor.
+        if (context == .chest and isListed(&equipment_shown_by_pouch_actor, base)) {
+            var pouch_buf: [256]u8 = undefined;
+            const pouch_actor = std.fmt.bufPrint(&pouch_buf, "Pouch_{s}", .{base}) catch base;
+            if (self.actorExists(pouch_actor)) return try allocator.dupe(u8, pouch_actor);
+        }
         const order: []const []const u8 = switch (context) {
             .chest => &.{ "TBox_", "Item_", "Obj_", "Tbox_", "Weapon_" },
             .event => &.{ "Item_", "Obj_", "Weapon_", "TBox_" },

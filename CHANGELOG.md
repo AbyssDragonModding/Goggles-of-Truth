@@ -5,6 +5,64 @@ minor version, a fix raises the patch version. Since 0.7.4 the same seed and set
 way in every version with the same placement version (shown in `settings.txt`); before, each version placed them
 differently.
 
+## 0.7.5 - 2026-11-24
+
+Bug fixes only: placements don't change (placement version 0.7.3), so any 0.7.3 or 0.7.4 seed can be rebuilt
+(ROM Options > Seeds and saves > Rebuild This Seed) to get them, keeping its saves. Each fix applies only with the
+setting it belongs to. Checked in-game in Kokiri Forest test seeds (HEIGHTTEST1, HEIGHTTEST2, SONGSHOP1, TEST075)
+unless it says otherwise.
+
+### Fixed: every seed
+- **Items lying in the world rest at the right height.** An item put in another one's place used the old one's
+  height, but the game's models start at different heights above their origin: world pickups at their bottom, the
+  item-get models of most key items at their middle, the Gauntlets 1.17 m above it (posed on Link's arms). So items
+  floated (the Gauntlets a metre in the air) or sank (half inside a Lost Woods stump). Each swapped placement now
+  moves by the difference of the two models' lowest points (the game's model boxes, ActorInfo ModelAabbMin, times
+  the placement's scale). A pickup is never lowered more than 0.35 m, since it is collected at its origin: the Lens
+  of Truth in the Kokiri Forest stream couldn't be picked up. Measured corrections where a box is wrong: the Iron
+  and Hover Boots +0.10 m, the Lens of Truth +0.10 m.
+- **The Gauntlets and the Goron Bracelet show as pickups.** The Gauntlets' item box is the pair on Link's arms
+  (1.17 m up, 1.6 m wide) while the model is drawn around its origin, so the pickup was placed by the wrong box and
+  not drawn (the game culls a model by its box). The Silver and Golden Gauntlets and the Goron Bracelet (whose own
+  box is only the middle of the bracelet) take the box of their Pouch_ actor, the same model as drawn.
+- **Every new save has the base Deku Seed bag and quiver** (Item_BulletBag_Small, Item_Quiver_Small). They are
+  items of their own that nothing gives with the Slingshot or the Bow, so a Slingshot found early came without
+  seeds. On their own they do nothing; the Bigger bags stay in the item pool.
+
+### Fixed: Shop Shuffle (Items Shuffled Per Shop)
+- **Shelf items rest on the shelf.** A shelf item takes the old shelf item's height the same way, but some shelf
+  items' boxes don't show where the shelf is (the single Deku Stick stands upright while its box lies down; the Deku
+  Seed bundles' box reaches below the shelf), so their shelf tops are measured in the Kokiri Shop against what
+  clearly rests there. The Fire, Ice and Light Arrows' boxes reach 0.37 m below the arrow drawn: a shelf-only
+  correction. Light Arrows had sunk or floated, a Heart Container on the Deku Stick shelf sank.
+- **Big items are shown at half size** (a model box side over 0.5 m as drawn: Heart Containers, the Hammer, the
+  magic arrows...) so they fit the shelf; their height correction is scaled with them.
+- **A bought shelf takes its price board with it.** A shuffled shelf is hidden once its item is owned, but its board
+  ("x 10") is an actor of its own and stayed. Each shuffled shelf's board now has the shelf's condition: the board it
+  links to, or (the Kokiri Shop's before-the-Deku-Tree copies, which have no link) the board at the same spot with
+  the same story condition.
+
+### Fixed: Shuffle Ocarinas
+- **The Ocarinas show when found in a chest.** Their Item_ actors are the equipment Link wears and their Pouch_
+  actors are pouch displays: neither was drawn held up out of a chest. A chest now holds "Item_Rando_Ocarina_*",
+  built like the items that do show (the Stone of Agony's actor, with the item-get animations) with the Pouch_
+  actor's model, animations, pouch settings and item name, so the real Ocarina is given.
+
+### Fixed: Songs Anywhere
+- **The harp turns in Link's hands when a song comes out of a chest.** A chest holding a song holds
+  "Item_RSong_<song>": the Stone of Agony actor with Sheik's harp model, the song's item name and pouch settings, and
+  the Stone of Agony's spin animations (three earlier tries that gave the song items the animations themselves
+  crashed the game). The harp, sized for Sheik, is shown at 0.35 (its own ModelInfo copy with DebugModelScale) so it
+  clears Link's head. pickups.song_chest_spin_enabled turns it off.
+- **A song on a shop shelf shows the harp facing the front, at 0.9 size.** Halved like other big items and seen
+  edge-on (its flat side faces a quarter turn away), it was a thin sliver; it also rests on its origin (a shelf-only
+  correction, its box being centred on it). Needs Shop Shuffle too.
+
+### Fixed: Bag Bombs Open Dodongo's Cavern
+- **The game no longer crashes loading Death Mountain Trail.** 0.7.4 made the boulder a WallCrack child but left it
+  its own actor memory (97,640 bytes); the game overran it creating the boulder. It now gets WallCrack's (130,080).
+  Not yet checked in-game.
+
 ## 0.7.4 - 2026-11-23
 
 ### Added

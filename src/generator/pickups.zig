@@ -175,6 +175,11 @@ const RowClone = struct {
     template: []const u8,
     /// a new key item (keyItem): its own ActorName, `src` only lends the model, the pouch row is the template's
     key_item: bool = false,
+    /// a chest display actor (buildChestDisplay): `src` lends the model fields, `display_item` the ActorName and the
+    /// pouch row; the animations' row field comes from `src` too only when its animations were taken
+    display: bool = false,
+    display_item: []const u8 = "",
+    display_animation_from_model: bool = false,
 };
 
 /// New key items (key rings, dungeon boss keys) are built like OotrR's: the Forest Medallion's pack (a key item that
@@ -202,6 +207,13 @@ pub const PickupCloner = struct {
     auto_rows: std.ArrayList(AutoRow),
     /// shop shelf clone -> its price
     prices: std.StringHashMap(i64),
+    /// actor -> the lowest point of its model above its origin (ActorInfo's ModelAabbMin.Y), read once (modelBottom)
+    model_bottoms: ?std.StringHashMap(f32) = null,
+    /// actor -> the longest side of its model box (ActorInfo ModelAabbMax - ModelAabbMin), read with model_bottoms
+    model_sizes: std.StringHashMap(f32) = undefined,
+    /// placements raised or lowered by patches.restOnOriginalModelBottom, and the largest move (for the log)
+    heights_moved: usize = 0,
+    largest_height_move: f64 = 0,
 
     const Self = @This();
 
@@ -575,6 +587,307 @@ pub const PickupCloner = struct {
         rows.items.insert(allocator, at, .{ .dict = row }) catch return error.OutOfMemory;
     }
 
+    /// How far below (negative) or above its origin `actor`'s model starts: ActorInfo's ModelAabbMin.Y. A clone made
+    /// here answers with the model it borrows (the item's, or the harp for songs), a walk-over copy with its source's.
+    /// Null when the game has no model box for it.
+    ///
+    /// Why: the game's world pickups (Obj_*) have their origin at the model's bottom, the item-get models (Item_*) at
+    /// its middle, the arrow shelf below it; an item put in another one's place floated or sank by the difference
+    /// (a heart high above a Goron Shop shelf, an item half inside a Lost Woods stump). patches.zig moves the placement
+    /// by it, so the new model's bottom rests where the old one's did.
+    pub fn modelBottom(self: *Self, actor: []const u8) PatchError!?f32 {
+        for (shown_bottom_overrides) |o| if (std.mem.eql(u8, o.actor, actor)) return o.bottom;
+        const bottoms = try self.loadModelBottoms();
+        const model_actor = self.modelActorOf(actor);
+        return bottoms.get(displayBoxActorOf(model_actor) orelse model_actor);
+    }
+
+    /// Items whose own ActorInfo row has the model box of how Link wears them, not how the item is shown: the
+    /// Gauntlets' box is the pair on his arms, 1.17 m up and 1.6 m wide, while the same model and animations are
+    /// drawn around the origin (their Pouch_ actor's box, -0.21 to +0.22). A pickup with the worn box rested a metre
+    /// off and wasn't drawn at all (the game culls a model by its box; HEIGHTTEST1). Pickups take the display box.
+    const display_box_actors = [_]struct { item: []const u8, box_from: []const u8 }{
+        .{ .item = "Item_Gauntlet_Silver", .box_from = "Pouch_Gauntlet_Silver" },
+        .{ .item = "Item_Gauntlet_Gold", .box_from = "Pouch_Gauntlet_Gold" },
+        // The Goron Bracelet's own box is only its middle (-0.03 to +0.04 m); its Pouch_ actor, the same model and
+        // animations, has the box of the whole bracelet as drawn (-0.12 to +0.13), so it rests like the Gauntlets.
+        .{ .item = "Item_Gauntlet_Goron", .box_from = "Pouch_Gauntlet_Goron" },
+    };
+
+    fn displayBoxActorOf(item: []const u8) ?[]const u8 {
+        for (display_box_actors) |entry| if (std.mem.eql(u8, entry.item, item)) return entry.box_from;
+        return null;
+    }
+
+    /// Placed actors whose model box doesn't say how they rest where they stand: the shelf top, from the origin
+    /// (metres, up), measured in the Kokiri Shop against what clearly rests on each shelf: the Deku Nut bundles (box
+    /// from their origin) on the lower shelves, the recovery heart (its own box, 0.034, matches: a Heart Container
+    /// there sat right, HEIGHTTEST1) on the upper ones.
+    /// - The single Deku Stick stands upright, while its box is the stick lying down (from -0.38): the lower shelf
+    ///   top is 0.045 m above it (the nut bundles' bottom, 111.187, against the stick's origin, 111.141).
+    /// - The Deku Seed bundles' box reaches 0.13 m below their origin, while the upper shelf top is 0.06 m above it
+    ///   (the recovery heart's bottom, 111.878, against the bundles' origin, 111.819).
+    /// Before these (0.7.5 test seeds) the Deku Stick shelf was given the seed bundles' box, which only looked right
+    /// for the arrows: a Heart Container there sank (TEST075). The arrows' own error is shelf_measured_lift's.
+    const shown_bottom_overrides = [_]struct { actor: []const u8, bottom: f32 }{
+        .{ .actor = "Shop_DekuStick", .bottom = 0.045 },
+        .{ .actor = "Shop_DekuSeedBundle_01", .bottom = 0.06 },
+        .{ .actor = "Shop_DekuSeedBundle_02", .bottom = 0.06 },
+    };
+
+    /// Height corrections for shop shelves only (metres at full size, up; scaled with the item), by the actor whose
+    /// model is shown. The magic arrows' boxes reach 0.37 m below the arrow drawn on a shelf: with the true shelf
+    /// tops above, every arrow test (Fire and Ice on the seed shelf, Light on the stick and heart shelves; HEIGHTTEST1,
+    /// HEIGHTTEST2, TEST075) comes within 1 cm of where it looked right. Sheik's harp rests with its origin on the
+    /// shelf (SONGSHOP1, TEST075), though its box is centred on it. Ground pickups don't use these: the arrows there
+    /// replace items of their own kind of box.
+    const shelf_measured_lift = [_]struct { model_actor: []const u8, lift: f64 }{
+        .{ .model_actor = "Item_Arrow_Fire", .lift = -0.37 },
+        .{ .model_actor = "Item_Arrow_Ice", .lift = -0.37 },
+        .{ .model_actor = "Item_Arrow_Light", .lift = -0.37 },
+        .{ .model_actor = harp, .lift = -0.25 },
+    };
+
+    /// The shelf-only correction for `actor`'s model (0 when there is none).
+    pub fn shelfMeasuredLift(self: *const Self, actor: []const u8) f64 {
+        const model_actor = self.modelActorOf(actor);
+        for (shelf_measured_lift) |entry| if (std.mem.eql(u8, entry.model_actor, model_actor)) return entry.lift;
+        return 0;
+    }
+
+    /// The actor whose model `actor` shows: a walk-over copy's source, a clone's item (or borrowed model).
+    fn modelActorOf(self: *const Self, actor: []const u8) []const u8 {
+        var model_actor = actor;
+        for (self.auto_rows.items) |r| if (std.mem.eql(u8, r.clone, model_actor)) {
+            model_actor = r.src;
+        };
+        for (self.rows.items) |r| if (std.mem.eql(u8, r.clone, model_actor)) {
+            model_actor = self.model_src.get(r.clone) orelse r.src;
+        };
+        return model_actor;
+    }
+
+    /// Height corrections measured in the game, for models the model box gets wrong (metres, up), by the actor
+    /// whose model is shown. Add a line when a test seed shows an item still floating or sinking.
+    const measured_extra_lift = [_]struct { model_actor: []const u8, lift: f64 }{
+        // HEIGHTTEST1: the Iron Boots sank about a quarter of their height into the ground (their box starts at
+        // 0); the Hover Boots are the same kind of worn model
+        .{ .model_actor = "Item_HeavyBoot", .lift = 0.10 },
+        .{ .model_actor = "Item_HoverBoot", .lift = 0.10 },
+        // HEIGHTTEST1: the Lens of Truth (lowered the most a pickup is, 0.35 m) was barely seen in the stream
+        .{ .model_actor = "Item_GlassTruth", .lift = 0.10 },
+    };
+
+    /// A shop shelf's item shown at this scale: big models (Heart Containers, the Hammer, the Gauntlets: a model box
+    /// side over shop_big_item_size) at half size, so they fit the shelf (test request, HEIGHTTEST1); 1 otherwise.
+    pub fn shopShelfScale(self: *Self, shelf_actor: []const u8) PatchError!f64 {
+        _ = try self.loadModelBottoms();
+        const model_actor = self.modelActorOf(shelf_actor);
+        if (std.mem.eql(u8, model_actor, harp)) return song_shelf_harp_scale;
+        // the size as drawn (display_box_actors): the Gauntlets' own box is the worn pair, 1.6 m wide
+        const longest = self.model_sizes.get(displayBoxActorOf(model_actor) orelse model_actor) orelse return 1.0;
+        return if (longest > shop_big_item_size) shop_big_item_scale else 1.0;
+    }
+    const shop_big_item_size: f32 = 0.5;
+    const shop_big_item_scale: f64 = 0.5;
+
+    /// A song's shelf (Songs Anywhere) shows Sheik's harp. It is a flat frame (0.59 m wide, 0.5 m tall, 0.12 m
+    /// thick): halved like the other big items, and seen edge-on, it was a thin sliver on the shelf (SONGSHOP1).
+    /// At 0.75 it was still a little small (TEST075); at 0.9 it is 0.53 m wide, like the shelf's half-size arrows.
+    const song_shelf_harp_scale: f64 = 0.9;
+
+    /// The turn (radians, about the vertical axis) added to a shelf's own so its item faces the shop: the harp's
+    /// flat side faces along its model's Z axis, a quarter turn from how the shelves show their items; 0 for
+    /// every other item (they already face the front).
+    pub fn shopShelfTurn(self: *const Self, shelf_actor: []const u8) f64 {
+        return if (std.mem.eql(u8, self.modelActorOf(shelf_actor), harp)) std.math.pi / 2.0 else 0.0;
+    }
+
+    /// The measured correction for `actor`'s model (0 when there is none).
+    pub fn measuredExtraLift(self: *const Self, actor: []const u8) f64 {
+        const model_actor = self.modelActorOf(actor);
+        for (measured_extra_lift) |entry| if (std.mem.eql(u8, entry.model_actor, model_actor)) return entry.lift;
+        return 0;
+    }
+
+    fn loadModelBottoms(self: *Self) PatchError!*std.StringHashMap(f32) {
+        if (self.model_bottoms) |*loaded| return loaded;
+        var bottoms = std.StringHashMap(f32).init(self.allocator);
+        self.model_sizes = std.StringHashMap(f32).init(self.allocator);
+        const scratch = self.patches.allocator;
+        const rel = try self.world.find(scratch, "RSDB", "ActorInfo");
+        const original = try self.patches.read(rel);
+        const doc = try byml.load(scratch, original.data);
+        const rows = (doc.root orelse return error.InvalidData).asArray() orelse return error.InvalidData;
+        for (rows.items.items) |r| {
+            const row = r.asDict() orelse continue;
+            const name = row.getString("__RowId") orelse row.getString("ActorName") orelse continue;
+            const box_min = row.getDict("ModelAabbMin") orelse continue;
+            const bottom = (box_min.get("Y") orelse continue).asFloat() orelse continue;
+            const kept_name = try self.keepText(name);
+            bottoms.put(kept_name, @floatCast(bottom)) catch return error.OutOfMemory;
+            if (row.getDict("ModelAabbMax")) |box_max| {
+                var longest: f64 = 0;
+                for ([_][]const u8{ "X", "Y", "Z" }) |axis| {
+                    const low = (box_min.get(axis) orelse continue).asFloat() orelse continue;
+                    const high = (box_max.get(axis) orelse continue).asFloat() orelse continue;
+                    longest = @max(longest, high - low);
+                }
+                self.model_sizes.put(kept_name, @floatCast(longest)) catch return error.OutOfMemory;
+            }
+        }
+        self.model_bottoms = bottoms;
+        return &self.model_bottoms.?;
+    }
+
+    /// The actor a chest holds for an item whose Item_ actor isn't drawn held up (the Ocarinas: equipment Link
+    /// wears), built from its Pouch_ actor: "Item_Rando_<item>".
+    ///
+    /// Why: in a chest, the Ocarina's Item_ actor (equipment) and then its Pouch_ actor (a pouch display, Pouch_Item_Base)
+    /// were both invisible held up (HEIGHTTEST1, ITEMTEST01). The items that do show are Item_EventObject_Base actors
+    /// with the item-get animation set (the Hookshot, the Stone of Agony). So the display actor is the Stone of Agony's
+    /// actor (template) with the Pouch_ actor's model, animations, pouch settings and ActorName: the game gives the
+    /// item the ActorName names (the real Ocarina), as it does for the Pouch_ actor itself. The Stone of Agony's own
+    /// parts (its capture icon and game parameters) are left out. Returns null if it can't be built.
+    pub fn chestDisplayActor(self: *Self, item_base: []const u8) PatchError!?[]const u8 {
+        const a = self.patches.allocator;
+        const k = try self.key("chest_display", item_base, null);
+        if (self.made.get(k)) |made| return made;
+        const clone = std.fmt.allocPrint(self.allocator, "Item_Rando_{s}", .{item_base}) catch return error.OutOfMemory;
+        const pouch_actor = try self.keepText(std.fmt.allocPrint(a, "Pouch_{s}", .{item_base}) catch return error.OutOfMemory);
+        const built = try self.buildChestDisplay(clone, .{
+            .model = pouch_actor,
+            .animation = pouch_actor,
+            .item = pouch_actor,
+        });
+        self.made.put(k, built) catch return error.OutOfMemory;
+        return built;
+    }
+
+    /// Songs Anywhere: the actor a chest holds for a song, "Item_RSong_<song>" (Item_Melody_ZeldaLullaby ->
+    /// Item_RSong_ZeldaLullaby), so the harp turns in Link's hands like any item.
+    ///
+    /// Why a display actor: three tries (0.7.5) that gave the song items (Item_Melody_*) the item-get animation set
+    /// themselves all crashed Longshot creating the song item when a chest holding it loaded. The Ocarinas' chest
+    /// display actor, the whole Stone of Agony actor with another item's parts, loads and spins (HEIGHTTEST1). This is
+    /// the same: the Stone of Agony with Sheik's harp model, the song's ActorName (so the song is given) and pouch
+    /// settings, and the Stone of Agony's own spin animations (Item_Common_Animation's turn, its skeleton-only pose,
+    /// on Root and Skl_Root, which the harp has). Off with song_chest_spin_enabled if it crashes. Null if not built.
+    pub fn songChestActor(self: *Self, song_actor: []const u8) PatchError!?[]const u8 {
+        if (!song_chest_spin_enabled) return null;
+        if (!std.mem.startsWith(u8, song_actor, "Item_Melody_")) return null;
+        const k = try self.key("song_chest", song_actor, null);
+        if (self.made.get(k)) |made| return made;
+        const clone = std.fmt.allocPrint(self.allocator, "Item_RSong_{s}", .{song_actor["Item_Melody_".len..]}) catch return error.OutOfMemory;
+        const built = try self.buildChestDisplay(clone, .{
+            .model = harp,
+            .animation = null,
+            .item = try self.keepText(song_actor),
+            .model_scale = song_chest_harp_scale,
+        });
+        self.made.put(k, built) catch return error.OutOfMemory;
+        return built;
+    }
+    pub const song_chest_spin_enabled = true;
+    /// Sheik's harp is sized for Sheik: held up by Link it was far too big, and at 0.5 still touched his head (HEIGHTTEST1)
+    const song_chest_harp_scale: f32 = 0.35;
+
+    /// Where a chest display actor's parts come from: the model (ModelInfoRef), the animations (AnimationRef; null:
+    /// the template's own), and the item (ActorNameRef and PouchContentRef, and the ActorInfo ActorName and pouch row).
+    /// `model_scale`: the model shown at this size (a copy of its ModelInfo with DebugModelScale, the scale field the
+    /// game's own ModelInfo files use, e.g. the pigeons' 0.6), null for its own size.
+    const DisplayParts = struct { model: []const u8, animation: ?[]const u8, item: []const u8, model_scale: ?f32 = null };
+
+    const display_template = "Item_AgonyStone";
+    const display_refs_dropped = [_][]const u8{ "CaptureRef", "GameParameterTableRef" };
+
+    fn buildChestDisplay(self: *Self, clone: []const u8, parts: DisplayParts) PatchError!?[]const u8 {
+        if (clone.len > max_key_item_name) {
+            self.progress.log("warning: {s} is too long an actor name for the game; the chest keeps the item's own actor", .{clone});
+            return null;
+        }
+        const a = self.patches.allocator;
+        if (!self.world.files.exists(try packOf(a, display_template))) return null;
+        const tmpl_raw = try self.patches.read(try packOf(a, display_template));
+        const tmpl = try listFiles(a, tmpl_raw.data);
+        const tmpl_param_path = try paramOf(a, display_template);
+        const tmpl_param_bytes = tmpl.get(tmpl_param_path) orelse return null;
+
+        const param = try byml.loadDict(a, tmpl_param_bytes);
+        const comps = try param.ensureDict(a, "Components");
+        var add: std.ArrayList(sarc.NewFile) = .empty;
+        const RefSource = struct { key: []const u8, actor: ?[]const u8 };
+        const ref_sources = [_]RefSource{
+            .{ .key = "ModelInfoRef", .actor = parts.model },
+            .{ .key = "AnimationRef", .actor = parts.animation },
+            .{ .key = "ActorNameRef", .actor = parts.item },
+            .{ .key = "PouchContentRef", .actor = parts.item },
+        };
+        for (ref_sources) |source| {
+            const source_actor = source.actor orelse continue; // keep the template's
+            if (!self.world.files.exists(try packOf(a, source_actor))) return null;
+            const files = try listFiles(a, (try self.patches.read(try packOf(a, source_actor))).data);
+            const source_param = files.get(try paramOf(a, source_actor)) orelse return null;
+            const source_comps = (try byml.loadDict(a, source_param)).getDict("Components") orelse return null;
+            const ref = source_comps.getString(source.key) orelse {
+                self.progress.log("warning: {s} has no {s}; the chest keeps the item's own actor", .{ source_actor, source.key });
+                return null;
+            };
+            try comps.put(a, source.key, .{ .string = ref });
+            const file = refFile(ref);
+            // a file the template doesn't have: copied unchanged (its size entry is listed); a file neither pack holds
+            // is found by the game elsewhere, as for the source actor itself
+            if (!tmpl.has(file)) {
+                var already = false;
+                for (add.items) |f| if (std.mem.eql(u8, f.name, file)) {
+                    already = true;
+                };
+                if (!already) if (files.get(file)) |data| add.append(a, .{ .name = file, .data = data }) catch return error.OutOfMemory;
+            }
+        }
+        for (display_refs_dropped) |ref_key| _ = comps.remove(ref_key);
+        var entries: std.ArrayList(SizeEntry) = .empty;
+        if (parts.model_scale) |model_scale| {
+            // a ModelInfo of the clone's own: the model's, with DebugModelScale
+            const model_ref = comps.getString("ModelInfoRef") orelse return null;
+            const model_file = refFile(model_ref);
+            var model_bytes: ?[]const u8 = null;
+            for (add.items) |f| if (std.mem.eql(u8, f.name, model_file)) {
+                model_bytes = f.data;
+            };
+            if (model_bytes == null) model_bytes = tmpl.get(model_file);
+            const original_info = model_bytes orelse return null;
+            const info = try byml.loadDict(a, original_info);
+            const scale = try byml.Dict.create(a);
+            for ([_][]const u8{ "X", "Y", "Z" }) |axis| try scale.put(a, axis, .{ .float = model_scale });
+            try info.put(a, "DebugModelScale", .{ .dict = scale });
+            const new_info = try byml.dump(a, .{ .dict = info }, versionOf(original_info), false);
+            const new_info_path = std.fmt.allocPrint(a, "Component/ModelInfo/{s}.engine__component__ModelInfo.bgyml", .{clone}) catch return error.OutOfMemory;
+            add.append(a, .{ .name = new_info_path, .data = new_info }) catch return error.OutOfMemory;
+            try comps.put(a, "ModelInfoRef", .{ .string = std.fmt.allocPrint(a, "?{s}", .{new_info_path}) catch return error.OutOfMemory });
+            entries.append(a, .{ .path = new_info_path, .size = self.newSize(new_info_path, model_file, @as(i64, @intCast(new_info.len)) - @as(i64, @intCast(original_info.len))) }) catch return error.OutOfMemory;
+        }
+        const new_param = try byml.dump(a, .{ .dict = param }, versionOf(tmpl_param_bytes), false);
+        const new_param_path = try paramOf(a, clone);
+        add.append(a, .{ .name = new_param_path, .data = new_param }) catch return error.OutOfMemory;
+        const data = try rebuildWith(a, tmpl_raw.data, &.{}, add.items);
+        try self.patches.emit(try packOf(a, clone), data, data, tmpl_raw.dictionary, true);
+
+        const clone_key = try packKey(a, clone);
+        entries.append(a, .{ .path = clone_key, .size = self.newSize(clone_key, try packKey(a, display_template), @as(i64, @intCast(data.len)) - @as(i64, @intCast(tmpl_raw.data.len))) }) catch return error.OutOfMemory;
+        entries.append(a, .{ .path = new_param_path, .size = self.newSize(new_param_path, tmpl_param_path, @as(i64, @intCast(new_param.len)) - @as(i64, @intCast(tmpl_param_bytes.len))) }) catch return error.OutOfMemory;
+        try self.setSizes(entries.items, false);
+        self.rows.append(self.allocator, .{
+            .clone = clone,
+            .src = try self.keepText(parts.model),
+            .template = display_template,
+            .display = true,
+            .display_item = try self.keepText(parts.item),
+            .display_animation_from_model = parts.animation != null,
+        }) catch return error.OutOfMemory;
+        return clone;
+    }
+
     /// The RSDB rows of every clone (ActorInfo, GameActorInfo, PouchActorInfo).
     pub fn finish(self: *Self) PatchError!void {
         if (self.rows.items.len == 0 and self.auto_rows.items.len == 0) return;
@@ -591,7 +904,31 @@ pub const PickupCloner = struct {
             for (&tables) |*t| {
                 if (findRow(t.rows, r.clone) != null) continue;
                 var row: *byml.Dict = undefined;
-                if (r.key_item) {
+                if (r.display) {
+                    // a chest display actor: the template's ActorInfo row with the model actor's model fields (its
+                    // animations' too when they were taken), the item's ActorName, and at least each one's memory;
+                    // the item's pouch row
+                    if (std.mem.eql(u8, t.name, "PouchActorInfo")) {
+                        const base = findRow(t.rows, r.display_item) orelse continue;
+                        row = (try (byml.Value{ .dict = base }).clone(a)).dict;
+                    } else {
+                        const base = findRow(t.rows, r.template) orelse continue;
+                        row = (try (byml.Value{ .dict = base }).clone(a)).dict;
+                        if (std.mem.eql(u8, t.name, "ActorInfo")) {
+                            if (findRow(t.rows, r.src)) |m| {
+                                for (key_item_model_keys) |mk| {
+                                    if (std.mem.eql(u8, mk, "AnimationResources") and !r.display_animation_from_model) continue;
+                                    if (m.get(mk)) |v| try row.put(a, mk, try v.clone(a));
+                                }
+                                try raiseMemoryToFit(a, row, m);
+                            }
+                            if (findRow(t.rows, r.display_item)) |item_row| {
+                                if (item_row.get("ActorName")) |n| try row.put(a, "ActorName", try n.clone(a)) else try row.put(a, "ActorName", .{ .string = r.display_item });
+                                try raiseMemoryToFit(a, row, item_row);
+                            }
+                        }
+                    }
+                } else if (r.key_item) {
                     // a new key item: the template's rows, with the model's fields and its own ActorName
                     const base = findRow(t.rows, r.template) orelse {
                         self.progress.log("warning: no {s} row for {s}", .{ t.name, r.template });
@@ -632,6 +969,10 @@ pub const PickupCloner = struct {
                         if (self.model_src.get(r.clone)) |m_name| {
                             if (findRow(t.rows, m_name)) |m| for (model_row_keys) |k| if (m.get(k)) |v| try row.put(a, k, try v.clone(a));
                         }
+                        // a model whose item row has its worn box (the Gauntlets): the display actor's box
+                        if (displayBoxActorOf(r.src)) |box_actor| if (findRow(t.rows, box_actor)) |b| {
+                            for ([_][]const u8{ "ModelAabbMin", "ModelAabbMax" }) |k| if (b.get(k)) |v| try row.put(a, k, try v.clone(a));
+                        };
                         const actor_name = if (s) |sd| sd.get("ActorName") orelse byml.Value{ .string = r.src } else byml.Value{ .string = r.src };
                         try row.put(a, "ActorName", actor_name);
                         if (s) |sd| for (heap_keys) |k| {
@@ -659,6 +1000,31 @@ pub const PickupCloner = struct {
         for (tables) |t| try self.patches.emitZs(t.rel, t.original, try byml.dumpDefault(a, .{ .array = t.rows }));
     }
 };
+
+/// Raises `row`'s memory sizes (InstanceHeapSize, PreActorRenderInfoHeapSize) to at least `donor`'s: an actor given
+/// another actor's components needs the memory that actor has, or the game overruns it creating the actor.
+fn raiseMemoryToFit(allocator: Allocator, row: *byml.Dict, donor: *const byml.Dict) PatchError!void {
+    for (heap_keys) |k| {
+        const needed = donor.get(k) orelse continue;
+        const current = row.get(k) orelse needed;
+        try row.put(allocator, k, current.sameIntType(@max(current.asInt() orelse 0, needed.asInt() orelse 0)));
+    }
+}
+
+/// For a patch that gives `actor` the components of `donor` after the RSDB rows are written (the Dodongo boulder):
+/// raises `actor`'s ActorInfo memory sizes to at least `donor`'s (raiseMemoryToFit). False when either has no row.
+pub fn raiseActorMemoryToFit(world: *World, patches: *patchset.PatchSet, actor: []const u8, donor: []const u8) PatchError!bool {
+    const a = patches.allocator;
+    const rel = try world.find(a, "RSDB", "ActorInfo");
+    const original = try patches.read(rel);
+    const doc = try byml.load(a, original.data);
+    const rows = (doc.root orelse return error.InvalidData).asArray() orelse return error.InvalidData;
+    const row = PickupCloner.findRow(rows, actor) orelse return false;
+    const donor_row = PickupCloner.findRow(rows, donor) orelse return false;
+    try raiseMemoryToFit(a, row, donor_row);
+    try patches.emitZs(rel, original, try byml.dumpDefault(a, .{ .array = rows }));
+    return true;
+}
 
 /// Gives the song items themselves Sheik's harp model, so a song shows as a harp wherever it is found (chests,
 /// character gifts, scrubs, shop shelves, Gold Skulltula drops). Each Item_Melody_* pack has its own ModelInfo file

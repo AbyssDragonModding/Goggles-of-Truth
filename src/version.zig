@@ -13,7 +13,7 @@
 //! `goggles_cli generate ... --dump-placement <file.json>` before and after it: the files must be the same, or
 //! `placement_version` must become the new release.
 
-pub const version = "0.7.4";
+pub const version = "0.7.5";
 /// The release whose placements this one makes (see above).
 pub const placement_version = "0.7.3";
 /// an OoT (2026 remake) randomizer mod
