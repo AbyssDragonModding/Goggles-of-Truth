@@ -2,7 +2,7 @@
 
 **An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26), attempting to bring back most of the settings from the classic randomizer (with some additional qol settings).**
 
-## Version **0.7.5** · [Discord](https://discord.gg/adSV8cWfBY) ·
+## Version **0.7.6** · [Discord](https://discord.gg/adSV8cWfBY) ·
 [Source](https://github.com/AbyssDragonModding/Goggles-of-Truth)
 
 Goggles of Truth shuffles chests, songs, dungeon rewards, NPC gifts, shop items, Gold Skulltulas and more, and
@@ -65,7 +65,7 @@ When only some choices of an option have a different status, they're named in th
 | Rainbow Bridge Requirement | Vanilla, Medallions (1–6), Spiritual Stones, Gold Skulltula Tokens (1–100) | 🟢 Stable |
 | The Temple of Time altar shows the bridge requirement and your progress | always on | 🟢 Stable |
 | Skip Child Zelda (her, Malon's and Impa's checks can hold any item) | Off, On | 🟢 Stable |
-| Skip Epona Race (Epona is yours from the start) | On | 🟡 Semi-tested |
+| Skip Epona Race (Epona comes with just Epona's Song: no race, no child Malon check first) | On | 🟢 Stable |
 
 ### Items
 
@@ -674,15 +674,15 @@ changes where items go (the logic, the item pool, the hints...). A version that 
 same seed number and settings string put every item in the same place. `settings.txt` shows both:
 
 ```
-Goggles of Truth Randomizer 0.7.5
-Placement version: 0.7.3
+Goggles of Truth Randomizer 0.7.6
+Placement version: 0.7.6
 ```
 
 **Getting a fix into a seed you're playing:** select the seed under ROM Options > Seeds and saves and click
 **Rebuild This Seed** (or run `goggles_cli generate --game <game> --rebuild <seed folder>`). The seed is made again
 with the new version into its own folder: the same items in the same places, with the fixes, and your save loads
 as before (its stored per-seed saves are kept). Only seeds with the same placement version can be rebuilt; the
-window says so otherwise. Seeds from 0.7.3 and 0.7.4 can be rebuilt with 0.7.5.
+window says so otherwise. Seeds from 0.7.6 on can be rebuilt with later versions; 0.7.6 changed placements (Maps & Compasses "Remove"), so seeds made before it can't.
 
 ## Credits
 

@@ -5,6 +5,33 @@ minor version, a fix raises the patch version. Since 0.7.4 the same seed and set
 way in every version with the same placement version (shown in `settings.txt`); before, each version placed them
 differently.
 
+## 0.7.6 - unreleased
+
+Placement version 0.7.6: Maps & Compasses "Remove" changes where items go, so seeds made with 0.7.5 or
+earlier can't be rebuilt with this version (make them again, or keep playing them with 0.7.5).
+
+### Changed
+- **Skip Epona Race is stable** (checked in-game, EPONAPOE1). Its description now says Epona comes with just
+  Epona's Song: no race, and no need for Malon's check as a child first.
+
+### Fixed
+- **Maps & Compasses "Remove": the map and compass chests hold a Blue Rupee**, as the setting says. They were
+  shuffled like any check (the maps and compasses became Blue Rupees in the item pool), so those chests got random
+  items, which is what "Start With" does. "Start With" is unchanged: the save has the maps and compasses, and their
+  chests are randomized (its description now says so). Changes where items go for seeds with "Remove".
+- **Poe shop requires only 1 Big Poe: the one sale gives his reward.** His reward (the check) comes with the sale
+  that reaches 500 points; the patch changed the later 1000-point step, which gives no item, so the sale gave nothing
+  and he still asked for 500 points (EPONAPOE1). The seven 500-point checks now compare with 0. Not yet checked
+  in-game.
+- **Dungeon rewards show the item they give** (Skip Cutscenes off): the sage's medallion, Rauru's Light Medallion and
+  Zelda's Light Arrows show the shuffled item's model, as the character gifts do. The Spiritual Stones keep theirs for
+  now: their scenes wait on the stone's own animations. Boss Heart Container spots already showed their item. With
+  Skip Cutscenes on these scenes don't play.
+
+### Test seeds
+- `--place` can name an item no check holds (by its key, e.g. `Bottle_BigPoe`): it takes the place of a junk item
+  (EPONAPOE1 starts with a Big Poe in a bottle this way). Seeds without test placements are unaffected.
+
 ## 0.7.5 - 2026-11-24
 
 Bug fixes only: placements don't change (placement version 0.7.3), so any 0.7.3 or 0.7.4 seed can be rebuilt

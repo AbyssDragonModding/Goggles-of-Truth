@@ -248,14 +248,13 @@ pub const specs = [_]Spec{
         .key = .skip_epona_race,
         .tab = "World",
         .group = "Story Skips",
-        .label = "Skip Epona Race (needs further testing)",
+        .label = "Skip Epona Race",
         .kind = .boolean,
         .default = .{ .boolean = false },
         .tip =
-            \\Epona is your horse from the start of a new save. Once you have Epona's Song, play it as adult
-            \\anywhere you can ride (Hyrule Field, Lon Lon Ranch, Gerudo Valley...) and she comes to you.
-            \\No race against Ingo, and Malon's song check at the ranch isn't needed for her. Lon Lon Ranch
-            \\and its race are left as they are. Needs a new save.
+            \\Epona comes to you with just Epona's Song: play it as adult anywhere you can ride (Hyrule Field,
+            \\Lon Lon Ranch, Gerudo Valley...). You don't need to race Ingo, or to have Malon's check at the
+            \\ranch as a child first. Lon Lon Ranch and its race are left as they are. Needs a new save.
         ,
     },
     .{
@@ -569,9 +568,10 @@ pub const specs = [_]Spec{
         .tip =
             \\Vanilla: maps and compasses stay in their usual chests.
             \\Own Dungeon: maps and compasses are shuffled among the chests of their own dungeon.
-            \\Remove: their checks hold a Blue Rupee and you never get them.
+            \\Remove: their chests hold a Blue Rupee and you never get them.
             \\Start With: a new save already has every dungeon's map and compass, and the chests that held them
-            \\give a random bonus instead (rupees up to Gold, Bombchus, ammo, sometimes a Piece of Heart).
+            \\are randomized like any other check (a bonus item joins the pool for each: rupees up to Gold,
+            \\Bombchus, ammo, sometimes a Piece of Heart).
         ,
     },
     .{
@@ -981,8 +981,8 @@ pub const specs = [_]Spec{
         .kind = .boolean,
         .default = .{ .boolean = false },
         .tip =
-            \\Sell a single Big Poe to the ghost shop in the adult Market to get his reward (normally ten,
-            \\1000 points), so your first sale is the last one. Not yet confirmed in-game.
+            \\Sell a single Big Poe to the ghost shop in the adult Market to get his reward (normally five,
+            \\500 points). Not yet confirmed in-game.
         ,
     },
     .{

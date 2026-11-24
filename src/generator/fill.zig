@@ -84,6 +84,9 @@ pub fn refillContainer(item: []const u8) ?[]const u8 {
     return null;
 }
 
+/// Maps & Compasses "Remove": what their chests hold instead, in place.
+const removed_map_compass_item = "Rupee_Blue";
+
 /// Maps & Compasses "Start With": what their checks hold instead (item, weight). Never progression.
 const BonusItem = struct { item: []const u8, weight: f64 };
 const start_with_bonus = [_]BonusItem{
@@ -278,6 +281,13 @@ pub const Plan = struct {
                 self.is_shuffled[i] = true;
             } else {
                 self.fixed[i] = loc.vanilla;
+                if (dungeonItemType(items.name(loc.vanilla)) == .maps_compasses and st.is(.maps_compasses, "remove")) {
+                    // Maps & Compasses "Remove": the map's or compass's chest holds junk where it is (test report,
+                    // EPONAPOE1: shuffled, the chests got random items, which is what "Start With" is for)
+                    const junk = try world.items.intern(removed_map_compass_item);
+                    self.fixed[i] = junk;
+                    self.forced[i] = junk;
+                }
                 if (bottle_letter != null and loc.vanilla == bottle_letter.? and st.is(.open_zora, "open")) {
                     // King Zora is already moved: the letter would be a dead item, give an empty bottle
                     self.fixed[i] = bottle;
@@ -350,10 +360,9 @@ pub const Plan = struct {
                     break;
                 }
             }
-            const chosen_index = pool_index orelse {
+            const item = if (pool_index) |chosen_index| self.pool.orderedRemove(chosen_index) else (try self.takeItemFromOutsideThePool(request.item)) orelse {
                 return std.fmt.allocPrint(allocator, "no \"{s}\" left in the item pool (use the name the spoiler log shows; each copy can be placed once)", .{request.item}) catch error.OutOfMemory;
             };
-            const item = self.pool.orderedRemove(chosen_index);
             const shuffled_position = std.mem.indexOfScalar(usize, self.shuffled.items, location_index).?;
             _ = self.shuffled.orderedRemove(shuffled_position);
             self.is_shuffled[location_index] = false;
@@ -362,6 +371,24 @@ pub const Plan = struct {
             self.fixed[location_index] = item;
             self.forced[location_index] = item;
         }
+        return null;
+    }
+
+    /// Test seeds only: a requested item the pool doesn't hold but the game has (by its key, e.g. "Bottle_BigPoe" for
+    /// a Big Poe in a bottle at a start check), placed in place of one junk item taken out of the pool, so the pool
+    /// still fills every check exactly. Why: some features need an item no seed shuffles to be tested quickly (the
+    /// Big Poe buyer). Null when the game has no such item or the pool has no junk left.
+    fn takeItemFromOutsideThePool(self: *Self, item_key: []const u8) FillError!?ItemId {
+        // an item no check holds isn't in the item list yet: added when the game has its item actor ("Item_<key>")
+        const outside_item = self.world.items.lookup(item_key) orelse blk: {
+            const item_actor = std.fmt.allocPrint(self.allocator, "Item_{s}", .{item_key}) catch return error.OutOfMemory;
+            if (!self.world.actorExists(item_actor)) return null;
+            break :blk self.world.items.intern(item_key) catch return error.OutOfMemory;
+        };
+        for (self.pool.items, 0..) |pool_item, i| if (self.isJunk(pool_item)) {
+            _ = self.pool.orderedRemove(i);
+            return outside_item;
+        };
         return null;
     }
 
@@ -480,7 +507,10 @@ pub const Plan = struct {
         const st = self.st;
         const mode = st.choice(settingOf(dtype));
         if (std.mem.eql(u8, mode, "vanilla")) return false;
-        if (std.mem.eql(u8, mode, "own") or dtype == .maps_compasses) return true;
+        // Maps & Compasses "Remove": their chests hold a Blue Rupee in place (removed_map_compass_item), not shuffled;
+        // "Start With": the save has them and their chests take random items from the pool
+        if (dtype == .maps_compasses) return !std.mem.eql(u8, mode, "remove");
+        if (std.mem.eql(u8, mode, "own")) return true;
         // the item's own dungeon ("Dungeon_SmallKey@ForestTemple"); keys outside the key dungeons (the Thieves'
         // Hideout's) stay where they are
         const at = std.mem.indexOfScalar(u8, item, '@') orelse return false;
@@ -576,12 +606,8 @@ pub const Plan = struct {
                 try appendItem(ItemId, &self.pool, self.allocator, fairy);
             }
         }
-        if (st.is(.maps_compasses, "remove")) {
-            const blue = try self.world.items.intern("Rupee_Blue");
-            for (self.pool.items) |*item| {
-                if (dungeonItemType(items.name(item.*)) == .maps_compasses) item.* = blue;
-            }
-        } else if (st.is(.maps_compasses, "start_with")) {
+        // (Maps & Compasses "Remove": their chests aren't shuffled, so none of them is in the pool)
+        if (st.is(.maps_compasses, "start_with")) {
             // the save already has them (gamedata.plannedChanges); their checks get a random bonus
             var key_buf: [1024]u8 = undefined;
             var rng = Rng.fromText(std.fmt.bufPrint(&key_buf, "start_maps|{s}", .{self.seed_key}) catch self.seed_key);

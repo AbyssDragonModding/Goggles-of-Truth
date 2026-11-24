@@ -12,6 +12,18 @@ pub const display = [_]Display{
     .{ .location = "GC Darunias Joy", .flow = "Dm_Goron_0030", .actor = "Item_Gauntlet_Goron" },
     .{ .location = "DMT Biggoron", .flow = "Npc_Goron_Biggoron_Adult", .actor = "Item_Sword_Biggoron" },
     .{ .location = "HC Zeldas Letter", .flow = "Dm_HrlCastle_0050", .actor = "Item_ZeldaLetter" },
+    // Dungeon rewards and the Light Arrows (scenes played with Skip Cutscenes off): the sage's medallion, Rauru's and
+    // Zelda's Light Arrows are only bound to a locator and lit (ModelBind, XLink, LOD); nothing waits on their own
+    // animation, so the renamed actor is safe (test report: rewards showed their vanilla model). The Spiritual
+    // Stones' scenes wait on the stone's own animations (EventPlayAS C06/C11/C01 with IsWaitEnd), which a renamed
+    // actor doesn't have, so they keep their model until that is tried in-game.
+    .{ .location = "Phantom Ganon (Forest Medallion)", .flow = "Dm_Awake_Forest_Get", .actor = "Item_Medal_Forest" },
+    .{ .location = "Volvagia (Fire Medallion)", .flow = "Dm_Awake_Fire_Get", .actor = "Item_Medal_Fire" },
+    .{ .location = "Morpha (Water Medallion)", .flow = "Dm_Awake_Water_Get", .actor = "Item_Medal_Water" },
+    .{ .location = "Bongo Bongo (Shadow Medallion)", .flow = "Dm_Awake_Shadow_Get", .actor = "Item_Medal_Shadow" },
+    .{ .location = "Twinrova (Spirit Medallion)", .flow = "Dm_Awake_Spirit_Get", .actor = "Item_Medal_Spirit" },
+    .{ .location = "Rauru (Light Medallion)", .flow = "Dm_SageRoom_0005", .actor = "Item_Medal_Light" },
+    .{ .location = "ToT Light Arrows Cutscene", .flow = "Dm_TimeTemple_0130", .actor = "Item_Arrow_Light" },
 };
 
 pub const lines = [_]Line{

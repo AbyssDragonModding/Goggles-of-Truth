@@ -619,33 +619,35 @@ pub fn patchKokiriSchedules(world: *World, patches: *PatchSet, progress: *Progre
 }
 
 // --- Big Poe buyer needs only 1 Big Poe ---------------------------------------------------------------------
-// The adult Market ghost shop gives 100 points per Big Poe. Before each sale it compares GhostShop_CouponNum with 900:
-// below it's a normal sale, at 900 or more it's the final sale, which gives his reward. Comparing with 0 makes the
-// first sale the final one.
+// The adult Market ghost shop gives 100 points per Big Poe. His reward (the check, Event329's Bottle) comes with the
+// sale that brings the points to 500: before each sale the flow compares GhostShop_CouponNum with 400, and "equal"
+// leads to the reward sale (seven such checks, one per way into a sale and its messages). Comparing them with 0
+// makes the first sale the reward sale. Why not the 900 check (0.7.5 and before): that is the later 1000-point
+// step, which gives no item, so one sale gave nothing and he still asked for 500 points (EPONAPOE1).
 const ghost_shop_flow = "Event/EventFlow/Npc_Hylia_048_BottleShop.bfevfl.zs";
+const ghost_shop_reward_points_before_sale: i64 = 400;
+const ghost_shop_reward_checks_expected: usize = 7;
 
 pub fn patchBigPoeOne(patches: *PatchSet, progress: *Progress) PatchError!bool {
     const data = try patches.read(ghost_shop_flow);
     var v = try view(patches.allocator, data.data, ghost_shop_flow, progress);
-    var hit: ?usize = null;
-    var count: usize = 0;
+    var hits: std.ArrayList(usize) = .empty;
     for (v.flowcharts) |fc| {
         for (fc.events) |*e| {
             if (!std.mem.eql(u8, e.query orelse "", "EventQueryIsGameDataInt")) continue;
             const p = e.params orelse continue;
-            if (!p.isString("GameDataName", "GhostShop_CouponNum") or (p.getInt("Value") orelse -1) != 900) continue;
+            if (!p.isString("GameDataName", "GhostShop_CouponNum") or (p.getInt("Value") orelse -1) != ghost_shop_reward_points_before_sale) continue;
             const off = p.intOffset("Value") orelse continue;
-            hit = off;
-            count += 1;
+            hits.append(patches.allocator, off) catch return error.OutOfMemory;
         }
     }
-    if (count != 1) {
-        progress.log("warning: Big Poe buyer's 900-point check not found ({d} matches); he still wants ten", .{count});
+    if (hits.items.len != ghost_shop_reward_checks_expected) {
+        progress.log("warning: Big Poe buyer's 400-point checks not as expected ({d} of {d}); he still wants five", .{ hits.items.len, ghost_shop_reward_checks_expected });
         return false;
     }
-    v.setIntParam(hit.?, 0);
+    for (hits.items) |off| v.setIntParam(off, 0);
     try emitView(patches, ghost_shop_flow, data, &v, progress);
-    progress.log("Big Poe buyer: one Big Poe is enough", .{});
+    progress.log("Big Poe buyer: one Big Poe is enough for his reward", .{});
     return true;
 }
 
