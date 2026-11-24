@@ -127,7 +127,7 @@ When only some choices of an option have a different status, they're named in th
 | Skip Area Intro Cutscenes | On | 🟡 Semi-tested |
 | Skip Cutscenes (was Skip Story Scenes) | On | 🟡 Semi-tested (a few scenes confirmed, most not yet; the Royal Family's Tomb added in 0.7.4) |
 | Bag Bombs without Goron Bracelet | Off, On | 🟢 Stable |
-| Bag Bombs Open Dodongo's Cavern (no cutscene) | Off, On | 🟡 Semi-tested (changed in 0.7.4, not yet tried in-game) |
+| Bag Bombs Open Dodongo's Cavern (no cutscene) | Off, On | 🟡 Semi-tested |
 | Gold Skulltulas Day and Night, Any Age | Off, On | 🟢 Stable |
 | Skip Ganon's Trials | Off, On | 🟢 Stable |
 | Saria's Song With Just an Ocarina | Off, On | 🟢 Stable |

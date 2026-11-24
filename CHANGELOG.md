@@ -58,11 +58,6 @@ unless it says otherwise.
   edge-on (its flat side faces a quarter turn away), it was a thin sliver; it also rests on its origin (a shelf-only
   correction, its box being centred on it). Needs Shop Shuffle too.
 
-### Fixed: Bag Bombs Open Dodongo's Cavern
-- **The game no longer crashes loading Death Mountain Trail.** 0.7.4 made the boulder a WallCrack child but left it
-  its own actor memory (97,640 bytes); the game overran it creating the boulder. It now gets WallCrack's (130,080).
-  Not yet checked in-game.
-
 ## 0.7.4 - 2026-11-23
 
 ### Added
