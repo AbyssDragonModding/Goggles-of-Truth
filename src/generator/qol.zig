@@ -760,6 +760,98 @@ fn lessString(_: void, x: []const u8, y: []const u8) bool {
     return std.mem.order(u8, x, y) == .lt;
 }
 
+// --- Dampé's gravedigging tour: the prize always at one dig spot ----------------------------------------------
+// Npc_Hylia_Dampe_001 (dump): each tour dig ends in a lottery (Event219, EventQueryMiniGameDiggingHoleLottery). Its
+// "something hard is buried here" results (cases 6 and 7) lead, while the prize isn't dug up yet
+// (GraveYard_DiggingHoleTour_Drop_HeartPiece false), to Dampé asking for extra rupees and digging the prize ("Graveyard
+// Dampe Gravedigging Tour") out at the nearest of three "big hit" spots; once it is dug up they give rupees. The roll
+// is rare (95% rupees at a hit spot), so a player could dig every spot and never see the check (test report,
+// DIGREWARD1). Now the spot in front of the Hylian Shield grave (Soil_BigHit_B: the soil 5.3 m in front of the
+// tombstone above the Hylian Shield chest, the 2nd of the lower five in the right column on the pause map) always
+// leads to the prize while it isn't dug up, and the other spots' "something hard" results give rupees, so the check
+// is always at that one spot. The spot is read from the dig's own preparation switch (Event433,
+// EventQueryMiniGameDiggingHoleFindNearPoint), whose case for Soil_BigHit_B is the dug spot's number.
+pub const dampe_flow = "Event/EventFlow/Npc_Hylia_Dampe_001.bfevfl.zs";
+pub const dampe_tour_location = "Graveyard Dampe Gravedigging Tour";
+// The prize the dig brings up out of the hole (EventMiniGameDiggingHoleAdventActor, asked for as Obj_Heart_Piece) can
+// only be an actor Dampé holds (his ActorHolderParam: the rupees, a rock and this one), and it plays its own rise out
+// of the hole (ASInfo AutoPlayASName Act_Dig). Two tries with the placed item's own actors there showed nothing until
+// the item was handed over (test reports, DIGREWARD1), so this actor stays and takes the placed item's model
+// (pickups.PickupCloner.dressInModelOf; confirmed in-game with the Megaton Hammer and the Hookshot, DIGTEST2/3).
+// Only Dampé's dig uses it (dump: no other pack or flow names it).
+pub const dampe_dig_prize_actor = "Obj_Heart_Piece_Digging_Hole";
+pub const dampe_flow_update = "Event/EventFlow/Npc_Hylia_Dampe_001.110.bfevfl.zs";
+const dampe_actor = "Npc_Hylia_Dampe_001";
+const dampe_prize_spot_soil = "Soil_BigHit_B";
+const dampe_dig_lottery_event = "Event219";
+const dampe_dig_spot_switch_event = "Event433";
+const dampe_lottery_prize_results = [_]u32{ 6, 7 };
+const dampe_find_dug_spot_query = "EventQueryMiniGameDiggingHoleFindNearPoint";
+
+pub fn dampePrizeAtShieldGrave(allocator: Allocator, data: []const u8, progress: *Progress) PatchError![]u8 {
+    var doc = try flows.readFlow(allocator, data, dampe_actor, progress);
+    const fc = doc.flowchart orelse return progress.fail(error.NotAsExpected, "no flowchart", .{});
+    if (fc.eventByName("RandoDampe_PrizeSpot") != null) return progress.fail(error.NotAsExpected, "Dampé's tour already changed", .{});
+
+    const lottery = fc.eventByName(dampe_dig_lottery_event) orelse return progress.fail(error.NotAsExpected, "no dig lottery", .{});
+    if (!fc.isQuery(&fc.events.items[lottery], dampe_actor, "EventQueryMiniGameDiggingHoleLottery")) return progress.fail(error.NotAsExpected, "dig lottery not as expected", .{});
+
+    // the prize result: a switch on the prize flag, prize when not yet dug up (case 1), rupees when it is (case 0)
+    var prize_check: ?u16 = null;
+    var rupees_for_prize_result = [_]u16{ NONE, NONE };
+    for (dampe_lottery_prize_results, 0..) |result, k| {
+        const target = caseTarget(fc.events.items[lottery].kind.switch_.cases.items, result) orelse return progress.fail(error.NotAsExpected, "dig lottery has no result {d}", .{result});
+        const check = &fc.events.items[target];
+        if (!fc.isQuery(check, "GameDataActor", "EventQueryIsGameDataBool")) return progress.fail(error.NotAsExpected, "prize result {d} not as expected", .{result});
+        const p = check.kind.switch_.params orelse return progress.fail(error.NotAsExpected, "prize result {d} not as expected", .{result});
+        if (!p.isString("GameDataName", "GraveYard_DiggingHoleTour_Drop_HeartPiece")) return progress.fail(error.NotAsExpected, "prize result {d} not as expected", .{result});
+        rupees_for_prize_result[k] = caseTarget(check.kind.switch_.cases.items, 0) orelse return progress.fail(error.NotAsExpected, "prize result {d} not as expected", .{result});
+        if (prize_check == null) prize_check = target;
+    }
+
+    // the dug spot's number for the prize spot, and every spot number the dig knows
+    const spot_switch = fc.eventByName(dampe_dig_spot_switch_event) orelse return progress.fail(error.NotAsExpected, "no dig spot switch", .{});
+    const spots = &fc.events.items[spot_switch];
+    if (!fc.isQuery(spots, dampe_actor, dampe_find_dug_spot_query)) return progress.fail(error.NotAsExpected, "dig spot switch not as expected", .{});
+    var prize_spot: ?u32 = null;
+    for (spots.kind.switch_.cases.items) |c| {
+        const e = &fc.events.items[c.event];
+        const p = switch (e.kind) {
+            .sub_flow => |sf| sf.params orelse continue,
+            else => continue,
+        };
+        if (p.isString("SoilInstanceName", dampe_prize_spot_soil)) prize_spot = c.value;
+    }
+    const prize_spot_number = prize_spot orelse return progress.fail(error.NotAsExpected, "no {s} dig spot", .{dampe_prize_spot_soil});
+
+    // only one event leads to the lottery (a short wait after the dig's preparation)
+    var before: ?usize = null;
+    var leading: usize = 0;
+    for (fc.events.items, 0..) |*e, k| if (e.leadsTo(lottery)) {
+        before = k;
+        leading += 1;
+    };
+    if (leading != 1 or fc.events.items[before.?].kind != .action) return progress.fail(error.NotAsExpected, "dig lottery reached from {d} events", .{leading});
+
+    // a new switch on the dug spot: the prize spot goes to the prize check, every other spot to the lottery
+    const query = try flows.requireQuery(fc, allocator, dampe_actor, dampe_find_dug_spot_query, progress);
+    var cases: std.ArrayList(evfl.Case) = .empty;
+    for (spots.kind.switch_.cases.items) |c| {
+        const target = if (c.value == prize_spot_number) prize_check.? else lottery;
+        cases.append(allocator, .{ .value = c.value, .event = target }) catch return error.OutOfMemory;
+    }
+    const spot_check = try fc.addEvent(allocator, .{ .name = "RandoDampe_PrizeSpot", .kind = .{ .switch_ = .{ .actor = query[0], .query = query[1], .cases = cases } } });
+    fc.events.items[before.?].kind.action.next = spot_check;
+
+    // the lottery's "something hard" results give rupees, as they do once the prize is dug up
+    for (fc.events.items[lottery].kind.switch_.cases.items) |*c| {
+        for (dampe_lottery_prize_results, 0..) |result, k| {
+            if (c.value == result) c.event = rupees_for_prize_result[k];
+        }
+    }
+    return flows.writeBack(allocator, &doc, dampe_actor, progress);
+}
+
 // --- Lost Woods ocarina game: every reward in one round ------------------------------------------------------
 // Npc_SkullKid_Child_02: each won round raises the song length kept in
 // Minigame_SkullKidSession_CurrentGradeSoundNumForSession and pays one reward. Below 6 (the first round): set it to 6,

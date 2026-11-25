@@ -15,8 +15,14 @@ pub const display = [_]Display{
     // Dungeon rewards and the Light Arrows (scenes played with Skip Cutscenes off): the sage's medallion, Rauru's and
     // Zelda's Light Arrows are only bound to a locator and lit (ModelBind, XLink, LOD); nothing waits on their own
     // animation, so the renamed actor is safe (test report: rewards showed their vanilla model). The Spiritual
-    // Stones' scenes wait on the stone's own animations (EventPlayAS C06/C11/C01 with IsWaitEnd), which a renamed
-    // actor doesn't have, so they keep their model until that is tried in-game.
+    // Stones' scenes also wait on the stone's own animations (EventPlayAS C06/C11/C01 with IsWaitEnd), which a
+    // renamed actor doesn't have; the Deku Tree's scene played to the end with the actor renamed (DIGREWARD1). That
+    // scene also opens the "important item" display, which only shows the Kokiri Emerald, so it is replaced by the
+    // normal item window (shows_important_item_display). The Zora's Sapphire inside Jabu-Jabu is a stage object of
+    // its own and keeps its model.
+    .{ .location = "Queen Gohma (Kokiri Emerald)", .flow = "Dm_Kokiri_0130", .actor = "Item_Stone_Forest", .shows_important_item_display = true },
+    .{ .location = "King Dodongo (Goron Ruby)", .flow = "Dm_DeathMtTrail_0025", .actor = "Item_Stone_Fire" },
+    .{ .location = "Barinade (Zora Sapphire)", .flow = "Dm_ZoraFountain_0030", .actor = "Item_Stone_Water" },
     .{ .location = "Phantom Ganon (Forest Medallion)", .flow = "Dm_Awake_Forest_Get", .actor = "Item_Medal_Forest" },
     .{ .location = "Volvagia (Fire Medallion)", .flow = "Dm_Awake_Fire_Get", .actor = "Item_Medal_Fire" },
     .{ .location = "Morpha (Water Medallion)", .flow = "Dm_Awake_Water_Get", .actor = "Item_Medal_Water" },

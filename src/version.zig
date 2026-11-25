@@ -7,7 +7,7 @@
 //! a release changes where items go for the same seed and settings string: the fill, the logic, the item pool, the
 //! hints, the settings string's format, or anything else that reads the seed's random stream. A release that only
 //! fixes how the mod is patched (a cutscene, a softlock, a text) keeps it, so a seed made with an earlier release can
-//! be made again with the fix (the window's "Rebuild This Seed") and its saves still fit.
+//! be made again with the fix (the window's "Rebuild Seed") and its saves still fit.
 //!
 //! Keep it equal to the release that last changed placements. To check a change, make a few seeds with
 //! `goggles_cli generate ... --dump-placement <file.json>` before and after it: the files must be the same, or

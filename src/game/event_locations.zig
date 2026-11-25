@@ -426,17 +426,17 @@ pub const event_locations = [_]EventLocation{
         .category = .npc,
         .rule = .graveyard_child,
         .events = &.{
+            // Only the hand-over. The prize the dig brings up out of the hole first (Event82, asked for by the name
+            // Obj_Heart_Piece) can only be one of the actors Dampé holds, and it plays its own rise out of the hole
+            // (Act_Dig): any other actor named there stayed hidden (test reports, DIGREWARD1). It keeps that name;
+            // its actor, Obj_Heart_Piece_Digging_Hole, is given the placed item's model instead (patches.zig).
             .{ .event = "Event628", .actor = "Obj_Heart_Piece" },
         },
     },
-    .{
-        .name = "Graveyard Dampe Race Reward",
-        .flows = &.{ "Npc_Hylia_Dampe_001" },
-        .vanilla = "Obj_Heart_Piece",
-        .category = .npc,
-        .rule = .graveyard_adult,
-        .via = "NotNpc_Dampe",
-    },
+    // No "Graveyard Dampe Race Reward" here: the race's Piece of Heart comes out of the chest at its goal
+    // (MiniGame_DampeRace, TreasureBoxState AppearHeartPiece), already the check "Graveyard Chest 1". The entry that
+    // was here matched the gravedigging tour's hand-over (Event628, Dm_SY_GetInEvent ..._NotNpc_Dampe), so the race's
+    // item replaced the tour's (test report, DIGREWARD1: the tour gave the race's Red Rupee instead of its Hookshot).
     .{
         .name = "LW Skull Kid",
         .flows = &.{ "Npc_SkullKid_Child" },

@@ -146,7 +146,7 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
                 return error.Failed;
             },
             .other_placements => |info| {
-                std.debug.print("error: {s} was made by {s}, whose items are placed differently than in this release ({s}); a rebuild would be a different seed\n", .{ trimmed, info.release, engine.version.version });
+                std.debug.print("error: {s}\n", .{try engine.generator.placementMismatchMessage(a, engine.fs.basename(trimmed), info)});
                 return error.Failed;
             },
             .ready => |info| {

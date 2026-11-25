@@ -180,17 +180,33 @@ const RowClone = struct {
     display: bool = false,
     display_item: []const u8 = "",
     display_animation_from_model: bool = false,
+    /// a world pickup of an item with no animations of its own: its row keeps the template's AnimationResources,
+    /// as its ActorParam keeps the template's AnimationRef (build says why)
+    animation_from_template: bool = false,
 };
+
+/// The animation list `animation_ref` (an AnimationRef, "?Component/AnimationParam/X.bgyml") names in `files` is
+/// empty (the Dummy one the medallions and stones use); false when the file isn't in the pack.
+fn animationListIsEmpty(allocator: Allocator, files: Files, animation_ref: []const u8) PatchError!bool {
+    const data = files.get(refFile(animation_ref)) orelse return false;
+    const param = try byml.loadDict(allocator, data);
+    const resources = param.getArray("AnimationResources") orelse return true;
+    return resources.items.items.len == 0;
+}
 
 /// New key items (key rings, dungeon boss keys) are built like OotrR's: the Forest Medallion's pack (a key item that
 /// is shown and held up like any other), with the model of the item they stand for (soul_adapter.build_item_files).
 const key_item_template = "Item_Medal_Forest";
 /// ActorInfo fields a key item takes from the actor lending its model (OotrR's list).
 const key_item_model_keys = [_][]const u8{ "FmdbName", "ModelProjectName", "ModelAabbMax", "ModelAabbMin", "ModelVariationFmabName", "AnimationResources", "ASInfoAutoPlayMaterials" };
+/// What a key item takes from the actor lending its model so it is posed and turns like that item (keyItem).
+const key_item_animation_refs = [_][]const u8{ "ASRef", "ASInfoRef", "AnimationRef" };
 /// Generated actor names stay within the length OotrR saw working in the game: an item get of a 30- or 33-character
 /// generated actor crashed (null read, Link holding nothing), 25 characters worked.
 pub const max_key_item_name = 25;
 const AutoRow = struct { clone: []const u8, src: []const u8 };
+/// An existing actor (`actor`) given the model of `model_actor`.
+const Restyled = struct { actor: []const u8, model_actor: []const u8 };
 const SizeEntry = struct { path: []const u8, size: ?u32 };
 
 pub const PickupCloner = struct {
@@ -205,6 +221,8 @@ pub const PickupCloner = struct {
     /// clone -> the actor whose model it borrows (songs)
     model_src: std.StringHashMap([]const u8),
     auto_rows: std.ArrayList(AutoRow),
+    /// existing actors given another actor's model (dressInModelOf)
+    restyled: std.ArrayList(Restyled) = .empty,
     /// shop shelf clone -> its price
     prices: std.StringHashMap(i64),
     /// actor -> the lowest point of its model above its origin (ActorInfo's ModelAabbMin.Y), read once (modelBottom)
@@ -241,6 +259,71 @@ pub const PickupCloner = struct {
     /// A copy of `text` that outlives the patch step (the caller's string may be in the step's scratch memory).
     fn keepText(self: *Self, text: []const u8) error{OutOfMemory}![]const u8 {
         return self.allocator.dupe(u8, text);
+    }
+
+    /// Gives the game's own actor `target` the model of `item_actor` (a world-context actor; songs show Sheik's harp),
+    /// keeping everything else it has: its AI, its own animations and how other actors know it. For an actor that must
+    /// stay itself (Dampé's dig prize, which only he can bring up and which plays its own rise out of the hole).
+    /// The pack gets the model's ModelInfo; its ActorInfo row the model's fields and at least its memory (finish).
+    /// False (with a warning) when the model can't be read.
+    pub fn dressInModelOf(self: *Self, target: []const u8, item_actor: []const u8) PatchError!bool {
+        const a = self.patches.allocator;
+        const model_actor = if (std.mem.startsWith(u8, item_actor, "Item_Melody_")) harp else item_actor;
+        const model_pack = try packOf(a, model_actor);
+        if (!self.world.files.exists(model_pack) and !self.patches.current.contains(model_pack)) {
+            self.progress.log("warning: no pack for {s}; {s} keeps its model", .{ model_actor, target });
+            return false;
+        }
+        const model_files = try listFiles(a, (try self.patches.read(model_pack)).data);
+        const model_param_path = try paramOf(a, model_actor);
+        if (!model_files.has(model_param_path)) {
+            self.progress.log("warning: {s} has no ActorParam; {s} keeps its model", .{ model_actor, target });
+            return false;
+        }
+        const model_comps = try resolvedComponents(a, model_files, model_param_path);
+        const model_info_ref = model_comps.getString("ModelInfoRef") orelse {
+            self.progress.log("warning: {s} has no model; {s} keeps its model", .{ model_actor, target });
+            return false;
+        };
+
+        const target_pack = try packOf(a, target);
+        const target_raw = try self.patches.read(target_pack);
+        const target_files = try listFiles(a, target_raw.data);
+        const target_param_path = try paramOf(a, target);
+        const target_param_bytes = target_files.get(target_param_path) orelse return self.progress.fail(error.NotAsExpected, "{s} has no ActorParam", .{target});
+        const target_param = try byml.loadDict(a, target_param_bytes);
+        const comps = try target_param.ensureDict(a, "Components");
+        try comps.put(a, "ModelInfoRef", .{ .string = model_info_ref });
+        // the model's ModelInfo files (one, or a chain of $parents) that the pack lacks
+        var add: std.ArrayList(sarc.NewFile) = .empty;
+        for (model_files.entries) |e| {
+            if (!std.mem.startsWith(u8, e.name, "Component/ModelInfo/") or target_files.has(e.name)) continue;
+            add.append(a, .{ .name = e.name, .data = e.data }) catch return error.OutOfMemory;
+        }
+        const new_param = try byml.dump(a, .{ .dict = target_param }, versionOf(target_param_bytes), false);
+        const new_pack = try rebuildWith(a, target_raw.data, &.{.{ .name = target_param_path, .data = new_param }}, add.items);
+        try self.patches.emitZs(target_pack, target_raw, new_pack);
+        // The size table has an entry for each file inside a pack too, which the game reserves to load it. The
+        // ActorParam grew (504 to 604 bytes for Dampé's prize), and with its entry left at the old size the game
+        // overran it creating the actor (test reports, DIGREWARD1 and DIGTEST2: the Graveyard crashed whatever model
+        // it was given, more memory in ActorInfo made no difference). Its entry grows by as much; an added file
+        // without an entry of its own gets one.
+        if (self.restbl.get(target_param_path)) |old_size| {
+            // the file's own entry, updated in place (setSizes is for new paths: it skips a path whose hash is taken)
+            const growth: u32 = @intCast(@max(0, @as(i64, @intCast(new_param.len)) - @as(i64, @intCast(target_param_bytes.len))));
+            self.restbl.set(target_param_path, old_size + growth) catch return error.OutOfMemory;
+        }
+        var entries: std.ArrayList(SizeEntry) = .empty;
+        for (add.items) |f| {
+            if (self.restbl.get(f.name) != null) continue;
+            entries.append(a, .{ .path = f.name, .size = self.newSize(f.name, target_param_path, @intCast(f.data.len)) }) catch return error.OutOfMemory;
+        }
+        try self.setSizes(entries.items, false);
+        self.restyled.append(self.allocator, .{
+            .actor = try self.keepText(target),
+            .model_actor = try self.keepText(model_actor),
+        }) catch return error.OutOfMemory;
+        return true;
     }
 
     /// The actor to place in the world for `actor` (a world-context actor). `auto`: the pickup must be collected by
@@ -296,10 +379,28 @@ pub const PickupCloner = struct {
         // counted as the Forest Medallion and its IsGet flag was never set (OotrR, in-game test of the souls).
         if (!comps.contains("ActorNameRef")) return self.progress.fail(error.NotAsExpected, "{s} has no ActorNameRef", .{key_item_template});
         try comps.put(a, "ActorNameRef", .{ .string = std.fmt.allocPrint(a, "?ActorSystem/ActorName/{s}.engine__actor__ActorName.bgyml", .{actor}) catch return error.OutOfMemory });
+        var add: std.ArrayList(sarc.NewFile) = .empty;
+        // Why the model's animation set: held up in Link's hands, the small key is posed by its own animations
+        // (Pose_GetDemo, played through the common item AS). With the Forest Medallion's demo-only AS and empty
+        // animation list, a key ring stood on its tip at the hand point and reached 0.56 m above Link's head (test
+        // report). The RSDB row already takes the model's AnimationResources and memory sizes (finish).
+        const model_param = model_files.get(try paramOf(a, model)) orelse return self.progress.fail(error.NotAsExpected, "{s} has no ActorParam", .{model});
+        const model_comps = (try byml.loadDict(a, model_param)).getDict("Components") orelse return self.progress.fail(error.NotAsExpected, "{s} has no components", .{model});
+        for (key_item_animation_refs) |ref_key| {
+            const ref = model_comps.getString(ref_key) orelse continue;
+            try comps.put(a, ref_key, .{ .string = ref });
+            const file = refFile(ref);
+            if (tmpl.has(file)) continue;
+            const data = model_files.get(file) orelse continue; // found by the game elsewhere, as for the model itself
+            var already = false;
+            for (add.items) |f| if (std.mem.eql(u8, f.name, file)) {
+                already = true;
+            };
+            if (!already) add.append(a, .{ .name = file, .data = data }) catch return error.OutOfMemory;
+        }
         const new_param = try byml.dump(a, .{ .dict = param }, versionOf(tmpl_param_bytes), false);
         const new_param_path = try paramOf(a, actor);
 
-        var add: std.ArrayList(sarc.NewFile) = .empty;
         add.append(a, .{ .name = new_param_path, .data = new_param }) catch return error.OutOfMemory;
         add.append(a, .{ .name = new_model_path, .data = model_bytes }) catch return error.OutOfMemory;
         // the template's own ActorParam and ModelInfo stay in the pack unused (the archive writer only replaces or
@@ -427,6 +528,20 @@ pub const PickupCloner = struct {
                 _ = comps.remove(k);
             }
         }
+        // An item with no animations of its own (the medallions and Spiritual Stones, whose scenes animate them, and
+        // the key rings and boss keys built on the Forest Medallion) keeps the template's: those hold the common
+        // item animations, the turn included, and their models have its Root bone. With the item's empty list the
+        // pickup lay still (test report: key rings, medallions, stones on the ground).
+        var animation_from_template = false;
+        if (!shop) if (src_comps.getString("AnimationRef")) |item_animation_ref| {
+            if (try animationListIsEmpty(a, item, item_animation_ref)) {
+                const template_comps = (try byml.loadDict(a, tmpl_param_bytes)).getDict("Components");
+                if (template_comps) |tc| if (tc.get("AnimationRef")) |template_animation_ref| {
+                    try comps.put(a, "AnimationRef", template_animation_ref);
+                    animation_from_template = true;
+                };
+            }
+        };
 
         var model_files: std.ArrayList(sarc.NewFile) = .empty;
         var model_src: []const u8 = if (std.mem.startsWith(u8, src, "Item_Melody_")) harp else src;
@@ -554,7 +669,7 @@ pub const PickupCloner = struct {
             entries.append(a, .{ .path = f.name, .size = self.newSize(f.name, pouch_tmpl_path, @intCast(f.data.len)) }) catch return error.OutOfMemory;
         }
         try self.setSizes(entries.items, false);
-        self.rows.append(self.allocator, .{ .clone = clone, .src = try self.keepText(src), .template = template }) catch return error.OutOfMemory;
+        self.rows.append(self.allocator, .{ .clone = clone, .src = try self.keepText(src), .template = template, .animation_from_template = animation_from_template }) catch return error.OutOfMemory;
         if (!std.mem.eql(u8, model_src, src)) self.model_src.put(clone, try self.keepText(model_src)) catch return error.OutOfMemory;
         return clone;
     }
@@ -633,6 +748,10 @@ pub const PickupCloner = struct {
         .{ .actor = "Shop_DekuStick", .bottom = 0.045 },
         .{ .actor = "Shop_DekuSeedBundle_01", .bottom = 0.06 },
         .{ .actor = "Shop_DekuSeedBundle_02", .bottom = 0.06 },
+        // The Red Potion's jar stands lower than its shelf: in the Goron Shop its origin is 99.986 and its box starts
+        // 0.013 below it, while the recovery heart on the same shelf (100.041, box from +0.034) puts the shelf top at
+        // 100.075, 0.09 above the potion's origin. A Gift of Halved Damage put there sank into the shelf (test report).
+        .{ .actor = "Shop_Bottle_RedPotion", .bottom = 0.09 },
     };
 
     /// Height corrections for shop shelves only (metres at full size, up; scaled with the item), by the actor whose
@@ -890,7 +1009,7 @@ pub const PickupCloner = struct {
 
     /// The RSDB rows of every clone (ActorInfo, GameActorInfo, PouchActorInfo).
     pub fn finish(self: *Self) PatchError!void {
-        if (self.rows.items.len == 0 and self.auto_rows.items.len == 0) return;
+        if (self.rows.items.len == 0 and self.auto_rows.items.len == 0 and self.restyled.items.len == 0) return;
         const a = self.patches.allocator;
         var tables: [3]RsdbTable = undefined;
         for ([_][]const u8{ "ActorInfo", "GameActorInfo", "PouchActorInfo" }, 0..) |t, i| {
@@ -964,7 +1083,10 @@ pub const PickupCloner = struct {
                     row = (try (byml.Value{ .dict = base }).clone(a)).dict;
                     if (std.mem.eql(u8, t.name, "ActorInfo")) {
                         const s = findRow(t.rows, r.src);
-                        if (s) |sd| for (row_from_item) |k| if (sd.get(k)) |v| try row.put(a, k, try v.clone(a));
+                        if (s) |sd| for (row_from_item) |k| {
+                            if (r.animation_from_template and std.mem.eql(u8, k, "AnimationResources")) continue;
+                            if (sd.get(k)) |v| try row.put(a, k, try v.clone(a));
+                        };
                         // a borrowed model (songs): its model fields, the item's name
                         if (self.model_src.get(r.clone)) |m_name| {
                             if (findRow(t.rows, m_name)) |m| for (model_row_keys) |k| if (m.get(k)) |v| try row.put(a, k, try v.clone(a));
@@ -997,9 +1119,44 @@ pub const PickupCloner = struct {
                 try insertSorted(a, t.rows, row, r.clone);
             }
         }
+        // actors given another's model: its model fields and at least its memory, everything else their own
+        for (self.restyled.items) |r| {
+            const t = &tables[0]; // ActorInfo
+            const row = findRow(t.rows, r.actor) orelse continue;
+            const m = findRow(t.rows, r.model_actor) orelse continue;
+            for (model_row_keys) |k| if (m.get(k)) |v| try row.put(a, k, try v.clone(a));
+            if (m.get("ModelVariationFmabName")) |v| try row.put(a, "ModelVariationFmabName", try v.clone(a));
+            // the actor's own animation files stay (its own moves, such as the dig prize's rise out of the hole), and
+            // the model's are added: a model can name a pose in them (the Hookshot's ModelInfo poses it with
+            // Weapon_Pose_Hook from Item_Hookshot_Animation)
+            try addMissingAnimationResources(a, row, m);
+            // at least the model actor's memory (the Hookshot's render memory is larger than the Piece of Heart's).
+            // The Graveyard crash in testing was the size table, not this (dressInModelOf)
+            try raiseMemoryToFit(a, row, m);
+        }
         for (tables) |t| try self.patches.emitZs(t.rel, t.original, try byml.dumpDefault(a, .{ .array = t.rows }));
     }
 };
+
+/// Appends to `row`'s AnimationResources each entry of `donor`'s it lacks (an entry names an animation file,
+/// {ModelProjectName: ...}), keeping `row`'s own first.
+fn addMissingAnimationResources(allocator: Allocator, row: *byml.Dict, donor: *const byml.Dict) PatchError!void {
+    const donor_list = (donor.get("AnimationResources") orelse return).asArray() orelse return;
+    if (row.get("AnimationResources") == null) {
+        try row.put(allocator, "AnimationResources", try (byml.Value{ .array = donor_list }).clone(allocator));
+        return;
+    }
+    const own = row.get("AnimationResources").?.asArray() orelse return;
+    for (donor_list.items.items) |entry| {
+        const name = (entry.asDict() orelse continue).getString("ModelProjectName") orelse continue;
+        var present = false;
+        for (own.items.items) |mine| {
+            const mine_name = (mine.asDict() orelse continue).getString("ModelProjectName") orelse continue;
+            if (std.mem.eql(u8, mine_name, name)) present = true;
+        }
+        if (!present) own.items.append(allocator, try entry.clone(allocator)) catch return error.OutOfMemory;
+    }
+}
 
 /// Raises `row`'s memory sizes (InstanceHeapSize, PreActorRenderInfoHeapSize) to at least `donor`'s: an actor given
 /// another actor's components needs the memory that actor has, or the game overruns it creating the actor.

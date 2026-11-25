@@ -197,6 +197,19 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         patches.endStep();
     }
 
+    // Dampé's gravedigging tour: the prize his dig brings up out of the hole shows the placed item (qol.zig says why
+    // it stays his own Piece of Heart actor)
+    for (locs, 0..) |l, i| {
+        if (!std.mem.eql(u8, l.name, qol.dampe_tour_location)) continue;
+        const item = placed[i] orelse continue;
+        if (item == l.vanilla) continue;
+        const model_actor = try requireActor(a, world, item, .world, progress);
+        if (try cloner.dressInModelOf(qol.dampe_dig_prize_actor, model_actor)) {
+            progress.log("Dampé's gravedigging tour: the prize he digs up looks like {s}", .{model_actor});
+        }
+        patches.endStep();
+    }
+
     if (cloner.heights_moved > 0) {
         progress.log("Item heights: {d} placements raised or lowered to rest like the item they replace (largest move {d:.2})", .{ cloner.heights_moved, cloner.largest_height_move });
     }
@@ -265,7 +278,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     const FlowEdit = struct {
         what: []const u8,
         rel: []const u8,
-        kind: enum { stones_without_mask, opening_without_movie, start_outside, memory_game, bridge_guard, deku_meeting, quick_chest, epona },
+        kind: enum { stones_without_mask, opening_without_movie, start_outside, memory_game, dampe_prize_spot, bridge_guard, deku_meeting, quick_chest, epona },
     };
     var flow_edits: std.ArrayList(FlowEdit) = .empty;
     if (st.is(.gossip_stones, "no_mask")) flow_edits.append(a, .{ .what = "Gossip Stones: No Mask of Truth", .rel = hints.gossip_flow, .kind = .stones_without_mask }) catch return error.OutOfMemory;
@@ -274,6 +287,11 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     flow_edits.append(a, .{ .what = "New game start", .rel = faststart.opening_flow, .kind = .start_outside }) catch return error.OutOfMemory;
     // every seed: the Lost Woods ocarina game gives its three rewards for one won song
     flow_edits.append(a, .{ .what = "Lost Woods ocarina game", .rel = qol.memory_game_flow, .kind = .memory_game }) catch return error.OutOfMemory;
+    // every seed: Dampé's gravedigging tour prize always comes out of the spot in front of the Hylian Shield grave
+    // (the game's update has a copy of the flow of its own)
+    for ([_][]const u8{ qol.dampe_flow, qol.dampe_flow_update }) |rel| {
+        if (world.files.exists(rel)) flow_edits.append(a, .{ .what = "Dampé's gravedigging tour", .rel = rel, .kind = .dampe_prize_spot }) catch return error.OutOfMemory;
+    }
     if (!st.is(.rainbow_bridge, "vanilla")) flow_edits.append(a, .{ .what = "Rainbow Bridge", .rel = qol.allsage_flow, .kind = .bridge_guard }) catch return error.OutOfMemory;
     if (st.flag(.skip_deku_talk) and !st.is(.open_forest, "open")) flow_edits.append(a, .{ .what = "Skip the Great Deku Tree's Talk", .rel = faststart.mido_flow, .kind = .deku_meeting }) catch return error.OutOfMemory;
     if (st.flag(.quick_chests)) flow_edits.append(a, .{ .what = "Chests Without Cutscene", .rel = faststart.chest_flow, .kind = .quick_chest }) catch return error.OutOfMemory;
@@ -285,6 +303,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             .opening_without_movie => faststart.openingWithoutMovie(s, orig.data, progress),
             .start_outside => faststart.startOutside(s, orig.data, progress),
             .memory_game => qol.memoryGameAllRewards(s, orig.data, progress),
+            .dampe_prize_spot => qol.dampePrizeAtShieldGrave(s, orig.data, progress),
             .bridge_guard => qol.bridgeQuestGuard(s, orig.data, progress),
             .deku_meeting => faststart.completeDekuMeeting(s, orig.data, progress),
             .quick_chest => faststart.quickChest(s, orig.data, progress),

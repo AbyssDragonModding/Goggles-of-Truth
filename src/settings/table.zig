@@ -561,7 +561,7 @@ pub const specs = [_]Spec{
         .options = &.{
             .{ .value = "vanilla", .label = "Vanilla" },
             .{ .value = "own", .label = "Own Dungeon" },
-            .{ .value = "remove", .label = "Remove (replaced by junk, experimental)" },
+            .{ .value = "remove", .label = "Remove (replaced by junk)" },
             .{ .value = "start_with", .label = "Start With" },
         },
         .default = .{ .choice = "own" },

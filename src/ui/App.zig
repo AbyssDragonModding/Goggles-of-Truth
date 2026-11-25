@@ -1312,14 +1312,14 @@ fn onPlaySelected(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     self.playSeed(self.seeds_list.getSelected());
 }
 
-/// Rebuild This Seed: makes the selected seed again with this release (its own seed number, settings string and
+/// Rebuild Seed: makes the selected seed again with this release (its own seed number, settings string and
 /// folder), so a fix reaches a seed already being played: the items stay where they were and its saves still fit.
 /// The window's own settings aren't used, except Per-Seed Saves (not part of a settings string).
 fn onRebuildSelected(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     const index = self.seeds_list.getSelected();
     if (self.busy) return;
     if (index < 0 or index >= self.seed_rows.items.len) {
-        self.messageBox("Rebuild This Seed", "Choose a seed in the list first.");
+        self.messageBox("Rebuild Seed", "Choose a seed in the list first.");
         return;
     }
     const paths = self.checkPaths(true) orelse return;
@@ -1328,34 +1328,35 @@ fn onRebuildSelected(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     const target = (engine.saves.targetFor(a, &self.env, paths.out) catch null) orelse return;
     const seed_name = a.dupe(u8, self.seed_rows.items[@intCast(index)]) catch return;
     const folder = (engine.saves.seedFolder(a, &self.env, target, seed_name) catch null) orelse {
-        self.messageBox("Rebuild This Seed", "That seed's folder wasn't found; click Refresh.");
+        self.messageBox("Rebuild Seed", "That seed's folder wasn't found; click Refresh.");
         return;
     };
     const info = switch (engine.generator.checkRebuild(a, self.env.fs, folder) catch return) {
         .ready => |ready| ready,
         .not_a_seed => {
-            self.messageBox("Rebuild This Seed", self.fmtZ("{s} has no readable settings.txt, so it can't be made again.", .{folder}));
+            self.messageBox("Rebuild Seed", self.fmtZ("{s} has no readable settings.txt, so it can't be made again.", .{folder}));
             return;
         },
         .other_placements => |other| {
-            self.messageBox("Rebuild This Seed", self.fmtZ("{s} was made by version {s}, which places items differently than {s}. Rebuilt, it would be a different seed and its saves wouldn't fit, so it is left as it is. Make a new seed instead.", .{ seed_name, other.release, engine.version.version }));
+            const explanation = engine.generator.placementMismatchMessage(a, seed_name, other) catch return;
+            self.messageBox("Rebuild Seed", self.fmtZ("{s}", .{explanation}));
             return;
         },
     };
     var st = engine.settings.fromString(a, info.settings_string) catch {
-        self.messageBox("Rebuild This Seed", "That seed's settings string can't be read by this version.");
+        self.messageBox("Rebuild Seed", "That seed's settings string can't be read by this version.");
         return;
     };
     st.set(.per_seed_saves, self.st.get(.per_seed_saves));
     const test_placements = engine.seedinfo.parseTestPlacements(a, info.test_placements) catch {
-        self.messageBox("Rebuild This Seed", "That seed's test placements can't be read.");
+        self.messageBox("Rebuild Seed", "That seed's test placements can't be read.");
         return;
     };
     // why: a switched-off seed is switched on first, so the rebuild goes into its own folder (with its stored
     // saves) and not into a new one next to it
     var msg = engine.saves.Messages{ .allocator = a };
     const active_folder = engine.saves.switchOn(a, &self.env, target, seed_name, &msg) catch {
-        self.messageBox("Rebuild This Seed", if (msg.failure.len > 0) msg.failure else "The seed couldn't be switched on.");
+        self.messageBox("Rebuild Seed", if (msg.failure.len > 0) msg.failure else "The seed couldn't be switched on.");
         self.fillSeeds();
         return;
     };

@@ -50,7 +50,7 @@ pub const Request = struct {
     /// Test seeds only (`goggles_cli generate --place`): items put at chosen locations before the fill. Written to
     /// settings.txt, so a rebuild places them again.
     test_placements: []const seedinfo.TestPlacement = &.{},
-    /// Rebuild This Seed / `--rebuild`: the same seed made again into its own folder. Its saves stay with it
+    /// Rebuild Seed / `--rebuild`: the same seed made again into its own folder. Its saves stay with it
     /// (saves.keepSavesForRebuild): the game's slots are never emptied or switched away for it.
     rebuild: bool = false,
 };
@@ -108,6 +108,9 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     const sstr = settings_mod.toString(a, st) catch return error.OutOfMemory;
     var seed_buf: [10]u8 = undefined;
     const seed: []const u8 = if (request.seed) |s| (if (s.len > 0) s else randomSeed(fs.io, &seed_buf)) else randomSeed(fs.io, &seed_buf);
+    const mod_name = if (request.mod_name) |m| (if (m.len > 0) m else null) else null;
+    const name = mod_name orelse (std.fmt.allocPrint(a, "{s}{s}", .{ longshot.mod_prefix, seed }) catch return error.OutOfMemory);
+    try refuseWhileGameHoldsOtherSeeds(a, env, request.out_dir, name, progress);
 
     var own_world: ?*World = null;
     defer if (own_world) |w| w.deinit();
@@ -216,8 +219,6 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
         hint_list = hints.choose(a, world, plan, placed_filler, seed, st.choice(.hint_distribution), st.is(.gossip_stones, "mask")) catch |err| return patchError(err, progress);
     }
 
-    const mod_name = if (request.mod_name) |m| (if (m.len > 0) m else null) else null;
-    const name = mod_name orelse (std.fmt.allocPrint(a, "{s}{s}", .{ longshot.mod_prefix, seed }) catch return error.OutOfMemory);
     const mod_root = fsmod.join(a, &.{ request.out_dir, name }) catch return error.OutOfMemory;
     // The game files are only ever read: every patched file is written to the mod folder. Refuse an output folder
     // inside a romfs folder (the window checks this too), so a mistake can never write into the game files. A .nup
@@ -229,6 +230,12 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     }
 
     if (request.rebuild) {
+        // why checked again here (the window and the command line check before starting): nothing may rebuild a seed
+        // over one with other placements, whichever way the request came; nothing has been written yet
+        switch (try checkRebuild(a, fs, mod_root)) {
+            .other_placements => |info| return progress.fail(error.GenerationFailed, "{s}", .{try placementMismatchMessage(a, name, info)}),
+            .ready, .not_a_seed => {},
+        }
         // why: the game would keep running on the old mod files and could save over the slots being kept
         if (saves.targetFor(a, env, request.out_dir) catch return error.OutOfMemory) |target| {
             if (saves.gameRunning(a, env, target)) |running| {
@@ -340,6 +347,28 @@ fn patchError(err: anytype, progress: *Progress) GenerateError {
 
 /// Longshot and emulators load every mod folder: the other seeds are switched off, and with Per-Seed Saves the saves
 /// follow the new seed.
+/// Stops before anything is made when the game is running and other seeds in the output folder are switched on.
+/// Why: the running game keeps every switched-on seed's files open, so they can't be switched off (renamed or moved),
+/// and the game would load them together with the new seed (test report: older test seeds stayed on). Rebuilding a
+/// seed is refused while the game runs anyway (generate).
+fn refuseWhileGameHoldsOtherSeeds(a: Allocator, env: *const Env, out_dir: []const u8, name: []const u8, progress: *Progress) GenerateError!void {
+    const target = (saves.targetFor(a, env, out_dir) catch return error.OutOfMemory) orelse return;
+    const running = saves.gameRunning(a, env, target) orelse return;
+    if (running.len == 0) return;
+    var other_active_seeds: std.ArrayList([]const u8) = .empty;
+    if (longshot.isModsFolder(a, env, out_dir)) {
+        for (longshot.activeSeeds(a, env, out_dir, name) catch return error.OutOfMemory) |seed_name| other_active_seeds.append(a, seed_name) catch return error.OutOfMemory;
+    }
+    if (target.kind == .emulator) {
+        for (saves.seeds(a, env, target) catch return error.OutOfMemory) |seed_entry| {
+            if (seed_entry.on and !std.mem.eql(u8, seed_entry.name, name)) other_active_seeds.append(a, seed_entry.name) catch return error.OutOfMemory;
+        }
+    }
+    if (other_active_seeds.items.len == 0) return;
+    const listed = std.mem.join(a, ", ", other_active_seeds.items) catch return error.OutOfMemory;
+    return progress.fail(error.GenerationFailed, "{s} is running and these seeds are switched on: {s}. While the game runs it keeps their files open, so they can't be switched off, and it would load them together with the new seed. Close {s} first, then make the seed again (nothing was written).", .{ running, listed, running });
+}
+
 fn switchOtherSeeds(a: Allocator, env: *const Env, out_dir: []const u8, name: []const u8, st: *const Settings, rebuild: bool, progress: *Progress) GenerateError!void {
     if (longshot.isModsFolder(a, env, out_dir)) {
         // two seeds at once would mix, so the others are switched off
@@ -420,6 +449,29 @@ pub fn checkRebuild(allocator: Allocator, fs: fsmod.Fs, seed_folder: []const u8)
     const info = seedinfo.parseSettingsText(text) orelse return .not_a_seed;
     if (!std.mem.eql(u8, info.placement_version, version_mod.placement_version)) return .{ .other_placements = info };
     return .{ .ready = info };
+}
+
+/// Why a seed with other placements can't be rebuilt, for the window and the command line alike: the reason, and
+/// that the seed and its saves are untouched and still playable. Why refuse at all: the placement version goes into
+/// the seed's random stream (version.zig), so rebuilt with another one, the same seed number would put items
+/// elsewhere and the saves (which record what was collected where) would no longer fit.
+pub fn placementMismatchMessage(allocator: Allocator, seed_name: []const u8, info: seedinfo.SeedInfo) error{OutOfMemory}![]const u8 {
+    // (this release's placement version always parses: version.zig checks it at compile time, hence unreachable;
+    // a seed's unreadable one counts as older)
+    const made_by_newer = if (std.SemanticVersion.parse(info.placement_version)) |seed_placements|
+        std.SemanticVersion.order(seed_placements, std.SemanticVersion.parse(version_mod.placement_version) catch unreachable) == .gt
+    else |_|
+        false;
+    const reason = if (made_by_newer)
+        "it was made by a newer version that places items differently"
+    else
+        "this version places items differently than the one that made it";
+    return std.fmt.allocPrint(allocator,
+        "{s} can't be rebuilt with {s}: {s} (seed made by {s}, placement version {s}; this version's placement version " ++
+        "is {s}), so a rebuild would be a different seed.\n\nYour seed and its saves are safe and nothing was changed: keep " ++
+        "playing it as it is. It just won't get the fixes and features of {s}; start a new seed for those.",
+        .{ seed_name, version_mod.version, reason, info.release, info.placement_version, version_mod.placement_version, version_mod.version },
+    );
 }
 
 /// What every build writes at the top of a mod folder. Everything else there (the stored per-seed saves in saves/)
@@ -620,4 +672,19 @@ fn writeSpoiler(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Fil
     }
     try js.appendSlice(a, "\n }\n}");
     fs.writeAll(fsmod.join(a, &.{ mod_root, "spoiler.json" }) catch return error.OutOfMemory, js.items) catch return error.WriteFailed;
+}
+
+test "a seed with other placements is refused with a message that its saves are safe" {
+    const allocator = std.testing.allocator;
+    const older_seed = seedinfo.SeedInfo{ .release = "0.7.5", .placement_version = "0.7.3", .seed = "OLDSEED", .settings_string = "eNqX" };
+    const older_message = try placementMismatchMessage(allocator, "GogglesOfTruth_OLDSEED", older_seed);
+    defer allocator.free(older_message);
+    try std.testing.expect(std.mem.indexOf(u8, older_message, "this version places items differently") != null);
+    try std.testing.expect(std.mem.indexOf(u8, older_message, "saves are safe") != null);
+    try std.testing.expect(std.mem.indexOf(u8, older_message, "placement version 0.7.3") != null);
+
+    const newer_seed = seedinfo.SeedInfo{ .release = "99.0.0", .placement_version = "99.0.0", .seed = "NEWSEED", .settings_string = "eNqX" };
+    const newer_message = try placementMismatchMessage(allocator, "GogglesOfTruth_NEWSEED", newer_seed);
+    defer allocator.free(newer_message);
+    try std.testing.expect(std.mem.indexOf(u8, newer_message, "made by a newer version") != null);
 }

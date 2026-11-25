@@ -95,8 +95,7 @@ When only some choices of an option have a different status, they're named in th
 
 | Feature | Choices | Status |
 |---|---|---|
-| Maps & Compasses | Vanilla, Own Dungeon, Start With | 🟢 Stable |
-| | Remove (replaced by junk) | 🔴 Not tested |
+| Maps & Compasses | Vanilla, Own Dungeon, Start With, Remove (their chests hold a Blue Rupee) | 🟢 Stable |
 | Small Keys | Vanilla | 🟢 Stable |
 | | Own Dungeon | 🔴 Not tested |
 | | Removed (every dungeon starts with all its small keys) | 🔴 Not tested |
@@ -429,7 +428,7 @@ when the output folder is:
 - **Generating** stores your current slots with the seed they belong to and gives the new seed empty slots.
 - **Play This Seed** (ROM Options > Seeds and saves, or double-click a seed) switches that seed on, all others off,
   and brings its slots back. ▶ marks the seed that's on, ★ the one whose saves are in the game.
-- **Rebuild This Seed** makes the selected seed again with this version's fixes (same items, same places) and keeps
+- **Rebuild Seed** makes the selected seed again with this version's fixes (same items, same places) and keeps
   its saves; see [Versions](#versions). A rebuild never empties the game's slots or switches them away for that
   seed: its own slots stay in the game; slots no seed owns (a seed you copied in by hand and played) stay too and
   become that seed's, with a copy in `save_backups/` first; slots of another seed are stored with that seed and the
@@ -559,7 +558,7 @@ goggles_cli selftest <game>                     read and rewrite every event flo
 **Test seeds:** `--place "Kokiri Forest Chest 4=Bomb Bag" --place "Kokiri Forest Chest 5=Goron Bracelet"` puts
 those items there before the rest is shuffled around them (names as the spoiler log shows them; the item leaves the
 pool, so the seed is still complete and beatable). They are listed in `settings.txt` (`Test placements:`), so
-**Rebuild This Seed** places them again. Pick a location that is open before its own item is needed: Kokiri Forest's
+**Rebuild Seed** places them again. Pick a location that is open before its own item is needed: Kokiri Forest's
 grotto chests (Chests 1 and 3) need bombs and the Song of Storms, its Chests 4 to 7 are open from the start.
 
 `--from-user-settings` uses the settings saved by the window. The tool keeps its own `cache` folder next to itself;
@@ -679,7 +678,7 @@ Placement version: 0.7.6
 ```
 
 **Getting a fix into a seed you're playing:** select the seed under ROM Options > Seeds and saves and click
-**Rebuild This Seed** (or run `goggles_cli generate --game <game> --rebuild <seed folder>`). The seed is made again
+**Rebuild Seed** (or run `goggles_cli generate --game <game> --rebuild <seed folder>`). The seed is made again
 with the new version into its own folder: the same items in the same places, with the fixes, and your save loads
 as before (its stored per-seed saves are kept). Only seeds with the same placement version can be rebuilt; the
 window says so otherwise. Seeds from 0.7.6 on can be rebuilt with later versions; 0.7.6 changed placements (Maps & Compasses "Remove"), so seeds made before it can't.

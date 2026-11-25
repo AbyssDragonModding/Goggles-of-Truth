@@ -29,11 +29,17 @@ const Allocator = std.mem.Allocator;
 const PatchError = patchset.PatchError;
 const World = world_mod.World;
 const ItemId = logic.ItemId;
+const Container = evfl.Container;
 
 pub const Display = struct {
     location: []const u8,
     flow: []const u8,
     actor: []const u8,
+    /// The scene shows its reward with the "important item" display (EventOpenPerformanceImportantMenu) instead of
+    /// the normal item window. That display only knows the vanilla item's model (test report, DIGREWARD1: the Deku
+    /// Tree handed over the Megaton Hammer but the display showed the Kokiri Emerald), so for another item it is
+    /// replaced by the normal item window for the item the scene really gives.
+    shows_important_item_display: bool = false,
 };
 
 pub const Line = struct {
@@ -113,23 +119,31 @@ pub const Changed = struct {
     item: ItemId,
 };
 
-/// The gift locations whose item isn't the vanilla one (in plan order).
+/// The gift locations whose item isn't the vanilla one: the shuffled ones in plan order, then the other placed ones
+/// (forced placements, such as a test seed's --place) in location order. Without those, a test seed that forced an
+/// item onto a gift kept the vanilla model and text (DIGREWARD1: the Deku Tree's scene was never changed).
 pub fn changedLocations(allocator: Allocator, plan: *fill.Plan, placed: []const ?ItemId) error{OutOfMemory}![]Changed {
     var out: std.ArrayList(Changed) = .empty;
-    for (plan.shuffled.items) |i| {
-        const loc = plan.location(i);
-        var listed = false;
-        for (tables.display) |d| if (std.mem.eql(u8, d.location, loc.name)) {
-            listed = true;
-        };
-        for (tables.lines) |l| if (std.mem.eql(u8, l.location, loc.name)) {
-            listed = true;
-        };
-        if (!listed) continue;
-        const item = placed[i] orelse continue;
-        if (item != loc.vanilla) try out.append(allocator, .{ .location = loc.name, .item = item });
+    for (plan.shuffled.items) |i| try appendIfChangedGift(allocator, &out, plan, placed, i);
+    for (placed, 0..) |_, i| {
+        if (plan.is_shuffled[i]) continue;
+        try appendIfChangedGift(allocator, &out, plan, placed, i);
     }
     return out.items;
+}
+
+fn appendIfChangedGift(allocator: Allocator, out: *std.ArrayList(Changed), plan: *fill.Plan, placed: []const ?ItemId, i: usize) error{OutOfMemory}!void {
+    const loc = plan.location(i);
+    var listed = false;
+    for (tables.display) |d| if (std.mem.eql(u8, d.location, loc.name)) {
+        listed = true;
+    };
+    for (tables.lines) |l| if (std.mem.eql(u8, l.location, loc.name)) {
+        listed = true;
+    };
+    if (!listed) return;
+    const item = placed[i] orelse return;
+    if (item != loc.vanilla) try out.append(allocator, .{ .location = loc.name, .item = item });
 }
 
 /// Renames the display actors of `changed` locations to their placed item's model. Returns how many.
@@ -173,6 +187,10 @@ pub fn swapModels(world: *World, patches: *patchset.PatchSet, changed: []const C
                 }
                 actor.name = new_name;
                 actor.secondary_name = secondary;
+                if (d.shows_important_item_display) {
+                    const given_actor = (try world.actorForId(a, c.item, .event)) orelse return progress.fail(error.NotAsExpected, "no event actor for {s}", .{world.items.name(c.item)});
+                    try replaceImportantItemDisplayWithItemWindow(a, fc, flow, given_actor, progress);
+                }
                 done += 1;
             }
         }
@@ -181,6 +199,37 @@ pub fn swapModels(world: *World, patches: *patchset.PatchSet, changed: []const C
     }
     if (done > 0) progress.log("Character gifts: {d} reward models show the shuffled item", .{done});
     return done;
+}
+
+const important_item_display_action = "EventOpenPerformanceImportantMenu";
+/// The game's item hand-over flow and its entry that opens the normal "You got ..." window for an actor
+/// (SetForGetWindow, then OpenGetWindow; dump: Event/EventFlow/GetPouchContent.bfevfl).
+const item_window_flow = "GetPouchContent";
+const item_window_entry = "DisplayGetByActorName";
+
+/// Replaces the scene's one important-item display with the normal item window for `given_actor`, in place: every
+/// event that led to the display now reaches the window, which goes on where the display went on.
+fn replaceImportantItemDisplayWithItemWindow(allocator: Allocator, fc: *evfl.Flowchart, flow: []const u8, given_actor: []const u8, progress: *Progress) PatchError!void {
+    var display_event: ?usize = null;
+    var count: usize = 0;
+    for (fc.events.items, 0..) |e, k| {
+        const action = switch (e.kind) {
+            .action => |act| act,
+            else => continue,
+        };
+        const actor = fc.actors.items[action.actor];
+        if (action.action >= actor.actions.items.len) continue;
+        if (!std.mem.eql(u8, actor.actions.items[action.action], important_item_display_action)) continue;
+        display_event = k;
+        count += 1;
+    }
+    if (count != 1) return progress.fail(error.NotAsExpected, "{s}: expected one {s}, found {d}", .{ flow, important_item_display_action, count });
+    const old = &fc.events.items[display_event.?];
+    const go_on = old.next() orelse evfl.NONE;
+    const params = try Container.from(allocator, &.{
+        .{ .name = "ActorName", .value = .{ .string = given_actor } },
+    });
+    old.* = evfl.makeSubFlow(old.name, item_window_flow, item_window_entry, go_on, params);
 }
 
 fn takenBy(fc: *const evfl.Flowchart, except: usize, name: []const u8, secondary: []const u8) bool {

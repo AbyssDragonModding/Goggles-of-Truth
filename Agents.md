@@ -90,3 +90,13 @@ This document outlines the mandatory architecture, coding standards, performance
   1. **Feature Alignment:** If a feature exists in both references, analyze both Python implementations.
   2. **Averaging Logic:** Determine the common/average behavioral logic between both implementations.
   3. **Priority Tie-Breaker:** Prioritize **OotrR** whenever discrepancies or architectural conflicts arise between the two.
+
+---
+
+## 6. Patch Notes (CHANGELOG.md)
+
+- **Write for the average player, not for developers:**
+  - Each bullet says what changed in the game or the window, in a sentence or two of plain language.
+  - Leave out internals: actor, flow, flag or file names, file formats, measurements, how the fix works, and test seed names. That detail belongs in code comments and commit messages.
+  - Keep notes that matter to players, such as "Not tested in-game yet", "Make a new seed" or "Old settings still work".
+- **Keep the version headings as `## <version> - <date>`:** the release workflow copies each version's section into its GitHub Release.

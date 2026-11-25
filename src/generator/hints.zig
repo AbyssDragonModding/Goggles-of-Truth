@@ -90,7 +90,7 @@ const sometimes_names = [_][]const u8{
     "Sheik in Ice Cavern",          "Sheik in Kakariko",    "Sheik at Colossus",        "Market Big Poe Bottle",
     "Kak 20 Gold Skulltula Reward", "Kak Anju as Child",    "GC Darunias Joy",          "LW Skull Kid",
     "LW Target in Woods",           "LH Lab Dive",          "HC Great Fairy Reward",    "OGC Great Fairy Reward",
-    "ZR Frogs Bug Game",            "GF Horseback Archery", "Graveyard Dampe Race Reward",
+    "ZR Frogs Bug Game",            "GF Horseback Archery",
 };
 
 const junk_lines = [_][]const u8{
