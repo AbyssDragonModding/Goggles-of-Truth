@@ -17,8 +17,8 @@ fixes and keep your saves.
   [issue #5](https://github.com/AbyssDragonModding/Goggles-of-Truth/issues/5)). Link now holds up the Ocarina the
   same way as when it comes out of a chest. This also covers Ocarinas given by characters and minigames.
 - **An Ocarina from a Business Scrub, a character or a chest couldn't be used**: no tutorial, and no Ocarina button on
-  screen. You now get the real Ocarina with its tutorial, as when Saria gives it to you. Tested with chests;
-  scrubs and characters not tested in-game yet.
+  screen. You now get the real Ocarina with its tutorial, as when Saria gives it to you. Tested with chests and scrubs;
+  characters not tested in-game yet.
 
 ## 0.7.6 - 2026-11-24
 
