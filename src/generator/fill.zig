@@ -4,6 +4,7 @@
 const std = @import("std");
 const world_mod = @import("../game/world.zig");
 const logic = @import("../logic/logic.zig");
+const progressive = @import("../logic/progressive.zig");
 const settings_mod = @import("../settings/settings.zig");
 const gamedata = @import("gamedata.zig");
 const hash = @import("../core/hash.zig");
@@ -28,10 +29,8 @@ pub const FillError = error{
 // ------------------------------------------------------------------------------------------- item groups
 
 /// Items a shuffled shelf may not sell. Shop_Rando_ shelves are bought once (pickups.zig), as in OotrR; the token
-/// and the capacity upgrades (handed out as "Bigger, else Biggest" elsewhere) stay off shelves; so do the rewards.
-pub const shop_forbidden = [_][]const u8{
-    "Token_Gold", "BombBag_Medium", "BulletBag_Medium", "Quiver_Medium", "Wallet_Medium", "Wallet_Large",
-} ++ rewards;
+/// stays off shelves, and so do the rewards. (Progressive items can't go on a shelf either: Plan.allowed.)
+pub const shop_forbidden = [_][]const u8{"Token_Gold"} ++ rewards;
 /// OotrR: every shuffled shelf costs 10 rupees
 pub const shop_price: i64 = 10;
 /// Shelves whose purchase the game needs: at least one copy of each stays on sale. The Deku Shield and the tunics
@@ -96,24 +95,16 @@ const start_with_bonus = [_]BonusItem{
     .{ .item = "DekuNutBundle", .weight = 1 },        .{ .item = "Heart_Piece", .weight = 1 },
 };
 
-/// Capacity upgrades that several locations hand out as "Bigger". In a chest they become progressive with the
-/// game's conditional-chest check: own the Bigger one (CheckActor) -> the Biggest (Substitute), else Bigger.
-pub const ProgressiveUpgrade = struct { item: []const u8, bigger: []const u8, biggest: []const u8 };
-pub const progressive_upgrades = [_]ProgressiveUpgrade{
-    .{ .item = "BombBag_Medium", .bigger = "Item_BombBag_Medium", .biggest = "Item_BombBag_Large" },
-    .{ .item = "BulletBag_Medium", .bigger = "Item_BulletBag_Medium", .biggest = "Item_BulletBag_Large" },
-    .{ .item = "Quiver_Medium", .bigger = "Item_Quiver_Medium", .biggest = "Item_Quiver_Large" },
-    .{ .item = "Wallet_Medium", .bigger = "Item_Wallet_Medium", .biggest = "Item_Wallet_Large" },
-};
-
-pub fn progressiveUpgrade(item: []const u8) ?ProgressiveUpgrade {
-    for (progressive_upgrades) |p| if (std.mem.eql(u8, p.item, item)) return p;
-    return null;
+/// Can a location of this kind hand out a progressive item? Only event hand-overs (they branch on what the player owns)
+/// and chests (the conditional check) can; see logic/progressive.zig.
+pub fn canGiveProgressive(kind: world_mod.Kind) bool {
+    return kind == .event or kind == .chest;
 }
 
-/// The Skulltula House wallets go into the pool as two Adult's Wallets that only chests may hold: a chest's
-/// conditional check gives the Giant's Wallet if you already own the Adult's one.
-pub const progressive_wallet = "Wallet_Medium";
+/// The upgrade line of a progressive item, or null for any other item.
+pub fn progressiveChainOf(plan: *const Plan, item: ItemId) ?*const progressive.Chain {
+    return progressive.chainOfProgressiveItem(plan.itemName(item));
+}
 
 /// Never shuffled. The Gerudo Membership Card does nothing by itself (the guards check the carpenter rescue).
 const always_vanilla = [_][]const u8{"Token_Gerudo"};
@@ -427,7 +418,7 @@ pub const Plan = struct {
     /// Can location `i` be reached in state `s`? (its rule, and the wallet a high price needs)
     pub fn reachable(self: *const Self, i: usize, s: *logic.State) bool {
         if (!logic.check(s, self.rules[i])) return false;
-        if (self.needs_wallet[i]) return s.has(.Wallet_Medium) or s.has(.Wallet_Large);
+        if (self.needs_wallet[i]) return logic.adultWallet(s);
         return true;
     }
 
@@ -592,7 +583,6 @@ pub const Plan = struct {
         if (st.is(.open_zora, "open")) try self.replaceAll("Bottle_Letter", "Bottle");
         // Open Death Mountain: the Kakariko gate and the Happy Mask Shop are open, Zelda's Letter has no use
         if (st.flag(.open_dmt)) try self.replaceAll("ZeldaLetter", open_dmt_letter_junk);
-        if (st.flag(.shuffle_house)) try self.replaceAll("Wallet_Large", progressive_wallet);
         if (st.flag(.shuffle_ocarinas)) {
             // Saria's bridge gift is switched off; her Fairy Ocarina replaces junk
             var key_buf: [1024]u8 = undefined;
@@ -630,6 +620,39 @@ pub const Plan = struct {
                 const counter = if (std.mem.eql(u8, n, "Heart_Piece")) &pieces else if (std.mem.eql(u8, n, "Heart_Container")) &containers else continue;
                 counter.* += 1;
                 if (std.mem.eql(u8, pool_mode, "minimal") or counter.* % 2 == 0) item.* = red;
+            }
+        }
+        try self.makeLinesProgressive();
+    }
+
+    fn isTierOf(self: *const Self, item: ItemId, chain: *const progressive.Chain) bool {
+        const line = progressive.chainOfTierItem(self.itemName(item)) orelse return false;
+        return line == chain;
+    }
+
+    /// Progressive items (logic/progressive.zig): an upgrade line with a tier in the item pool becomes progressive.
+    /// Every tier in the pool becomes a copy of the line's progressive item, and so does every unshuffled location
+    /// that hands out one of its tiers and can branch (it is patched like a placement: forced). Why the unshuffled
+    /// ones too: a vanilla Golden Scale at the fishing pond, caught before both shuffled copies are found, would have
+    /// left the line one tier short. A line with nothing shuffled keeps its vanilla items, found in the game's order.
+    fn makeLinesProgressive(self: *Self) FillError!void {
+        for (&progressive.chains) |*chain| {
+            var tier_in_pool = false;
+            for (self.pool.items) |item| {
+                if (self.isTierOf(item, chain)) tier_in_pool = true;
+            }
+            if (!tier_in_pool) continue;
+            const copy = try self.world.items.intern(chain.key);
+            for (self.pool.items) |*item| {
+                if (self.isTierOf(item.*, chain)) item.* = copy;
+            }
+            for (self.fixed, 0..) |*fixed_item, i| {
+                const vanilla_tier = fixed_item.* orelse continue;
+                if (!self.isTierOf(vanilla_tier, chain)) continue;
+                // a location that can't branch keeps its own tier (the logic counts it as one tier of the line)
+                if (!canGiveProgressive(self.location(i).kind)) continue;
+                fixed_item.* = copy;
+                self.forced[i] = copy;
             }
         }
     }
@@ -758,7 +781,13 @@ pub const Plan = struct {
         // Skip Child Zelda's start checks take any item except own-dungeon items: one a save default can hold is set
         // in the new save, any other is handed over when the game starts (faststart.giveAtStart)
         if (self.start_locs[i] and own_dungeon != null) return false;
-        if (std.mem.eql(u8, name, progressive_wallet) and loc.kind != .chest) return false;
+        if (progressive.chainOfProgressiveItem(name)) |chain| {
+            // a progressive item needs a hand-over that branches on what the player owns (logic/progressive.zig)
+            if (!canGiveProgressive(loc.kind)) return false;
+            // without logic nothing makes sure a three-tier line's chest copy is opened with one copy owned (the
+            // fill's chest rule, Filler.keepChestsThatNeedOneCopy)
+            if (chain.chestNeedsOneCopy() and loc.kind == .chest and st.is(.logic_rules, "none")) return false;
+        }
         if (logic.keyItemOf(name)) |k| {
             // handed over at the start (Skip Child Zelda) it would skip the item get that applies it
             if (self.start_locs[i]) return false;
@@ -942,22 +971,25 @@ pub const Filler = struct {
         }
     }
 
-    fn sortRank(item: ItemId) u8 {
-        // most constrained first: higher-tier items, then other progression, then the rest
-        if (logic.lowerTier(item) != null) return 0;
+    fn sortRank(plan: *const Plan, item: ItemId) u8 {
+        // most constrained first: the three-tier lines (their chest copies need a copy found first), then other
+        // progression, then the rest
+        if (progressiveChainOf(plan, item)) |chain| {
+            if (chain.chestNeedsOneCopy()) return 0;
+        }
         if (logic.isProgression(item)) return 1;
         return 2;
     }
 
-    fn lessRank(_: void, a: ItemId, b: ItemId) bool {
-        return sortRank(a) < sortRank(b);
+    fn lessRank(plan: *const Plan, a: ItemId, b: ItemId) bool {
+        return sortRank(plan, a) < sortRank(plan, b);
     }
 
     fn placeGroupOnce(self: *Self, group: []const ItemId, unplaced_rest: []const ItemId) FillError!void {
         const plan = self.plan;
         const items = self.allocator.dupe(ItemId, group) catch return error.OutOfMemory;
         self.rng.shuffle(ItemId, items);
-        std.mem.sort(ItemId, items, {}, lessRank);
+        std.mem.sort(ItemId, items, plan, lessRank);
         var remaining: std.ArrayList(ItemId) = .empty;
         remaining.appendSlice(self.allocator, items) catch return error.OutOfMemory;
 
@@ -984,26 +1016,37 @@ pub const Filler = struct {
                 for (unplaced_rest) |r| if (logic.isProgression(r)) try appendItem(ItemId, &base, self.allocator, r);
                 var result = try self.sweep(base.items, try self.contents());
                 for (empty.items) |i| if (plan.reachable(i, &result.state)) try appendItem(usize, &cands, self.allocator, i);
-                if (logic.lowerTier(item)) |lower| {
-                    if (cands.items.len > 0) {
-                        // without the lower tier and without other copies of this item (e.g. two Bigger Bomb Bags)
-                        var without = try result.state.clone(self.allocator);
-                        without.counts[lower] = 0;
-                        if (item < without.counts.len) without.counts[item] = 0;
-                        without.clearCache();
-                        var tiered: std.ArrayList(usize) = .empty;
-                        for (cands.items) |i| if (!plan.reachable(i, &without)) try appendItem(usize, &tiered, self.allocator, i);
-                        if (tiered.items.len == 0) {
-                            return self.progress.fail(error.PlacementFailed, "no location for {s} that requires {s}", .{ plan.itemName(item), plan.itemName(lower) });
-                        }
-                        cands.clearRetainingCapacity();
-                        cands.appendSlice(self.allocator, tiered.items) catch return error.OutOfMemory;
-                    }
+                if (progressiveChainOf(plan, item)) |chain| {
+                    if (chain.chestNeedsOneCopy() and cands.items.len > 0) try self.keepChestsThatNeedOneCopy(&cands, &result.state, item, chain);
                 }
                 if (cands.items.len == 0) return self.progress.fail(error.PlacementFailed, "no reachable location for {s}", .{plan.itemName(item)});
             }
             try self.place(cands.items[self.rng.below(cands.items.len)], item);
         }
+    }
+
+    /// A three-tier line's chest copy: the chest's one check ("own tier 2 -> tier 3, else tier 2") gives the right
+    /// tier only to a player who owns the first one. So of the candidate chests only those the logic can't reach
+    /// without one copy of the line stay (`state`: the assumed-fill state); event hand-overs branch on every tier and
+    /// all stay. (Before progressive items, the same rule kept a stronger tier where the weaker one was needed.)
+    fn keepChestsThatNeedOneCopy(self: *Self, cands: *std.ArrayList(usize), state: *const logic.State, item: ItemId, chain: *const progressive.Chain) FillError!void {
+        const plan = self.plan;
+        var without = try state.clone(self.allocator);
+        if (item < without.counts.len) without.counts[item] = 0;
+        for (chain.tiers) |tier| {
+            const tier_id = plan.world.items.lookup(tier.key) orelse continue;
+            if (tier_id < without.counts.len) without.counts[tier_id] = 0;
+        }
+        without.clearCache();
+        var kept: std.ArrayList(usize) = .empty;
+        for (cands.items) |i| {
+            if (plan.location(i).kind != .chest or !plan.reachable(i, &without)) try appendItem(usize, &kept, self.allocator, i);
+        }
+        if (kept.items.len == 0) {
+            return self.progress.fail(error.PlacementFailed, "no location for {s}: its chests need one copy found first", .{plan.itemName(item)});
+        }
+        cands.clearRetainingCapacity();
+        cands.appendSlice(self.allocator, kept.items) catch return error.OutOfMemory;
     }
 
     fn isProgressionItem(item: ItemId) bool {
@@ -1094,10 +1137,7 @@ pub const Filler = struct {
                 };
                 if (free <= junk_left) spot = try self.firstEmpty(empty.items, item, .gs);
             }
-            if (spot == null and progressiveUpgrade(plan.itemName(item)) != null) {
-                // chests make repeat copies progressive (see patches.zig); prefer them
-                spot = try self.firstEmpty(empty.items, item, .chest);
-            } else if (spot == null and refills and refillContainer(plan.itemName(item)) != null) {
+            if (spot == null and refills and refillContainer(plan.itemName(item)) != null) {
                 // only chests can check for the container; elsewhere the refill becomes a blue rupee
                 spot = try self.firstEmpty(empty.items, item, .chest);
                 if (spot == null) item = try plan.world.items.intern(refill_fallback);
@@ -1127,9 +1167,13 @@ pub const Filler = struct {
     }
 
     fn lessShopForbiddenFirst(plan: *Plan, a: ItemId, b: ItemId) bool {
-        const ra: u8 = if (inList(plan.itemName(a), &shop_forbidden)) 0 else 1;
-        const rb: u8 = if (inList(plan.itemName(b), &shop_forbidden)) 0 else 1;
-        return ra < rb;
+        return restrictedJunkRank(plan, a) < restrictedJunkRank(plan, b);
+    }
+
+    /// 0 for junk only some locations take: off shop shelves, or a progressive item (only where it can branch)
+    fn restrictedJunkRank(plan: *Plan, item: ItemId) u8 {
+        if (inList(plan.itemName(item), &shop_forbidden) or progressiveChainOf(plan, item) != null) return 0;
+        return 1;
     }
 
     /// The first empty location in `order` (of kind `kind`, if given) that may hold `item`.

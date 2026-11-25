@@ -35,6 +35,7 @@ pub const settings = @import("settings/settings.zig");
 pub const usersettings = @import("settings/usersettings.zig");
 pub const custompresets = @import("settings/custompresets.zig");
 pub const logic = @import("logic/logic.zig");
+pub const progressive = @import("logic/progressive.zig");
 
 // ---- the generator
 pub const patchset = @import("generator/patchset.zig");
@@ -74,6 +75,8 @@ test {
     _ = usersettings;
     _ = custompresets;
     _ = logic;
+    _ = progressive;
+    _ = @import("generator/progressive_flows.zig");
     _ = generator;
     _ = filecache;
     _ = compressor;

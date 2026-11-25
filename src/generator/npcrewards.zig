@@ -22,6 +22,8 @@ const world_mod = @import("../game/world.zig");
 const fill = @import("fill.zig");
 const patchset = @import("patchset.zig");
 const flows = @import("flows.zig");
+const progressive = @import("../logic/progressive.zig");
+const progressive_flows = @import("progressive_flows.zig");
 const logic = @import("../logic/logic.zig");
 const Progress = @import("../core/Progress.zig");
 const tables = @import("npc_tables.zig");
@@ -189,7 +191,20 @@ pub fn swapModels(world: *World, patches: *patchset.PatchSet, changed: []const C
                 actor.secondary_name = secondary;
                 if (d.shows_important_item_display) {
                     const given_actor = (try world.actorForId(a, c.item, .event)) orelse return progress.fail(error.NotAsExpected, "no event actor for {s}", .{world.items.name(c.item)});
-                    try replaceImportantItemDisplayWithItemWindow(a, fc, flow, given_actor, progress);
+                    const window = try replaceImportantItemDisplayWithItemWindow(a, fc, flow, given_actor, progress);
+                    if (progressive.chainOfProgressiveItem(world.items.name(c.item))) |chain| {
+                        // a progressive item: the window shows the tier just handed over (the highest one owned)
+                        const tier_actors = a.alloc([]const u8, chain.tiers.len) catch return error.OutOfMemory;
+                        for (chain.tiers, 0..) |tier, t| {
+                            tier_actors[t] = (try world.actorFor(a, tier.key, .event)) orelse return progress.fail(error.NotAsExpected, "no event actor for {s}", .{tier.key});
+                        }
+                        try progressive_flows.branchEvent(a, fc, window, "ActorName", .{
+                            .item_offset = 0,
+                            .chain = chain,
+                            .tier_actors = tier_actors,
+                            .shows_item_only = true,
+                        }, flow, progress);
+                    }
                 }
                 done += 1;
             }
@@ -209,7 +224,7 @@ const item_window_entry = "DisplayGetByActorName";
 
 /// Replaces the scene's one important-item display with the normal item window for `given_actor`, in place: every
 /// event that led to the display now reaches the window, which goes on where the display went on.
-fn replaceImportantItemDisplayWithItemWindow(allocator: Allocator, fc: *evfl.Flowchart, flow: []const u8, given_actor: []const u8, progress: *Progress) PatchError!void {
+fn replaceImportantItemDisplayWithItemWindow(allocator: Allocator, fc: *evfl.Flowchart, flow: []const u8, given_actor: []const u8, progress: *Progress) PatchError!u16 {
     var display_event: ?usize = null;
     var count: usize = 0;
     for (fc.events.items, 0..) |e, k| {
@@ -230,6 +245,7 @@ fn replaceImportantItemDisplayWithItemWindow(allocator: Allocator, fc: *evfl.Flo
         .{ .name = "ActorName", .value = .{ .string = given_actor } },
     });
     old.* = evfl.makeSubFlow(old.name, item_window_flow, item_window_entry, go_on, params);
+    return @intCast(display_event.?);
 }
 
 fn takenBy(fc: *const evfl.Flowchart, except: usize, name: []const u8, secondary: []const u8) bool {

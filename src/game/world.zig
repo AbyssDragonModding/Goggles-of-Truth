@@ -11,6 +11,7 @@ const byml = @import("../formats/byml.zig");
 const msbt = @import("../formats/msbt.zig");
 const evfl_view = @import("../formats/evfl_view.zig");
 const logic = @import("../logic/logic.zig");
+const progressive = @import("../logic/progressive.zig");
 const fsmod = @import("../core/fs.zig");
 const Progress = @import("../core/Progress.zig");
 const Allocator = std.mem.Allocator;
@@ -182,6 +183,13 @@ pub const StageRef = struct {
 pub const EventRef = struct {
     rel: []const u8,
     offset: usize,
+    /// the item is handed over by a call of the game's hand-over flows (a sub-flow: GetInEvent, GetPouchContent...),
+    /// which creates the named actor in Link's hands; false for a silent add (AddOrRemovePouchContent)
+    held_up: bool = false,
+    /// the node only shows the item window of an item handed over just before (EventTriggerSetForGetWindow, a
+    /// GetPouchContent<Display...> call): a progressive item there shows the highest tier the player now owns, not
+    /// the next one (generator/progressive_flows.zig)
+    shows_item_only: bool = false,
 };
 
 /// A Business Scrub's Price parameter.
@@ -486,6 +494,8 @@ pub const World = struct {
             const d = logic.key_dungeons[k.dungeon];
             return std.fmt.allocPrint(allocator, "{s} ({s})", .{ if (k.ring) "Key Ring" else "Boss Key", d.name });
         }
+        // a progressive item is the generator's too: which tier it gives depends on what the player owns
+        if (progressive.chainOfProgressiveItem(key)) |chain| return allocator.dupe(u8, chain.display_name);
         const at = std.mem.indexOfScalar(u8, key, '@');
         const base = if (at) |i| key[0..i] else key;
         const prefixes = [_][]const u8{ "Item_", "Obj_", "Weapon_", "TBox_", "Shop_", "Armor_", "Armor_Adult_", "Armor_Child_" };
@@ -522,6 +532,13 @@ pub const World = struct {
     /// Items whose Item_ actor is equipment Link wears; a chest shows their Pouch_ actor instead (actorFor).
     const equipment_shown_by_pouch_actor = [_][]const u8{ "Ocarina_Fairy", "Ocarina_Time" };
 
+    /// The item key's base ("Ocarina_Time") when its Item_ actor is equipment Link wears, which can't be held up
+    /// (equipment_shown_by_pouch_actor); null for every other item.
+    pub fn wornEquipmentBase(key: []const u8) ?[]const u8 {
+        const base = if (std.mem.indexOfScalar(u8, key, '@')) |i| key[0..i] else key;
+        return if (isListed(&equipment_shown_by_pouch_actor, base)) base else null;
+    }
+
     fn isListed(list: []const []const u8, name: []const u8) bool {
         for (list) |entry| if (std.mem.eql(u8, entry, name)) return true;
         return false;
@@ -532,6 +549,9 @@ pub const World = struct {
     pub fn actorFor(self: *const Self, allocator: Allocator, key: []const u8, context: Context) error{OutOfMemory}!?[]const u8 {
         // a key ring or dungeon boss key: the actor the generator makes for it (keyitems.zig), in every context
         if (logic.keyItemOf(key) != null) return try std.fmt.allocPrint(allocator, "Item_{s}", .{key});
+        // a progressive item: its first tier's actor. Why: that is the model a gift shows and what a location that
+        // can't branch would give; the hand-overs that branch pick each tier's own actor (generator/patches.zig)
+        if (progressive.chainOfProgressiveItem(key)) |chain| return self.actorFor(allocator, chain.tiers[0].key, context);
         const base = if (std.mem.indexOfScalar(u8, key, '@')) |i| key[0..i] else key;
         // why: the Ocarinas' Item_ actors are the equipment Link wears (accessory, equipment death and blackboard, no
         // item-get animation set), so held up out of a chest they were invisible. Their Pouch_ actors are the shown
@@ -880,15 +900,15 @@ pub const World = struct {
                             break;
                         };
                         for (found) |f| {
-                            refs.append(a, EventRef{ .rel = rel, .offset = f.item_offset }) catch return error.OutOfMemory;
+                            refs.append(a, EventRef{ .rel = rel, .offset = f.item_offset, .held_up = f.held_up, .shows_item_only = f.shows_item_only }) catch return error.OutOfMemory;
                             if (f.price_offset) |po| {
                                 price_refs.append(a, PriceRef{ .rel = rel, .offset = po, .price = f.price }) catch return error.OutOfMemory;
                             }
                         }
                         continue;
                     }
-                    const offsets = try giftNodes(c, view, spec.vanilla, spec.via);
-                    for (offsets) |off| refs.append(a, EventRef{ .rel = rel, .offset = off }) catch return error.OutOfMemory;
+                    const nodes = try giftNodes(c, view, spec.vanilla, spec.via);
+                    for (nodes) |n| refs.append(a, EventRef{ .rel = rel, .offset = n.offset, .held_up = n.held_up, .shows_item_only = n.shows_item_only }) catch return error.OutOfMemory;
                 }
             }
             if (refs.items.len == 0) {
@@ -915,6 +935,8 @@ pub const World = struct {
 
     const NamedFound = struct {
         item_offset: usize,
+        held_up: bool,
+        shows_item_only: bool,
         price_offset: ?usize,
         price: i64,
     };
@@ -944,7 +966,7 @@ pub const World = struct {
                 }
             }
             if (hits != 1) return null;
-            var found = NamedFound{ .item_offset = found_key.?, .price_offset = null, .price = 0 };
+            var found = NamedFound{ .item_offset = found_key.?, .held_up = e.type == .sub_flow, .shows_item_only = showsItemOnly(e), .price_offset = null, .price = 0 };
             if (spec.price) |price| {
                 const actual = p.getInt("Price") orelse return null;
                 const off = p.intOffset("Price") orelse return null;
@@ -957,9 +979,18 @@ pub const World = struct {
         return out.items;
     }
 
+    const GiftNode = struct { offset: usize, held_up: bool, shows_item_only: bool };
+
+    /// An event that only shows the item window of an item already handed over (EventRef.shows_item_only).
+    fn showsItemOnly(e: *const evfl_view.Event) bool {
+        if (e.type == .action) return std.mem.eql(u8, e.action orelse "", "EventTriggerSetForGetWindow");
+        if (e.type == .sub_flow) return std.mem.startsWith(u8, e.entry orelse "", "Display");
+        return false;
+    }
+
     /// The item field offsets of every gift node handing over `item` (optionally only through sub-flow `via`).
-    fn giftNodes(allocator: Allocator, view: *const evfl_view.View, item: []const u8, via: ?[]const u8) WorldError![]usize {
-        var out: std.ArrayList(usize) = .empty;
+    fn giftNodes(allocator: Allocator, view: *const evfl_view.View, item: []const u8, via: ?[]const u8) WorldError![]GiftNode {
+        var out: std.ArrayList(GiftNode) = .empty;
         for (view.flowcharts) |fc| {
             for (fc.events) |*e| {
                 const p = e.params orelse continue;
@@ -984,7 +1015,7 @@ pub const World = struct {
                             ok = true;
                         }
                     }
-                    if (ok) out.append(allocator, off) catch return error.OutOfMemory;
+                    if (ok) out.append(allocator, .{ .offset = off, .held_up = e.type == .sub_flow, .shows_item_only = showsItemOnly(e) }) catch return error.OutOfMemory;
                 }
             }
         }

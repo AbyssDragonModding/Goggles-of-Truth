@@ -25,6 +25,8 @@ const flows = @import("flows.zig");
 const filecache = @import("filecache.zig");
 const compressor = @import("compressor.zig");
 const keyitems = @import("keyitems.zig");
+const progressive = @import("../logic/progressive.zig");
+const progressive_flows = @import("progressive_flows.zig");
 const zstd = @import("../formats/zstd.zig");
 const Progress = @import("../core/Progress.zig");
 const Allocator = std.mem.Allocator;
@@ -66,7 +68,22 @@ const StageEdit = struct {
 
 const EventEdit = struct {
     offset: usize,
-    value: union(enum) { actor: []const u8, price: i64 },
+    value: union(enum) {
+        actor: []const u8,
+        /// an Ocarina handed over by a hand-over call: written as its held-up display actor (built by the pickup
+        /// builder, so resolved when the edits are applied), or `fallback` if that can't be built
+        held_up_ocarina: struct { item_base: []const u8, fallback: []const u8 },
+        /// a progressive item: the hand-over branches on the tiers owned (progressive_flows.zig)
+        progressive: ProgressiveHandOver,
+        price: i64,
+    },
+};
+
+const ProgressiveHandOver = struct {
+    chain: *const progressive.Chain,
+    /// handed over by a hand-over call (world.EventRef.held_up): a held-up Ocarina gets its display actor
+    held_up: bool,
+    shows_item_only: bool,
 };
 
 fn lessString(_: void, x: []const u8, y: []const u8) bool {
@@ -152,7 +169,21 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         for (loc.stage_refs) |r| try appendTo(StageEdit, &stage_edits, a, r.rel, .{ .hash = r.hash, .loc = i, .item = item });
         if (loc.event_refs.len > 0) {
             const actor = try requireActor(a, world, item, .event, progress);
-            for (loc.event_refs) |r| try appendTo(EventEdit, &event_edits, a, r.rel, .{ .offset = r.offset, .value = .{ .actor = actor } });
+            // Why: a hand-over call creates the named actor in Link's hands, and an Ocarina's Item_ actor is the
+            // equipment Link wears: the game crashed when a Business Scrub sold the Ocarina of Time (issue #5, seed
+            // LZ9S6JU9BS). The game's own scenes only ever add an Ocarina silently. Such a call gets the display actor
+            // chests already use (pickups.chestDisplayActor), which gives the real Ocarina; silent adds keep it.
+            const worn_base = World.wornEquipmentBase(items.name(item));
+            const chain = fill.progressiveChainOf(plan, item);
+            for (loc.event_refs) |r| {
+                const value: @FieldType(EventEdit, "value") = if (chain) |line|
+                    .{ .progressive = .{ .chain = line, .held_up = r.held_up, .shows_item_only = r.shows_item_only } }
+                else if (r.held_up and worn_base != null)
+                    .{ .held_up_ocarina = .{ .item_base = worn_base.?, .fallback = actor } }
+                else
+                    .{ .actor = actor };
+                try appendTo(EventEdit, &event_edits, a, r.rel, .{ .offset = r.offset, .value = value });
+            }
         }
     }
 
@@ -236,14 +267,28 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             error.OutOfMemory => return error.OutOfMemory,
             error.InvalidData => return progress.fail(error.NotAsExpected, "{s} is not a readable event flow", .{rel}),
         };
+        var hand_overs: std.ArrayList(progressive_flows.HandOver) = .empty;
         for (event_edits.get(rel).?.items) |e| {
             switch (e.value) {
                 .price => |p| v.setIntParam(e.offset, @intCast(p)),
                 .actor => |actor| try v.setStringParam(e.offset, actor),
+                .held_up_ocarina => |o| try v.setStringParam(e.offset, (try cloner.chestDisplayActor(o.item_base)) orelse o.fallback),
+                .progressive => |p| {
+                    const tier_actors = try progressiveTierActors(s, world, &cloner, p, progress);
+                    // the node itself keeps tier 1; the branch adds the others after the plain edits
+                    try v.setStringParam(e.offset, tier_actors[0]);
+                    hand_overs.append(s, .{ .item_offset = e.offset, .chain = p.chain, .tier_actors = tier_actors, .shows_item_only = p.shows_item_only }) catch return error.OutOfMemory;
+                },
             }
         }
         v.check(s) catch return progress.fail(error.NotAsExpected, "{s}: the patched flow doesn't parse", .{rel});
-        try patches.emitZs(rel, orig, v.bytesView()); // emit keeps its own copy
+        if (hand_overs.items.len > 0) {
+            const branched = try progressive_flows.branchHandOvers(s, v.bytesView(), &v, hand_overs.items, rel, progress);
+            try patches.emitZs(rel, orig, branched);
+            progress.log("Progressive items: {d} hand-overs in {s} give the next tier", .{ hand_overs.items.len, fsmod.basename(rel) });
+        } else {
+            try patches.emitZs(rel, orig, v.bytesView()); // emit keeps its own copy
+        }
         patches.endStep();
     }
 
@@ -383,8 +428,19 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             return std.mem.order(u8, l[x].id, l[y].id) == .lt;
         }
     }.less);
+    // a progressive item handed over at the start can't branch: the first copy of a line is its first tier, the
+    // next copy the second, and so on (nothing of the line is owned before the start)
+    var start_copies = std.StringHashMap(usize).init(a);
     for (start_ids.items) |i| {
-        const item = placed[i] orelse plan.fixed[i] orelse continue;
+        const placed_item = placed[i] orelse plan.fixed[i] orelse continue;
+        var item = placed_item;
+        if (fill.progressiveChainOf(plan, placed_item)) |chain| {
+            const slot = start_copies.getOrPut(chain.key) catch return error.OutOfMemory;
+            if (!slot.found_existing) slot.value_ptr.* = 0;
+            const tier = chain.tiers[@min(slot.value_ptr.*, chain.tiers.len - 1)];
+            slot.value_ptr.* += 1;
+            item = try items.intern(tier.key);
+        }
         const actor = try requireActor(a, world, item, .event, progress);
         if (flows.contains(&faststart.start_by_event, actor)) {
             start_by_event.append(a, actor) catch return error.OutOfMemory;
@@ -557,13 +613,16 @@ fn patchActor(
                     _ = dyn.remove("GetEventName");
                 }
             }
-            if (fill.progressiveUpgrade(name)) |up| {
-                if (world.actorExists(up.bigger) and world.actorExists(up.biggest)) {
-                    try dyn.put(a, "Drop__DropActor", .{ .string = up.bigger });
-                    try dyn.put(a, "Drop__CheckActor", .{ .string = up.bigger });
-                    try dyn.put(a, "Drop__DropActor_Substitute", .{ .string = up.biggest });
-                    return;
-                }
+            if (fill.progressiveChainOf(plan, item)) |chain| {
+                // the game's conditional chest makes one check (logic/progressive.zig): own the tier below the top
+                // one -> the top one, else that tier below. Two tiers: exact. Three: the fill only puts a copy in a
+                // chest the logic can't reach without the first tier
+                const fallback = chain.chestFallbackTier();
+                const top = &chain.tiers[chain.tiers.len - 1];
+                try dyn.put(a, "Drop__DropActor", .{ .string = try chestShownActorOf(a, world, plan, cloner, fallback.key, progress) });
+                try dyn.put(a, "Drop__CheckActor", .{ .string = fallback.pouch_actor });
+                try dyn.put(a, "Drop__DropActor_Substitute", .{ .string = try chestShownActorOf(a, world, plan, cloner, top.key, progress) });
+                return;
             }
             const needs = if (refills) fill.refillContainer(name) else null;
             if (needs) |container| {
@@ -576,17 +635,7 @@ fn patchActor(
                     return;
                 }
             }
-            const chest_actor = try requireActor(a, world, item, .chest, progress);
-            // an item not drawn held up out of a chest gets a display actor of its own (pickups.chestDisplayActor)
-            // (an Ocarina is only in a chest with Shuffle Ocarinas; the check names the setting it belongs to)
-            const shown_actor = if (std.mem.startsWith(u8, chest_actor, "Pouch_") and plan.st.flag(.shuffle_ocarinas))
-                (try cloner.chestDisplayActor(chest_actor["Pouch_".len..])) orelse chest_actor
-            else if (std.mem.startsWith(u8, chest_actor, "Item_Melody_") and plan.st.is(.shuffle_songs, "anywhere"))
-                // a song: the harp, turning (pickups.songChestActor)
-                (try cloner.songChestActor(chest_actor)) orelse chest_actor
-            else
-                chest_actor;
-            try dyn.put(a, "Drop__DropActor", .{ .string = shown_actor });
+            try dyn.put(a, "Drop__DropActor", .{ .string = try chestShownActorOf(a, world, plan, cloner, name, progress) });
             _ = dyn.remove("Drop__CheckActor");
             _ = dyn.remove("Drop__DropActor_Substitute");
         },
@@ -846,4 +895,36 @@ fn writeOne(a: Allocator, world: *World, out_romfs: []const u8, rel: []const u8,
     const path = fsmod.join(a, parts.items) catch return error.OutOfMemory;
     world.fs.makePath(fsmod.dirname(path)) catch |err| return progress.fail(error.WriteFailed, "couldn't create the folder for {s} ({s})", .{ path, @errorName(err) });
     world.fs.writeAll(path, data) catch |err| return progress.fail(error.WriteFailed, "couldn't write {s} ({s})", .{ path, @errorName(err) });
+}
+
+/// The actor a chest drops for item key `key`. An item not drawn held up out of a chest gets a display actor of its
+/// own (pickups.chestDisplayActor): an Ocarina (only in a chest with Shuffle Ocarinas; the check names the setting it
+/// belongs to), or a song with Songs Anywhere (the harp, turning: pickups.songChestActor).
+fn chestShownActorOf(a: Allocator, world: *World, plan: *fill.Plan, cloner: *pickups.PickupCloner, key: []const u8, progress: *Progress) PatchError![]const u8 {
+    const chest_actor = (try world.actorFor(a, key, .chest)) orelse
+        return progress.fail(error.NotAsExpected, "no actor for item {s} in chest context", .{key});
+    if (std.mem.startsWith(u8, chest_actor, "Pouch_") and plan.st.flag(.shuffle_ocarinas)) {
+        return (try cloner.chestDisplayActor(chest_actor["Pouch_".len..])) orelse chest_actor;
+    }
+    if (std.mem.startsWith(u8, chest_actor, "Item_Melody_") and plan.st.is(.shuffle_songs, "anywhere")) {
+        return (try cloner.songChestActor(chest_actor)) orelse chest_actor;
+    }
+    return chest_actor;
+}
+
+/// The actor each tier of a progressive hand-over is given as, lowest first. A hand-over call creates the actor in
+/// Link's hands: an Ocarina there gets the display actor chests use (issue #5: the worn Item_Ocarina_* actor crashed
+/// the game when held up); a silent pouch add keeps the Item_ actor.
+fn progressiveTierActors(a: Allocator, world: *World, cloner: *pickups.PickupCloner, hand_over: ProgressiveHandOver, progress: *Progress) PatchError![]const []const u8 {
+    const tiers = hand_over.chain.tiers;
+    const actors = a.alloc([]const u8, tiers.len) catch return error.OutOfMemory;
+    for (tiers, 0..) |tier, t| {
+        const event_actor = (try world.actorFor(a, tier.key, .event)) orelse
+            return progress.fail(error.NotAsExpected, "no actor for {s} (a tier of {s})", .{ tier.key, hand_over.chain.display_name });
+        actors[t] = event_actor;
+        if (hand_over.held_up) {
+            if (World.wornEquipmentBase(tier.key)) |worn_base| actors[t] = (try cloner.chestDisplayActor(worn_base)) orelse event_actor;
+        }
+    }
+    return actors;
 }

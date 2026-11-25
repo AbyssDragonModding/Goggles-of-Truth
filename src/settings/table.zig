@@ -307,7 +307,8 @@ pub const specs = [_]Spec{
         .tip =
             \\The Fairy Ocarina and the Ocarina of Time are found in random checks. Saria doesn't hand you the
             \\Fairy Ocarina on the forest bridge, and Zelda's Ocarina of Time at the castle moat becomes a check.
-            \\Either ocarina plays every song and opens the Door of Time.
+            \\They are two Progressive Ocarinas: the first one you find is the Fairy Ocarina, the second the
+            \\Ocarina of Time. Either ocarina plays every song and opens the Door of Time.
         ,
     },
     .{
@@ -383,7 +384,8 @@ pub const specs = [_]Spec{
             \\the Lost Woods targets and Skull Kid, the Deku Theater (Skull Mask and Mask of Truth), both shooting
             \\galleries, Bombchu Bowling, horseback archery, the diving game, Anju, Talon, the Big Poe buyer,
             \\fishing, the lab dive, the frogs, Dampe, the man on the roof and the lost dog. Every branch of one
-            \\reward (e.g. the Bigger or the Biggest bag) gives the same item.
+            \\reward (e.g. the Bigger or the Biggest bag) gives the same item; an upgrade gives the next one you
+            \\don't have yet (progressive items).
             \\Never shuffled: the Gerudo Membership Card (the guards check the carpenter rescue, not the card) and
             \\the adult trade items (they share the Cucco's slot and would hide it).
         ,
@@ -453,8 +455,8 @@ pub const specs = [_]Spec{
         .default = .{ .boolean = true },
         .tip =
             \\The Skulltula House rewards for 10, 20, 30, 40 and 50 Gold Skulltula Tokens are random. Its two
-            \\wallets are found in chests instead: the first one you open gives the Adult's Wallet, the second
-            \\the Giant's Wallet.
+            \\wallets are found as Progressive Wallets in chests and character gifts: the first one gives the
+            \\Adult's Wallet, the second the Giant's Wallet.
         ,
     },
     .{

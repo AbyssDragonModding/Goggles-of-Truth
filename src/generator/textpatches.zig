@@ -8,6 +8,7 @@ const world_mod = @import("../game/world.zig");
 const settings_mod = @import("../settings/settings.zig");
 const patchset = @import("patchset.zig");
 const flows = @import("flows.zig");
+const progressive_flows = @import("progressive_flows.zig");
 const gamedata = @import("gamedata.zig");
 const Progress = @import("../core/Progress.zig");
 const Allocator = std.mem.Allocator;
@@ -133,6 +134,12 @@ pub fn writeScrubText(world: *World, patches: *patchset.PatchSet, scrubs: []cons
             if (!p.has("SellerMessageId")) return progress.fail(error.NotAsExpected, "{s} has no sale line in {s}", .{ ev, scrub_flow });
             const id = std.fmt.allocPrint(a, "{s}:{s}{s}", .{ scrub_message_file, scrub_label_prefix, s.events[0] }) catch return error.OutOfMemory;
             try p.put(a, "SellerMessageId", .{ .string = id });
+            // a progressive item's copies of the sale (one per tier, progressive_flows.zig) say the same line
+            for (fc.events.items) |*copy| {
+                if (!progressive_flows.isCopyOf(copy.name, ev)) continue;
+                const copy_params = copy.params() orelse continue;
+                if (copy_params.has("SellerMessageId")) try copy_params.put(a, "SellerMessageId", .{ .string = id });
+            }
         }
     }
     const new_flow = try flows.writeBack(a, &doc, "the scrub flow", progress);

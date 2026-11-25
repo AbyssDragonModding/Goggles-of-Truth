@@ -7,6 +7,26 @@ fix raises the last number (0.7.**5**).
 the same placement version put items in the same places, so you can rebuild an older seed with a newer version and
 keep your saves. When a version changes where items go, it gets a new placement version.
 
+## 0.8.0 - unreleased
+
+New placement version (0.8.0). Seeds made with 0.7.x can't be rebuilt with this version. They still play fine
+with the version that made them, and your saves are safe. Make a new seed to get progressive items.
+
+### New
+- **Progressive items.** Upgrades now come in order, whichever copy you find first: the first Progressive Hookshot
+  is the Hookshot and the second the Longshot. The same goes for the Ocarinas (Fairy Ocarina, then Ocarina of Time),
+  strength (Goron Bracelet, Silver Gauntlets, Golden Gauntlets), the scales (Silver, then Golden), the wallets
+  (Adult's, then Giant's), the bomb bags (Bomb Bag, Bigger, Biggest), and the bigger Deku Seed bags and quivers.
+  The spoiler log, the hints and the Business Scrubs call them "Progressive ..." because what you get depends on
+  what you already have.
+- Progressive items are found in chests and given by characters, minigames and Business Scrubs, never lying on the
+  ground, on a Gold Skulltula or on a shop shelf. Not tested in-game yet.
+
+### Changed
+- **The Skulltula House wallets** can now also be given by characters, minigames and scrubs, not only chests.
+- **The strongest upgrades are no longer held back** to places that need the weaker one first: any copy can be
+  anywhere it's allowed.
+
 ## 0.7.6 - 2026-11-24
 
 New placement version (0.7.6). Seeds made with 0.7.5 or earlier can't be rebuilt with this version. They still

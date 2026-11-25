@@ -62,6 +62,14 @@ pub const Item = enum(ItemId) {
     Melody_LightPrelude,
     Ocarina_Fairy,
     Ocarina_Time,
+    // one key for every copy of an upgrade line (progressive.zig): each hands out the next tier the player doesn't
+    // own yet. The logic counts them together with the line's own tiers (tiersOwned)
+    Progressive_Ocarina,
+    Progressive_Hookshot,
+    Progressive_Strength,
+    Progressive_Scale,
+    Progressive_Wallet,
+    Progressive_BombBag,
     // Door of Time: Closed holds them before going adult
     Stone_Forest,
     Stone_Fire,
@@ -105,18 +113,6 @@ pub fn isProgression(item: ItemId) bool {
 pub const medallions = [_]Item{ .Medal_Forest, .Medal_Fire, .Medal_Water, .Medal_Shadow, .Medal_Spirit, .Medal_Light };
 pub const child_stones = [_]Item{ .Stone_Forest, .Stone_Fire, .Stone_Water };
 
-/// Two-tier items: the higher tier may only be placed where the lower tier is required, so the player can never
-/// pick the stronger version up first. Returns the lower tier of `item`, or null.
-pub fn lowerTier(item: ItemId) ?ItemId {
-    const pairs = [_][2]Item{
-        .{ .Hookshot, .Longshot },          .{ .Gauntlet_Silver, .Gauntlet_Gold }, .{ .Scale_Silver, .Scale_Gold },
-        .{ .BombBag_Small, .BombBag_Medium }, .{ .BombBag_Medium, .BombBag_Large }, .{ .Wallet_Medium, .Wallet_Large },
-    };
-    for (pairs) |p| {
-        if (p[1].id() == item) return p[0].id();
-    }
-    return null;
-}
 
 /// Regions a child can reach before leaving a closed Kokiri Forest (the Deku Tree itself excluded).
 pub const forest_regions = [_][]const u8{ "KokiriForest", "LostWood", "SacredForestMeadow" };
@@ -311,16 +307,43 @@ pub const State = struct {
 
 // ------------------------------------------------------------------------------------------------ primitives
 
+/// How many tiers of an upgrade line the player owns: the copies of its progressive item plus its tiers owned as
+/// items of their own (an unshuffled line keeps its vanilla items). Owning n of them counts as owning the line's first
+/// n tiers: that is what progressive copies hand out, and an unshuffled line is found in the game's own order.
+fn tiersOwned(s: *const State, progressive_item: Item, tiers: []const Item) i64 {
+    var owned: i64 = s.count(progressive_item.id());
+    for (tiers) |tier| owned += s.count(tier.id());
+    return owned;
+}
+pub fn bombBagTiers(s: *const State) i64 {
+    return tiersOwned(s, .Progressive_BombBag, &.{ .BombBag_Small, .BombBag_Medium, .BombBag_Large });
+}
+pub fn hookshotTiers(s: *const State) i64 {
+    return tiersOwned(s, .Progressive_Hookshot, &.{ .Hookshot, .Longshot });
+}
+pub fn strengthTiers(s: *const State) i64 {
+    return tiersOwned(s, .Progressive_Strength, &.{ .Gauntlet_Goron, .Gauntlet_Silver, .Gauntlet_Gold });
+}
+pub fn scaleTiers(s: *const State) i64 {
+    return tiersOwned(s, .Progressive_Scale, &.{ .Scale_Silver, .Scale_Gold });
+}
+pub fn walletTiers(s: *const State) i64 {
+    return tiersOwned(s, .Progressive_Wallet, &.{ .Wallet_Medium, .Wallet_Large });
+}
+pub fn ocarinaTiers(s: *const State) i64 {
+    return tiersOwned(s, .Progressive_Ocarina, &.{ .Ocarina_Fairy, .Ocarina_Time });
+}
+
 pub fn bombs(s: *State) bool {
-    const bag = s.has(.BombBag_Small) or s.has(.BombBag_Medium) or s.has(.BombBag_Large);
+    const bag = bombBagTiers(s) >= 1;
     // Bag bombs are lifted objects in the remake: without the bomb patch they need the Goron Bracelet.
-    return bag and (s.options.bag_bombs_no_bracelet or s.has(.Gauntlet_Goron) or str2(s));
+    return bag and (s.options.bag_bombs_no_bracelet or str1(s));
 }
 pub fn hookshot(s: *State) bool {
-    return s.has(.Hookshot) or s.has(.Longshot);
+    return hookshotTiers(s) >= 1;
 }
 pub fn longshot(s: *State) bool {
-    return s.has(.Longshot);
+    return hookshotTiers(s) >= 2;
 }
 pub fn bow(s: *State) bool {
     return s.has(.Range_Bow);
@@ -332,13 +355,24 @@ pub fn dins(s: *State) bool {
     return s.has(.DinFire);
 }
 pub fn scale(s: *State) bool {
-    return s.has(.Scale_Silver) or s.has(.Scale_Gold);
+    return scaleTiers(s) >= 1;
+}
+pub fn goldenScale(s: *State) bool {
+    return scaleTiers(s) >= 2;
+}
+/// The Goron Bracelet, or better (a progressive line's first copy is always the bracelet).
+pub fn str1(s: *State) bool {
+    return strengthTiers(s) >= 1;
 }
 pub fn str2(s: *State) bool {
-    return s.has(.Gauntlet_Silver) or s.has(.Gauntlet_Gold);
+    return strengthTiers(s) >= 2;
 }
 pub fn str3(s: *State) bool {
-    return s.has(.Gauntlet_Gold);
+    return strengthTiers(s) >= 3;
+}
+/// The Adult's Wallet or better: prices above 99 rupees.
+pub fn adultWallet(s: *const State) bool {
+    return walletTiers(s) >= 1;
 }
 pub fn bottle(s: *State) bool {
     // Ruto's Letter becomes an empty bottle only when it is delivered (impossible if King Zora starts moved)
@@ -347,7 +381,7 @@ pub fn bottle(s: *State) bool {
 }
 pub fn ocarina(s: *State) bool {
     // vanilla: Saria hands over the Fairy Ocarina when you leave the forest after the Deku Tree
-    if (s.has(.Ocarina_Fairy) or s.has(.Ocarina_Time)) return true;
+    if (ocarinaTiers(s) >= 1) return true;
     return !s.options.shuffle_ocarinas and s.is(.deku_done);
 }
 pub fn song(s: *State, melody: Item) bool {
@@ -371,9 +405,9 @@ pub fn tokens(s: *State, n: i64) bool {
 pub fn maskShop(s: *State) bool {
     return s.options.open_dmt or s.has(.ZeldaLetter);
 }
-/// 2 progressive wallets, or the Giant's Wallet itself.
+/// The Giant's Wallet: two tiers of the wallet line.
 pub fn giantWallet(s: *State) bool {
-    return s.has(.Wallet_Large) or s.hasN(.Wallet_Medium, 2);
+    return walletTiers(s) >= 2;
 }
 /// The keys of key_dungeons[`index`] when they are items of their own: its key ring and its boss key. Why the whole
 /// dungeon needs them: the logic has no door-by-door model, so like every other item a dungeon needs, they are
@@ -426,14 +460,14 @@ fn evalDerived(s: *State, d: Derived) bool {
         .wasteland => s.is(.gf_adult) and s.is(.card) and lens(s) and (s.has(.HoverBoot) or longshot(s)),
         .colossus_child => song(s, .Melody_SpiritRequiem),
         .colossus_adult => s.is(.adult) and (s.is(.wasteland) or song(s, .Melody_SpiritRequiem)),
-        .goron_tunic => s.is(.adult) and (bombs(s) or bow(s) or s.has(.Wallet_Medium)),
+        .goron_tunic => s.is(.adult) and (bombs(s) or bow(s) or adultWallet(s)),
         .zora_tunic => s.is(.zd_adult) and ((s.is(.zf_adult) and bottle(s)) or giantWallet(s)),
 
         // ---- dungeons ("done" = the whole dungeon)
         .dodongo_done => blk: {
             // The entrance boulder only reacts to the special bomb flower next to it (Goron Bracelet), unless the
             // bag-bomb patch is on; inside, bombs or bomb flowers both work.
-            const entry = s.has(.Gauntlet_Goron) or (o.dodongo_bag_bombs and bombs(s));
+            const entry = str1(s) or (o.dodongo_bag_bombs and bombs(s));
             break :blk s.is(.dmt_child) and entry;
         },
         .jabu_done => s.is(.zf_child) and bottle(s) and s.has(.Boomerang),
@@ -681,7 +715,7 @@ pub fn special(s: *State, key: Special) bool {
         // ten Big Poes in Hyrule Field, on horseback
         .big_poes => s.is(.epona) and bow(s) and bottle(s),
         .fishing_adult, .graveyard_adult => s.is(.adult),
-        .lab_dive => s.is(.hf_child) and s.has(.Scale_Gold),
+        .lab_dive => s.is(.hf_child) and goldenScale(s),
         .frogs => s.is(.zr_child) and song(s, .Melody_ZeldaLullaby) and song(s, .Melody_EponaSong) and
             song(s, .Melody_SariaSong) and song(s, .Melody_SunSong) and song(s, .Melody_TimeSong) and song(s, .Melody_StormSong),
         .skull_kid => song(s, .Melody_SariaSong),
@@ -831,4 +865,23 @@ test "an empty state can't win, the derived cache works" {
     s.add(Item.Range_SlingShot.id());
     try std.testing.expect(s.is(.deku_done));
     try std.testing.expect(s.is(.hf_child));
+}
+
+test "progressive copies count as the line's first tiers" {
+    var options = Options{};
+    var s = try State.init(std.testing.allocator, item_count, &options);
+    defer s.deinit(std.testing.allocator);
+    try std.testing.expect(!hookshot(&s));
+    s.add(Item.Progressive_Hookshot.id());
+    try std.testing.expect(hookshot(&s) and !longshot(&s));
+    s.add(Item.Progressive_Hookshot.id());
+    try std.testing.expect(longshot(&s));
+    // an unshuffled tier counts with the copies
+    s.add(Item.Gauntlet_Goron.id());
+    s.add(Item.Progressive_Strength.id());
+    try std.testing.expect(str1(&s) and str2(&s) and !str3(&s));
+    s.add(Item.Progressive_Strength.id());
+    try std.testing.expect(str3(&s));
+    s.add(Item.Progressive_Wallet.id());
+    try std.testing.expect(adultWallet(&s) and !giantWallet(&s));
 }

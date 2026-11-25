@@ -12,6 +12,7 @@ const bytes = @import("../core/bytes.zig");
 const world_mod = @import("../game/world.zig");
 const patchset = @import("patchset.zig");
 const flows = @import("flows.zig");
+const progressive_flows = @import("progressive_flows.zig");
 const gamedata = @import("gamedata.zig");
 const Progress = @import("../core/Progress.zig");
 const Allocator = std.mem.Allocator;
@@ -930,7 +931,8 @@ pub fn memoryGameAllRewards(allocator: Allocator, data: []const u8, progress: *P
                 all_rewards = false;
                 continue;
             };
-            if (!isMemoryReward(t, null)) all_rewards = false;
+            // the check's hand-over may be a progressive item's tier checks (progressive_flows.zig)
+            if (!isMemoryReward(t, null) and !progressive_flows.isOwnsCheck(t.name)) all_rewards = false;
         }
         if (!all_rewards) continue;
         last = @intCast(i);
