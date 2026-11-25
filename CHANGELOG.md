@@ -21,13 +21,9 @@ with the version that made them, and your saves are safe. Make a new seed to get
   what you already have.
 - Progressive items are found in chests and given by characters, minigames and Business Scrubs, never lying on the
   ground, on a Gold Skulltula or on a shop shelf. Not tested in-game yet.
-- **Test seeds from a plan file** (for testers, on the command line). One small file says which items go where and
-  how a new game starts: in which area and spot (or at exact coordinates), as a child or an adult, at what time of
-  day, with which items, with quests already at a chosen step, and with cutscenes counted as seen or not seen, so
-  you can start right before the thing you want to test. Making the plan again keeps the seed and its saves.
-  `test_plans/TEMPLATE.test.toml` explains everything, and a second command lists every area, spot, quest, cutscene,
-  location and item name you can use. Tested starting as an adult in Kakariko and the Forest Temple and as a child
-  by the Deku Tree; starting an event on arrival is not tested yet.
+- **Test seeds from a plan file**, first released early in 0.7.8, now with the parts that needed 0.8.0: a test
+  start can give items already owned, and placing a single upgrade with Progressive Items on says which progressive
+  item to place instead.
 - **Starting Age**: Child, Adult or Random. As an adult, a new game goes straight to Link pulling the Master Sword
   in the Temple of Time; your start items are handed over right after. Rauru's item is already yours, and the Door
   of Time is open. Put the sword back to become a child. Random picks one for the seed, and the spoiler log says
@@ -53,6 +49,35 @@ with the version that made them, and your saves are safe. Make a new seed to get
   anywhere it's allowed.
 - **Boss Keys is back in the main Dungeon Items card** on the Dungeon Items tab, above the Key Ring Dungeons.
 - **The Not Supported tab is gone.**
+
+## 0.7.8 - 2026-11-25
+
+Bug fixes, and 0.8.0's test seeds released early. Items stay in the same places, so you can rebuild any 0.7.6 or
+0.7.7 seed with **Rebuild Seed** to get these fixes and keep your saves.
+
+### New
+- **Test seeds from a plan file** (for test seeds, on the command line), brought over early from 0.8.0. One small
+  file says which items go where and how a new game starts: in which area and spot (or at exact coordinates), as a
+  child or an adult, at what time of day, with quests already at a chosen step, and with cutscenes counted as seen
+  or not seen, so you can start right before the thing you want to test. Making the plan again keeps the seed and
+  its saves. `test_plans/TEMPLATE.test.toml` explains everything, and a second command lists every area, spot,
+  quest, cutscene, location and item name you can use.
+- The parts of it that rely on 0.8.0's changes were left out and come with 0.8.0: starting with items already
+  owned (a plan that asks for them says so; place the items at nearby checks instead), and the hint for placing
+  progressive items. Starting an event on arrival is not tested yet.
+
+### Fixed
+- **Two Malons and two Talons at Hyrule Castle.** If you got the Goron Ruby before meeting Zelda, Malon and Talon's
+  later visit showed up next to their first one. Now Malon stays at her first visit until you've met Zelda, and
+  moves on after your next dungeon.
+- **Items sinking into or floating above shop shelves.** Every shop shelf a randomized item can go on now has its
+  shelf height worked out from the shelves around it, so items rest on the shelf in every shop (the Bombchu Shop
+  keeps its old placement). This fixes items sinking behind the price board on the Bazaars' arrow shelves and the
+  Zora Shop's arrow spots, and items floating in the Potion Shops' pot spots. The Silver and Golden Scales and the
+  Bomb Bags, which sank into any shelf, now rest on it too.
+- **The Weird Egg never hatched** when you found it after the point where Malon's egg would hatch (with Shuffle
+  Weird Egg on). Every Weird Egg the randomizer gives you is now the hatched Cucco straight away, ready to wake
+  Talon. The spoiler log and hints still call it the Weird Egg. Not tested in-game yet.
 
 ## 0.7.7 - 2026-11-24
 

@@ -173,7 +173,7 @@ pub fn swapModels(world: *World, patches: *patchset.PatchSet, changed: []const C
         for (changed) |c| {
             for (tables.display) |d| {
                 if (!std.mem.eql(u8, d.location, c.location) or !std.mem.eql(u8, d.flow, flow)) continue;
-                const new_name = (try world.actorForId(a, c.item, .chest)) orelse return progress.fail(error.NotAsExpected, "no actor for {s}", .{world.items.name(c.item)});
+                const new_name = (try world.handedOutActorForId(a, c.item, .chest)) orelse return progress.fail(error.NotAsExpected, "no actor for {s}", .{world.items.name(c.item)});
                 var hit: ?usize = null;
                 var count: usize = 0;
                 for (fc.actors.items, 0..) |actor, k| if (std.mem.eql(u8, actor.name, d.actor)) {
@@ -190,7 +190,7 @@ pub fn swapModels(world: *World, patches: *patchset.PatchSet, changed: []const C
                 actor.name = new_name;
                 actor.secondary_name = secondary;
                 if (d.shows_important_item_display) {
-                    const given_actor = (try world.actorForId(a, c.item, .event)) orelse return progress.fail(error.NotAsExpected, "no event actor for {s}", .{world.items.name(c.item)});
+                    const given_actor = (try world.handedOutActorForId(a, c.item, .event)) orelse return progress.fail(error.NotAsExpected, "no event actor for {s}", .{world.items.name(c.item)});
                     const window = try replaceImportantItemDisplayWithItemWindow(a, fc, flow, given_actor, progress);
                     if (progressive.chainOfProgressiveItem(world.items.name(c.item))) |chain| {
                         // a progressive item: the window shows the tier just handed over (the highest one owned)
