@@ -32,8 +32,9 @@ with the version that made them, and your saves are safe. Make a new seed to get
   Master Sword, Rauru's item is already yours, and the Door of Time is open. Put the sword back to become a child.
   Random picks one for the seed, and the spoiler log says which. Not tested in-game yet.
 - **Barren Dungeons**: 1 to 5 dungeons, or a random number, hold nothing you need to finish the game (no key items,
-  songs or boss rewards, and no keys when keys are shuffled out of their dungeons). The altar in the Temple of Time
-  tells you which ones on its second page. Not tested in-game yet.
+  songs or boss rewards, and no keys when keys are shuffled out of their dungeons). The Medallion or Stone you'd get
+  for beating a barren dungeon, and Sheik's song in a barren Ice Cavern, are put somewhere else in the seed. The
+  altar in the Temple of Time tells you which dungeons are barren on its second page. Not tested in-game yet.
 - **Skip NPC Dialogs**: characters skip their long story talks and go straight to their short line, for example
   Saria after the Deku Tree. Talks that give an item or move a quest on still play. A setting of its own while it's
   being tested; it will become part of Skip Cutscenes. Not tested in-game yet.

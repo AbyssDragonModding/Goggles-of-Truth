@@ -785,8 +785,8 @@ pub const specs = [_]Spec{
             \\This many dungeons, chosen by the seed, are barren: nothing in them is needed to finish the game.
             \\Their shuffled checks hold no key items, songs or boss rewards, and when keys are shuffled out
             \\of their dungeons (key rings, boss keys anywhere), no keys either. A barren dungeon's own keys
-            \\stay in it when keys stay in their own dungeons. A spot that can only hold a song or a boss reward
-            \\keeps it.
+            \\stay in it when keys stay in their own dungeons. The dungeon's boss reward and song (Sheik in the
+            \\Ice Cavern) are put somewhere else in the seed, whatever the reward and song settings.
             \\Dungeons that can be barren: the Deku Tree, Dodongo's Cavern, Jabu-Jabu's Belly, the Forest, Fire,
             \\Water, Shadow and Spirit Temples, the Bottom of the Well, the Ice Cavern and the Gerudo Training
             \\Ground (never Ganon's Castle).
