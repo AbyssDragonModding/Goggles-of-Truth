@@ -27,6 +27,19 @@ with the version that made them, and your saves are safe. Make a new seed to get
 - **The strongest upgrades are no longer held back** to places that need the weaker one first: any copy can be
   anywhere it's allowed.
 
+## 0.7.7 - 2026-11-24
+
+Bug fixes only. Items stay in the same places, so you can rebuild any 0.7.6 seed with **Rebuild Seed** to get these
+fixes and keep your saves.
+
+### Fixed
+- **Buying an Ocarina from a Business Scrub crashed the game** (Shuffle Ocarinas with Business Scrubs, reported in
+  [issue #5](https://github.com/AbyssDragonModding/Goggles-of-Truth/issues/5)). Link now holds up the Ocarina the
+  same way as when it comes out of a chest. This also covers Ocarinas given by characters and minigames.
+- **An Ocarina from a Business Scrub, a character or a chest couldn't be used**: no tutorial, and no Ocarina button on
+  screen. You now get the real Ocarina with its tutorial, as when Saria gives it to you. Tested with chests;
+  scrubs and characters not tested in-game yet.
+
 ## 0.7.6 - 2026-11-24
 
 New placement version (0.7.6). Seeds made with 0.7.5 or earlier can't be rebuilt with this version. They still
