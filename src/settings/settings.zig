@@ -12,7 +12,7 @@ const Allocator = std.mem.Allocator;
 pub const Key = table.Key;
 pub const specs = table.specs;
 pub const presets = table.presets;
-pub const unsupported = table.unsupported;
+pub const startinventory = @import("startinventory.zig");
 pub const key_count = @typeInfo(Key).@"enum".field_names.len;
 
 pub const Kind = enum { boolean, choice, int, list };
@@ -81,11 +81,6 @@ pub const Preset = struct {
     name: []const u8,
     tip: []const u8,
     values: []const KeyValue,
-};
-
-pub const Unsupported = struct {
-    name: []const u8,
-    why: []const u8,
 };
 
 // why: the setting table and the Key enum are written separately; a mismatch would read the wrong spec
@@ -188,6 +183,14 @@ pub const Settings = struct {
         return switch (self.get(key)) {
             .int => |n| n,
             else => 0,
+        };
+    }
+
+    /// Starting Inventory: entry ids, one per copy (startinventory.zig)
+    pub fn startingInventory(self: *const Self) []const []const u8 {
+        return switch (self.get(.starting_inventory)) {
+            .list => |l| l,
+            else => &.{},
         };
     }
 
@@ -406,6 +409,17 @@ pub fn splitStatus(buffer: []u8, text: []const u8) SplitStatus {
 }
 
 /// The status of setting `key`; for a choice setting, of its option `value` (or the setting's own note).
+/// The status badge widget of src/ui/widgets.xml for `status` (the window shows it beside each setting; the page
+/// check test, src/ui/pagecheck.zig, checks each row has the right one).
+pub fn badgeWidgetName(status: Status) []const u8 {
+    return switch (status) {
+        .stable => "StableBadge",
+        .testing => "TestingBadge",
+        .experimental => "ExperimentalBadge",
+        .new_feature => "NewFeatureBadge",
+    };
+}
+
 pub fn settingStatus(key: Key, value: ?[]const u8) Status {
     var buffer: [512]u8 = undefined;
     const s = spec(key);

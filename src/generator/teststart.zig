@@ -57,6 +57,11 @@ const played_prefix = "HavePlayedEvent.";
 const quest_enum_prefix = "Step_";
 /// what the added events' names start with (so a second edit of the opening is refused)
 const added_prefix = "RandoTestStart";
+/// the events giveOnArrival adds
+const arrival_prefix = "RandoAdultArrival";
+/// the gift call the game's NPC and check flows use (faststart.giveAtStart hands the start items over with it)
+const gift_flow = "GetPouchContent";
+const gift_entry = "GetPouchContentByActorName";
 /// the scene change's fade (Sequence_BancChangeFadePattern: 0 LoadingFade, 1 BlackFade; Dm_SY_BancChangeGo uses 1)
 const fade_black: i32 = 1;
 
@@ -76,15 +81,12 @@ pub const Warp = struct {
     fade_pattern: i32 = fade_black,
 };
 
-/// Where an adult start's gifts go: a new OpeningEvent entry that plays `scene`, then hands them over.
-pub const Arrival = struct { entry: []const u8, scene: []const u8 };
+/// Where an adult start's gifts go: `entry` of `flowchart` (file `flow`), an event the game itself boots on arriving
+/// in adult Castle Town, which giveOnArrival turns into: play `scene`, fade in, hand the gifts over, autosave.
+pub const Arrival = struct { flow: []const u8, flowchart: []const u8, entry: []const u8, scene: []const u8 };
 
-/// What startAtSpawn did that the caller finishes: with gifts moved to the arrival entry, its table rows are needed.
-pub const SpawnResult = struct {
-    data: []u8,
-    /// the arrival entry was added (addArrivalRows must follow)
-    arrival_added: bool = false,
-};
+/// The opening as startAtSpawn left it.
+pub const SpawnResult = struct { data: []u8 };
 
 /// A quest moved on by the game's own action (ChallengeSystemActor.EventExecuteProgressChallengeStep).
 pub const QuestProgress = struct { quest: []const u8, step: []const u8 };
@@ -101,8 +103,10 @@ pub const OpeningStart = struct {
     flags: []const FlagSet = &.{},
     /// actors added to the pouch and equipped (PouchSystemActor.EventTriggerAddOrRemovePouchContent, IsEquipDIrect)
     equip: []const []const u8 = &.{},
-    /// the adult start's layout (see "Starting Age: Adult"): no child opening, gifts after the warp's scene
+    /// the adult start's layout (see "Starting Age: Adult"): no child opening; the change boots `arrival.scene`
     arrival: ?Arrival = null,
+    /// the change boots `arrival.entry` instead (it has gifts to hand over after the scene: giveOnArrival)
+    arrival_boots_entry: bool = false,
 
     pub fn isEmpty(self: OpeningStart) bool {
         return self.warp == null and self.time_hour == null and self.quest_steps.len == 0 and self.flags.len == 0 and self.equip.len == 0;
@@ -125,11 +129,15 @@ pub const OpeningStart = struct {
 //   the start outside the shop, Navi, the camera and the fade-in don't play; the silent start items (ocarinas, the
 //   base bags) and the adult start's steps follow at once, then the scene change and the autosave;
 // - hands the start items that show an item window (Skip Child Zelda's checks, Rauru's check...) over after the
-//   sword pull instead: the change's boot event is a new entry of OpeningEvent, Rando_AdultStart_Arrive, which
-//   plays Dm_TimeTemple_0085 (the scene the change used to boot), then the gifts, then autosaves. The entry gets
-//   rows in RSDB EventSetting and GameAnalyzedEventInfo, copied from the change's own boot event of the native
-//   path (Market_Adult_AllSage_Start, a flowchart event booted on arriving in adult Castle Town), with the scene in
-//   ChildEventList and the gift flow in SubFlowList (addArrivalRows).
+//   sword pull instead. The change then boots AllSage:Market_Adult_AllSage_Start, the event the game itself boots
+//   on the first arrival as adult (DoorOfTime:Event96), so its RSDB rows already exist; giveOnArrival makes that
+//   entry play Dm_TimeTemple_0085 (the scene the change boots without gifts), fade in, hand the gifts over and
+//   autosave, and addArrivalScene lists the scene in its GameAnalyzedEventInfo row (patches.zig lists the gift
+//   flow). The adult start's save data has already made the native first-arrival scenes count as done, and
+//   nothing else boots that entry once the Door of Time's first pull is skipped (adult_start_changes).
+//   Why not a new entry of OpeningEvent with new RSDB rows (0.8.0-dev f45e6fb): a new game stayed on a black
+//   screen (test report, FEAT_ADULT1); its scene had no fade-in after it (FadeInTypeEventEnd), and new event rows
+//   had never been tried in-game.
 pub const adult_start_warp = Warp{
     .scene = "Market_Adult",
     .start_spot = "",
@@ -145,10 +153,14 @@ pub const adult_start_quests = [_]QuestProgress{
 };
 pub const adult_start_flags = [_]FlagSet{.{ .name = "Market_Child_Firsttime_GotoAdult", .value = true }};
 pub const adult_start_equip = [_][]const u8{"Weapon_Sword_Master"};
-pub const adult_start_arrival = Arrival{ .entry = "Rando_AdultStart_Arrive", .scene = "Dm_TimeTemple_0085" };
-/// the native boot event whose table rows the arrival entry's are copied from
-const arrival_model_row = "Market_Adult_AllSage_Start";
-const opening_flowchart_file = "Work/Event/EventFlow/OpeningEvent.evfc";
+pub const adult_start_arrival = Arrival{
+    .flow = "Event/EventFlow/AllSage.bfevfl.zs",
+    .flowchart = "AllSage",
+    .entry = "Market_Adult_AllSage_Start",
+    .scene = "Dm_TimeTemple_0085",
+};
+/// the time travel's fade (white, FadePattern 2), as the native scene transitions after it end (AllSage:Event9)
+const arrival_fade_in_type: i32 = 2;
 
 /// The save data of an adult start. Not in OotrR's version:
 /// - the Ganondorf scene of the first pull counts as seen, so pulling the sword again as child is plain time travel
@@ -556,12 +568,11 @@ pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart,
         return progress.fail(error.NotAsExpected, "the opening's autosave is not reached by one event", .{});
     }
 
-    // the adult layout: the gifts leave the opening for the arrival entry, which the change boots
-    var gifts: ?Run = null;
+    // the adult layout: the change boots the arrival entry when it hands gifts over (giveOnArrival)
     var warp_boot: []const u8 = if (start.warp) |w| w.boot_event else "";
     if (start.arrival) |arrival| {
-        gifts = namedRun(fc, "RandoStartGift");
-        warp_boot = if (gifts != null) arrival.entry else arrival.scene;
+        if (namedRun(fc, "RandoStartGift") != null) return progress.fail(error.NotAsExpected, "an adult start's gifts belong to its arrival, not the opening", .{});
+        warp_boot = if (start.arrival_boots_entry) arrival.entry else arrival.scene;
     }
 
     // built from the autosave backwards: each new event leads to the one added before it
@@ -625,10 +636,9 @@ pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart,
             .{ .name = "TimeHour", .value = .{ .int = hour } },
         })));
     }
-    if (start.arrival) |arrival| {
-        try adultLayout(allocator, fc, arrival, save.?, gifts, next, progress);
-        const out = try flows.writeBack(allocator, &doc, "OpeningEvent (adult start)", progress);
-        return .{ .data = out, .arrival_added = gifts != null };
+    if (start.arrival != null) {
+        try adultLayout(allocator, fc, next, progress);
+        return .{ .data = try flows.writeBack(allocator, &doc, "OpeningEvent (adult start)", progress) };
     }
     fc.events.items[before[0]].nextPtr().?.* = next;
     return .{ .data = try flows.writeBack(allocator, &doc, "OpeningEvent (start)", progress) };
@@ -657,7 +667,7 @@ fn namedRun(fc: *evfl.Flowchart, prefix: []const u8) ?Run {
 }
 
 /// The adult layout (see "Starting Age: Adult"): `chain` is the adult start's steps up to the autosave.
-fn adultLayout(allocator: Allocator, fc: *evfl.Flowchart, arrival: Arrival, save: u16, gifts: ?Run, chain: u16, progress: *Progress) PatchError!void {
+fn adultLayout(allocator: Allocator, fc: *evfl.Flowchart, chain: u16, progress: *Progress) PatchError!void {
     // the introduction is cut after its Meet_DekuTree step (OotrR's anchor)
     var anchor: ?u16 = null;
     var anchors: usize = 0;
@@ -678,29 +688,6 @@ fn adultLayout(allocator: Allocator, fc: *evfl.Flowchart, arrival: Arrival, save
     }
     fc.events.items[anchor.?].nextPtr().?.* = head;
 
-    if (gifts) |g| {
-        // the arrival entry: the scene the change booted, the gifts, an autosave of its own
-        const save_event = fc.events.items[save].kind.action;
-        const second_save = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_ArrivalSave", .{ save_event.actor, save_event.action }, NONE, null));
-        fc.events.items[g.last].nextPtr().?.* = second_save;
-        const transition_aa = try flows.requireAction(fc, allocator, "EventSystemActor", "EventTransition", progress);
-        const scene = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_ArrivalScene", transition_aa, g.first, try Container.from(allocator, &.{
-            .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
-            .{ .name = "SpecialEventActionType", .value = .{ .int = 1 } },
-            .{ .name = "EventName", .value = .{ .string = arrival.scene } },
-        })));
-        fc.entry_points.append(allocator, .{ .name = arrival.entry, .main_event = scene }) catch return error.OutOfMemory;
-        // the entry lists the gift calls it reaches (a missing one hung the game: flows.listReachedCalls)
-        var calls: std.ArrayList(u16) = .empty;
-        var at: u16 = g.first;
-        while (true) {
-            try calls.append(allocator, at);
-            if (at == g.last) break;
-            at = fc.events.items[at].next() orelse break;
-        }
-        try flows.listReachedCalls(allocator, fc, calls.items);
-    }
-
     // Kokiri Forest isn't faded in: the screen stays black until the change
     const loading = fc.entryPoint("Opening_LoadingKokiriForest") orelse return progress.fail(error.NotAsExpected, "no Opening_LoadingKokiriForest entry", .{});
     const reached = try fc.reach(allocator, loading.main_event);
@@ -716,49 +703,73 @@ fn adultLayout(allocator: Allocator, fc: *evfl.Flowchart, arrival: Arrival, save
     }
 }
 
-/// The arrival entry's rows in RSDB EventSetting and GameAnalyzedEventInfo (see "Starting Age: Adult").
-pub fn addArrivalRows(allocator: Allocator, world: *World, patches: *patchset.PatchSet, arrival: Arrival, progress: *Progress) PatchError!void {
-    for ([_][]const u8{ "EventSetting", "GameAnalyzedEventInfo" }) |table| {
-        const rel = try world.find(allocator, "RSDB", try std.fmt.allocPrint(allocator, "{s}.", .{table}));
-        const original = try patches.read(rel);
-        const doc = byml.load(allocator, original.data) catch return error.InvalidData;
-        const rows = switch (doc.root orelse return error.InvalidData) {
-            .array => |r| r,
-            else => return error.InvalidData,
-        };
-        var model: ?*byml.Dict = null;
-        for (rows.items.items) |r| {
-            const d = r.asDict() orelse continue;
-            if (std.mem.eql(u8, d.getString("__RowId") orelse "", arrival_model_row)) model = d;
-            if (std.mem.eql(u8, d.getString("__RowId") orelse "", arrival.entry)) return progress.fail(error.NotAsExpected, "{s} already has {s}", .{ table, arrival.entry });
-        }
-        const copy = (byml.Value{ .dict = model orelse return progress.fail(error.NotAsExpected, "{s} has no {s} row", .{ table, arrival_model_row }) }).clone(allocator) catch return error.OutOfMemory;
-        const row = copy.asDict().?;
-        try row.put(allocator, "__RowId", .{ .string = arrival.entry });
-        if (std.mem.eql(u8, table, "EventSetting")) {
-            try row.put(allocator, "EntryPointName", .{ .string = arrival.entry });
-            try row.put(allocator, "FlowchartFileName", .{ .string = opening_flowchart_file });
-        } else {
-            const scenes = try byml.Array.create(allocator);
-            try scenes.append(allocator, .{ .string = arrival.scene });
-            try row.put(allocator, "ChildEventList", .{ .array = scenes });
-            const calls = try byml.Array.create(allocator);
-            try calls.append(allocator, .{ .string = "GetPouchContent" });
-            try row.put(allocator, "SubFlowList", .{ .array = calls });
-        }
-        // the rows are sorted by id (pickups.zig keeps them so too)
-        var at: usize = rows.items.items.len;
-        for (rows.items.items, 0..) |r, i| {
-            const id = if (r.asDict()) |d| d.getString("__RowId") orelse "" else "";
-            if (std.mem.order(u8, id, arrival.entry) != .lt) {
-                at = i;
-                break;
-            }
-        }
-        rows.items.insert(allocator, at, copy) catch return error.OutOfMemory;
-        const out = byml.dump(allocator, doc.root, doc.version, doc.big_endian) catch return error.OutOfMemory;
-        try patches.emitZs(rel, original, out);
+/// The arrival flow (`data`, Arrival.flow) with its entry now: play the scene, fade in, hand `gifts` over (one each,
+/// with their item window), autosave. The entry's native events stay in the file, unreached.
+pub fn giveOnArrival(allocator: Allocator, data: []const u8, arrival: Arrival, gifts: []const []const u8, progress: *Progress) PatchError![]u8 {
+    if (gifts.len == 0) return progress.fail(error.NotAsExpected, "no gifts to hand over on arrival", .{});
+    var doc = try flows.readFlow(allocator, data, arrival.flowchart, progress);
+    const fc = try flows.expectFlowchart(&doc, arrival.flowchart, progress);
+    for (fc.events.items) |e| {
+        if (std.mem.startsWith(u8, e.name, arrival_prefix)) return progress.fail(error.NotAsExpected, "{s} already hands start items over", .{arrival.flowchart});
     }
+    const entry = fc.entryPoint(arrival.entry) orelse return progress.fail(error.NotAsExpected, "{s} has no {s} entry", .{ arrival.flowchart, arrival.entry });
+
+    // built from the end backwards: each new event leads to the one added before it
+    try flows.ensureSystemActor(fc, allocator, "GameSystemActor", arrival.flow, progress);
+    const save_aa = try flows.requireAction(fc, allocator, "GameSystemActor", "EventTriggerRequestAutoSave", progress);
+    var next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_Save", save_aa, NONE, null));
+    var gift_events: std.ArrayList(u16) = .empty;
+    var k = gifts.len;
+    while (k > 0) {
+        k -= 1;
+        const name = std.fmt.allocPrint(allocator, "{s}_Gift{d}", .{ arrival_prefix, k }) catch return error.OutOfMemory;
+        next = try fc.addEvent(allocator, evfl.makeSubFlow(name, gift_flow, gift_entry, next, try Container.from(allocator, &.{
+            .{ .name = "ActorName", .value = .{ .string = gifts[k] } },
+        })));
+        gift_events.append(allocator, next) catch return error.OutOfMemory;
+    }
+    // the scene ends with the time travel's white fade-in; the fade-in after it is AllSage's own (Event97), so the
+    // item windows never show on a faded screen
+    try flows.ensureSystemActor(fc, allocator, "UISystemActor", arrival.flow, progress);
+    const fade_aa = try flows.requireAction(fc, allocator, "UISystemActor", "EventEventFadeIn", progress);
+    next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_FadeIn", fade_aa, next, try Container.from(allocator, &.{
+        .{ .name = "Length", .value = .{ .int = 1 } },
+        .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+    })));
+    const transition_aa = try flows.requireAction(fc, allocator, "EventSystemActor", "EventTransition", progress);
+    next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_Scene", transition_aa, next, try Container.from(allocator, &.{
+        .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+        .{ .name = "SpecialEventActionType", .value = .{ .int = 1 } },
+        .{ .name = "EventName", .value = .{ .string = arrival.scene } },
+        .{ .name = "FadeInTypeEventEnd", .value = .{ .int = arrival_fade_in_type } },
+    })));
+    entry.main_event = next;
+    // the entry lists the gift calls it reaches (a missing one hung the game: flows.listReachedCalls)
+    try flows.listReachedCalls(allocator, fc, gift_events.items);
+    return flows.writeBack(allocator, &doc, "AllSage (adult start arrival)", progress);
+}
+
+/// Lists the arrival's scene in its entry's GameAnalyzedEventInfo row (ChildEventList: the scenes an event plays).
+/// The row is the game's own (Arrival.entry); the gift flow goes in its SubFlowList through
+/// storyskip.updateEventInfo, as for every changed flow.
+pub fn addArrivalScene(allocator: Allocator, world: *World, patches: *patchset.PatchSet, arrival: Arrival, progress: *Progress) PatchError!void {
+    const rel = try world.find(allocator, "RSDB", "GameAnalyzedEventInfo.");
+    const original = try patches.read(rel);
+    const doc = byml.load(allocator, original.data) catch return error.InvalidData;
+    const rows = switch (doc.root orelse return error.InvalidData) {
+        .array => |r| r,
+        else => return error.InvalidData,
+    };
+    for (rows.items.items) |r| {
+        const row = r.asDict() orelse continue;
+        if (!std.mem.eql(u8, row.getString("__RowId") orelse "", arrival.entry)) continue;
+        const scenes = try row.ensureArray(allocator, "ChildEventList");
+        for (scenes.items.items) |v| if (v.asString()) |listed| if (std.mem.eql(u8, listed, arrival.scene)) return;
+        try scenes.append(allocator, .{ .string = arrival.scene });
+        const out = byml.dump(allocator, doc.root, doc.version, doc.big_endian) catch return error.OutOfMemory;
+        return patches.emitZs(rel, original, out);
+    }
+    return progress.fail(error.NotAsExpected, "GameAnalyzedEventInfo has no {s} row", .{arrival.entry});
 }
 
 /// GameDataActor.EventTriggerSetGameDataBool {name = value} -> `then`. Returns the new event.

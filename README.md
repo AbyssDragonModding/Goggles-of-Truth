@@ -67,7 +67,7 @@ When only some choices of an option have a different status, they're named in th
 | The Temple of Time altar shows the bridge requirement and your progress | always on | 🟢 Stable |
 | Skip Child Zelda (her, Malon's and Impa's checks can hold any item) | Off, On | 🟢 Stable |
 | Skip Epona Race (Epona comes with just Epona's Song: no race, no child Malon check first) | On | 🟢 Stable |
-| Starting Age (Adult starts on the Temple of Time platform with the Master Sword) | Child, Adult, Random | 🟣 0.8.0 feature |
+| Starting Age (Adult starts with Link pulling the Master Sword in the Temple of Time) | Child, Adult, Random | 🟣 0.8.0 feature |
 
 ### Items
 
@@ -107,7 +107,13 @@ When only some choices of an option have a different status, they're named in th
 | | Own Dungeon (can fail to place items with some settings) | 🔴 Not tested |
 | | Removed (the five temples start with their boss key) | 🔴 Not tested |
 | | Any Dungeon, Anywhere (each temple's boss key becomes an item of its own) | 🔴 Not tested |
-| Barren Dungeons (no key items in them; the Temple of Time altar names them) | Off, 1–5, Random | 🟣 0.8.0 feature |
+| Barren Dungeons (only rupees in them; the Temple of Time altar names them) | Off, 1–5, Random | 🟣 0.8.0 feature |
+
+### Starting Inventory
+
+| Feature | Choices | Status |
+|---|---|---|
+| Starting Inventory (items a new game starts with; the logic counts them and the seed won't hide a second copy) | Equipment, items, upgrades, songs, hearts | 🟣 0.8.0 feature |
 
 ### Hints
 
@@ -154,9 +160,8 @@ When only some choices of an option have a different status, they're named in th
 | Windows, Linux | 🟢 Stable |
 | macOS (Intel and Apple Silicon) | 🔴 Not tested (built, but not yet run on a Mac) |
 
-Options the randomizer doesn't support yet (need more investigation) (entrance randomizer, cows, ice traps, ...) are listed with the
-reason on the window's **Not Supported** tab. The [changelog](CHANGELOG.md) says which version each setting was
-confirmed in.
+Options the randomizer doesn't support yet include the entrance randomizer, cows and ice traps. The
+[changelog](CHANGELOG.md) says which version each setting was confirmed in.
 
 ## Why Zig?
 
@@ -517,11 +522,11 @@ not confirmed). For a drop-down, the badge follows the chosen option (Item Pool 
 | **ROM Options** | Game and output folders, mod name, seed, spoiler log, per-seed saves, the file cache |
 | **World** | Logic (glitchless or none); open Kokiri Forest, Door of Time, Zora's Fountain and Death Mountain; the Rainbow Bridge requirement (vanilla, medallions, Spiritual Stones or Gold Skulltula tokens, shown at the Temple of Time altar); skip child Zelda; skip Epona's race |
 | **Items** | Songs, Spiritual Stones and Medallions, ocarinas, Kokiri Sword, Weird Egg; freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards, Great Fairies, Skulltula House, Tokensanity, items shuffled per shop, Business Scrubs; item pool size; ammo chests needing their bag |
-| **Dungeon Items** | Maps & Compasses; small keys (also removed, or as key rings in any dungeon, the overworld or anywhere) and which dungeons get key rings; boss keys (also removed, or anywhere as items of their own) |
+| **Dungeon Items** | Maps & Compasses; small keys (also removed, or as key rings in any dungeon, the overworld or anywhere) and which dungeons get key rings; boss keys (also removed, or anywhere as items of their own); barren dungeons |
+| **Starting Inventory** | Items a new game starts with (double-click to add or take away) |
 | **Hints** | Gossip Stone hints (none, balanced, strong, useless) and whether stones need the Mask of Truth |
 | **Quality of Life** | Cutscene skips, bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern, Saria's Song with just an ocarina, Gold Skulltulas at any time, skip Ganon's trials, easier minigames |
 | **Exclusions** | Locations that only ever hold minor items |
-| **Not Supported** | Classic randomizer options the remake can't support yet, and why |
 
 ### Seed presets
 
@@ -646,7 +651,7 @@ and push.
 | `src/logic` | Items and the access rules for every region and location |
 | `src/generator` | Item pool and fill, hints, every patch written to the mod, compressing on threads (`compressor.zig`) and the file cache (`filecache.zig`) |
 | `src/platform` | Longshot, emulator folders and per-seed saves |
-| `src/ui` | The window: `main.xml` / `widgets.xml` layouts and `App.zig` |
+| `src/ui` | The window: `main.xml`, `widgets.xml` and one XML file per tab in `pages` (every widget, the setting rows too: `pagecheck.zig` tests them against the setting table), and `App.zig` |
 | `src/cli.zig`, `src/main.zig` | The two programs |
 | `vendor` | Raven (GUI), the string library, zstd 1.5.7 |
 

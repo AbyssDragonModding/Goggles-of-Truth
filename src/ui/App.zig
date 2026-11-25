@@ -12,6 +12,7 @@ const wallpaper = @import("wallpaper.zig");
 const Allocator = std.mem.Allocator;
 const settings = engine.settings;
 const Settings = settings.Settings;
+const startinventory = settings.startinventory;
 const Key = settings.Key;
 const fsmod = engine.fs;
 
@@ -116,6 +117,9 @@ game_lab: r.Label,
 filter_in: r.TextInput,
 excl_count: r.Label,
 excl_list: r.ListView,
+start_items_list: r.ListView,
+start_chosen_list: r.ListView,
+start_count: r.Label,
 sstr_in: r.TextInput,
 progress_bar: r.ProgressBar,
 log: r.ListView,
@@ -139,6 +143,13 @@ custom_preset_settings: std.ArrayList(Settings) = .empty,
 custom_preset_arena: std.heap.ArenaAllocator,
 /// the excluded location names (owned)
 excluded: std.array_hash_map.String(void) = .empty,
+/// Starting Inventory: copies per entry of settings/startinventory.zig (kept here, like the excluded locations, so
+/// the setting's list never points into a freed arena; currentSettings puts it back)
+start_counts: startinventory.Counts = @splat(0),
+/// the entry each row of the two Starting Inventory lists shows (null: a section heading)
+start_item_rows: [startinventory.entries.len + start_group_count]?usize = @splat(null),
+start_chosen_rows: [startinventory.entries.len]usize = @splat(0),
+start_chosen_count: usize = 0,
 /// owned copies of the text fields' paths
 game_path: []u8 = &.{},
 out_path: []u8 = &.{},
@@ -289,6 +300,9 @@ pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
         .filter_in = try find(root, r.TextInput, "filter_in"),
         .excl_count = try find(root, r.Label, "excl_count"),
         .excl_list = try find(root, r.ListView, "excl_list"),
+        .start_items_list = try find(root, r.ListView, "start_items_list"),
+        .start_chosen_list = try find(root, r.ListView, "start_chosen_list"),
+        .start_count = try find(root, r.Label, "start_count"),
         .sstr_in = try find(root, r.TextInput, "sstr_in"),
         .progress_bar = try find(root, r.ProgressBar, "progress"),
         .log = try find(root, r.ListView, "log"),
@@ -363,6 +377,7 @@ fn bind(self: *App) AppError!void {
     self.st = loaded.settings;
     for (loaded.settings.excluded()) |n| self.addExcluded(n);
     self.st.set(.excluded_locations, .{ .list = &.{} });
+    self.takeStartingInventory(&loaded.settings);
     self.setOwned(&self.game_path, loaded.paths.game);
     self.setOwned(&self.out_path, loaded.paths.output);
     self.romfs_in.setText(self.z(self.game_path));
@@ -414,6 +429,9 @@ fn bind(self: *App) AppError!void {
         .{ .name = "rando.rebuild_selected", .f = onRebuildSelected },
         .{ .name = "rando.play_seed", .f = onPlaySeed },
         .{ .name = "rando.toggle_excluded", .f = onToggleExcluded },
+        .{ .name = "rando.start_add", .f = onStartAdd },
+        .{ .name = "rando.start_remove", .f = onStartRemove },
+        .{ .name = "rando.start_clear", .f = onStartClear },
     };
     inline for (actions) |action| r.actionBind(action.name, self, action.f);
 
@@ -432,6 +450,7 @@ fn bind(self: *App) AppError!void {
     }
     self.updateDependent();
     self.updateExcludedCount();
+    self.fillStartingInventory();
     self.loaded = true;
     self.refreshString();
     self.write("Ready. Pick your romfs and an output folder, then Generate.");
@@ -528,6 +547,7 @@ fn currentSettings(self: *App, allocator: Allocator) error{OutOfMemory}!Settings
         }
     }.less);
     st.set(.excluded_locations, .{ .list = names });
+    st.set(.starting_inventory, .{ .list = try startinventory.listOf(allocator, &self.start_counts) });
     return st;
 }
 
@@ -536,9 +556,11 @@ fn applySettings(self: *App, st: Settings) void {
     self.clearExcluded();
     for (st.excluded()) |n| self.addExcluded(n);
     self.st.set(.excluded_locations, .{ .list = &.{} });
+    self.takeStartingInventory(&st);
     for (&settings.specs) |*s| self.showSetting(s) catch {};
     self.updateDependent();
     self.fillExclusions();
+    self.fillStartingInventory();
     self.refreshString();
 }
 
@@ -776,6 +798,107 @@ fn onClearExcluded(self: *App, _: ?r.Widget, _: [:0]const u8) void {
 
 fn updateExcludedCount(self: *App) void {
     self.excl_count.setText(self.fmtZ("{d} excluded", .{self.excluded.count()}));
+}
+
+// ------------------------------------------------------------------------------------- starting inventory
+
+const start_group_count = std.meta.tags(startinventory.Group).len;
+
+fn startGroupHeading(group: startinventory.Group) []const u8 {
+    return switch (group) {
+        .equipment => "Equipment",
+        .items => "Items",
+        .upgrades => "Upgrades",
+        .songs => "Songs",
+        .hearts => "Hearts",
+    };
+}
+
+/// Moves the Starting Inventory of `st` into `start_counts` (the setting itself stays empty in `self.st`).
+fn takeStartingInventory(self: *App, st: *const Settings) void {
+    self.start_counts = startinventory.countsOf(st.startingInventory());
+    self.st.set(.starting_inventory, .{ .list = &.{} });
+}
+
+/// "Hookshot / Longshot  (1 of 2: Hookshot)" for a tiered entry, "Empty Bottle  x2" for a repeated one.
+fn startEntryText(self: *App, entry_index: usize, chosen_list: bool) [:0]const u8 {
+    const entry = &startinventory.entries[entry_index];
+    const n = self.start_counts[entry_index];
+    if (n == 0) return self.fmtZ("      {s}", .{entry.label});
+    const mark = if (chosen_list) "" else "\u{2714}  ";
+    if (entry.tiers.len > 1) {
+        const tier = tierLabel(entry, n - 1);
+        return self.fmtZ("{s}{s}  ({d} of {d}: {s})", .{ mark, entry.label, n, entry.max, tier });
+    }
+    if (entry.max > 1) return self.fmtZ("{s}{s}  x{d}", .{ mark, entry.label, n });
+    return self.fmtZ("{s}{s}", .{ mark, entry.label });
+}
+
+/// Tier `tier_index` of a tiered entry as the window names it: that part of the entry's label, which names the
+/// tiers in order, separated by " / " ("Hookshot / Longshot": 1 -> "Longshot").
+fn tierLabel(entry: *const startinventory.Entry, tier_index: usize) []const u8 {
+    var parts = std.mem.splitSequence(u8, entry.label, " / ");
+    var at: usize = 0;
+    while (parts.next()) |part| : (at += 1) {
+        if (at == tier_index) return part;
+    }
+    return entry.itemOfCopy(tier_index);
+}
+
+fn fillStartingInventory(self: *App) void {
+    self.start_items_list.clearItems();
+    var row: usize = 0;
+    for (std.meta.tags(startinventory.Group)) |group| {
+        self.start_item_rows[row] = null;
+        _ = self.start_items_list.addItem(self.fmtZ("\u{2014}  {s}", .{startGroupHeading(group)}));
+        row += 1;
+        for (&startinventory.entries, 0..) |*e, i| {
+            if (e.group != group) continue;
+            self.start_item_rows[row] = i;
+            _ = self.start_items_list.addItem(self.startEntryText(i, false));
+            row += 1;
+        }
+    }
+    self.start_chosen_list.clearItems();
+    self.start_chosen_count = 0;
+    var copies: usize = 0;
+    for (self.start_counts, 0..) |n, i| {
+        if (n == 0) continue;
+        copies += n;
+        self.start_chosen_rows[self.start_chosen_count] = i;
+        self.start_chosen_count += 1;
+        _ = self.start_chosen_list.addItem(self.startEntryText(i, true));
+    }
+    self.start_count.setText(if (copies == 0) "Nothing chosen" else self.fmtZ("{d} item{s} at the start", .{ copies, if (copies == 1) "" else "s" }));
+}
+
+fn onStartAdd(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
+    const list = (sender orelse return).as(r.ListView) orelse return;
+    const row = list.getSelected();
+    if (row < 0 or row >= self.start_item_rows.len) return;
+    const entry_index = self.start_item_rows[@intCast(row)] orelse return;
+    if (self.start_counts[entry_index] >= startinventory.entries[entry_index].max) return;
+    self.start_counts[entry_index] += 1;
+    self.fillStartingInventory();
+    self.start_items_list.setSelected(row);
+    self.refreshString();
+}
+
+fn onStartRemove(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
+    const list = (sender orelse return).as(r.ListView) orelse return;
+    const row = list.getSelected();
+    if (row < 0 or row >= self.start_chosen_count) return;
+    const entry_index = self.start_chosen_rows[@intCast(row)];
+    if (self.start_counts[entry_index] == 0) return;
+    self.start_counts[entry_index] -= 1;
+    self.fillStartingInventory();
+    self.refreshString();
+}
+
+fn onStartClear(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    self.start_counts = @splat(0);
+    self.fillStartingInventory();
+    self.refreshString();
 }
 
 // ------------------------------------------------------------------------------------------------- paths

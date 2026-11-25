@@ -5,7 +5,6 @@
 const settings = @import("settings.zig");
 const Spec = settings.Spec;
 const Preset = settings.Preset;
-const Unsupported = settings.Unsupported;
 
 
 pub const Key = enum {
@@ -53,6 +52,7 @@ pub const Key = enum {
     key_ring_ganon,
     boss_keys,
     barren_dungeons,
+    starting_inventory,
     hint_distribution,
     gossip_stones,
     skip_cutscenes,
@@ -783,14 +783,28 @@ pub const specs = [_]Spec{
         .default = .{ .choice = "off" },
         .tip =
             \\This many dungeons, chosen by the seed, are barren: nothing in them is needed to finish the game.
-            \\Their shuffled checks hold no key items, songs or boss rewards, and when keys are shuffled out
-            \\of their dungeons (key rings, boss keys anywhere), no keys either. A barren dungeon's own keys
-            \\stay in it when keys stay in their own dungeons. The dungeon's boss reward and song (Sheik in the
-            \\Ice Cavern) are put somewhere else in the seed, whatever the reward and song settings.
+            \\Their shuffled checks hold rupees only: no key items, songs, boss rewards, key rings or other
+            \\junk. A barren dungeon's own keys stay in it when keys stay in their own dungeons. The dungeon's
+            \\boss reward, boss Heart Container and song (Sheik in the Ice Cavern) are put somewhere else in the
+            \\seed, whatever the reward, song and heart settings; their checks hold rupees too.
             \\Dungeons that can be barren: the Deku Tree, Dodongo's Cavern, Jabu-Jabu's Belly, the Forest, Fire,
             \\Water, Shadow and Spirit Temples, the Bottom of the Well, the Ice Cavern and the Gerudo Training
             \\Ground (never Ganon's Castle).
             \\The altar in the Temple of Time names the barren dungeons.
+        ,
+    },
+    .{
+        .key = .starting_inventory,
+        .tab = "Starting Inventory",
+        .group = "Starting Inventory",
+        .label = "Starting Inventory (0.8.0 feature)",
+        .kind = .list,
+        .default = .{ .list = &.{} },
+        .tip =
+            \\Items a new game starts with (the Starting Inventory tab; settings/startinventory.zig lists them). The
+            \\logic counts them from the start. One copy of each leaves the item pool and a Blue Rupee takes its
+            \\place (a song stays in the pool with Song Locations, since every song spot needs a song).
+            \\A tiered item counts up: Hookshot twice is the Longshot.
         ,
     },
     .{
@@ -1144,6 +1158,7 @@ pub const presets = [_]Preset{
             .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
+            .{ .key = .starting_inventory, .value = .{ .list = &.{} } },
             .{ .key = .hint_distribution, .value = .{ .choice = "strong" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "no_mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
@@ -1215,6 +1230,7 @@ pub const presets = [_]Preset{
             .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
+            .{ .key = .starting_inventory, .value = .{ .list = &.{} } },
             .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
@@ -1288,6 +1304,7 @@ pub const presets = [_]Preset{
             .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
+            .{ .key = .starting_inventory, .value = .{ .list = &.{} } },
             .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
@@ -1361,6 +1378,7 @@ pub const presets = [_]Preset{
             .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
+            .{ .key = .starting_inventory, .value = .{ .list = &.{} } },
             .{ .key = .hint_distribution, .value = .{ .choice = "strong" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "no_mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
@@ -1379,16 +1397,4 @@ pub const presets = [_]Preset{
             .{ .key = .big_poe_one, .value = .{ .boolean = false } },
         },
     },
-};
-
-pub const unsupported = [_]Unsupported{
-    .{ .name = "Bunny Hood speed boost (Majora's Mask style)", .why = "Run speed comes from the animations; the only speed value in the data is a global scale. Masks have no movement parameter and the equipment effect list (e.g. UnderwaterBreathing) has no speed effect that can be confirmed." },
-    .{ .name = "Fast climbing", .why = "Climb speed is computed by the player code and passed to the climb animation at runtime; no data file holds it." },
-    .{ .name = "Cow Shuffle / Beans", .why = "Cows use one shared event; the bean seller isn't mapped yet." },
-    .{ .name = "Shuffle the Gerudo Membership Card", .why = "The guards, the wasteland gate, the Training Ground and horseback archery check the carpenter rescue, not the card, so a card found elsewhere does nothing. It stays vanilla." },
-    .{ .name = "Shuffle the adult trade items", .why = "All trade items share one slot and adult items take priority: an adult trade item found as a child hides the Cucco for good. Only Biggoron's reward is shuffled." },
-    .{ .name = "Other capacity upgrades (Deku Seed bag from the Deku Tree)", .why = "Stays vanilla: the logic needs the Slingshot from its chest. The stick and nut upgrades are shuffled with Character Gifts and Minigames and Business Scrubs." },
-    .{ .name = "Entrance Randomizer", .why = "Not supported." },
-    .{ .name = "Ice Traps / Chest Appearance Matches Contents / Cosmetics", .why = "Not implemented." },
-    .{ .name = "Master Quest dungeons", .why = "Not present in the remake." },
 };

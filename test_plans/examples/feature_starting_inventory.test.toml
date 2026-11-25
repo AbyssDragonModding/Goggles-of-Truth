@@ -1,0 +1,7 @@
+# 0.8.0: Starting Inventory. A new game should already own the Hookshot and Longshot (one Longshot in the menu),
+# the Hover Boots, two Empty Bottles, a Bomb Bag and Zelda's Lullaby; the items that show a window are handed over
+# at the start. None of them should turn up again in the seed (the spoiler log has no Hookshot or Hover Boots).
+name = "FEAT_START_INV1"
+
+[settings]
+starting_inventory = ["Hookshot", "Hookshot", "HoverBoot", "Bottle", "Bottle", "BombBag_Small", "Melody_ZeldaLullaby"]

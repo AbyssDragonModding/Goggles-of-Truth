@@ -28,13 +28,18 @@ with the version that made them, and your saves are safe. Make a new seed to get
   `test_plans/TEMPLATE.test.toml` explains everything, and a second command lists every area, spot, quest, cutscene,
   location and item name you can use. Tested starting as an adult in Kakariko and the Forest Temple and as a child
   by the Deku Tree; starting an event on arrival is not tested yet.
-- **Starting Age**: Child, Adult or Random. As an adult you start on the platform in the Temple of Time with the
-  Master Sword, Rauru's item is already yours, and the Door of Time is open. Put the sword back to become a child.
-  Random picks one for the seed, and the spoiler log says which. Not tested in-game yet.
-- **Barren Dungeons**: 1 to 5 dungeons, or a random number, hold nothing you need to finish the game (no key items,
-  songs or boss rewards, and no keys when keys are shuffled out of their dungeons). The Medallion or Stone you'd get
-  for beating a barren dungeon, and Sheik's song in a barren Ice Cavern, are put somewhere else in the seed. The
-  altar in the Temple of Time tells you which dungeons are barren on its second page. Not tested in-game yet.
+- **Starting Age**: Child, Adult or Random. As an adult, a new game goes straight to Link pulling the Master Sword
+  in the Temple of Time; your start items are handed over right after. Rauru's item is already yours, and the Door
+  of Time is open. Put the sword back to become a child. Random picks one for the seed, and the spoiler log says
+  which. Not tested in-game yet.
+- **Barren Dungeons**: 1 to 5 dungeons, or a random number, hold nothing but rupees (plus their own keys when keys
+  stay in their dungeons). The Medallion or Stone you'd get for beating a barren dungeon, its boss's Heart
+  Container, and Sheik's song in a barren Ice Cavern are put somewhere else in the seed. The altar in the Temple of
+  Time tells you which dungeons are barren on its second page. Not tested in-game yet.
+- **Starting Inventory**: a new tab where you pick items a new game starts with: equipment, items, upgrades, songs
+  and hearts. Items with tiers count up (add the Hookshot twice for the Longshot). The logic knows you have them,
+  and the seed won't hide a second copy (a Blue Rupee takes its place). Test plans can set it too. Not tested
+  in-game yet.
 - **Skip NPC Dialogs**: characters skip their long story talks and go straight to their short line, for example
   Saria after the Deku Tree. Talks that give an item or move a quest on still play. A setting of its own while it's
   being tested; it will become part of Skip Cutscenes. Not tested in-game yet.
@@ -46,6 +51,8 @@ with the version that made them, and your saves are safe. Make a new seed to get
 - **The Skulltula House wallets** can now also be given by characters, minigames and scrubs, not only chests.
 - **The strongest upgrades are no longer held back** to places that need the weaker one first: any copy can be
   anywhere it's allowed.
+- **Boss Keys is back in the main Dungeon Items card** on the Dungeon Items tab, above the Key Ring Dungeons.
+- **The Not Supported tab is gone.**
 
 ## 0.7.7 - 2026-11-24
 

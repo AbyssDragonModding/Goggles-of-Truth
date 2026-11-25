@@ -1,5 +1,104 @@
 <!--
   The "Dungeon Items" page of the randomizer window (Raven XML). src/ui/layout.zig puts it into main.xml's
-  TabView, at the page marker of the same name. Its settings cards come from src/settings/table.zig.
+  TabView, at the page marker of the same name. Every setting row is defined here; a unit test (src/ui/pagecheck.zig) checks each row
+  against its setting in src/settings/table.zig (control, label, tooltip, options, badge).
 -->
-<ScrollBox Orientation="Vertical" Slot.Title="Dungeon Items"><VBox Spacing="14"><!--@@settings Dungeon Items@@--></VBox></ScrollBox>
+<ScrollBox Orientation="Vertical" Slot.Title="Dungeon Items">
+  <VBox Spacing="14">
+    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+      <VBox Spacing="10">
+        <Label Text="Dungeon Items" TextSize="16" Color="#F5CC61"/>
+        <HBox Spacing="12">
+          <Label Text="Maps &amp; Compasses" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
+                 Tooltip="Vanilla: maps and compasses stay in their usual chests.&#10;Own Dungeon: maps and compasses are shuffled among the chests of their own dungeon.&#10;Remove: their chests hold a Blue Rupee and you never get them.&#10;Start With: a new save already has every dungeon's map and compass, and the chests that held them&#10;are randomized like any other check (a bonus item joins the pool for each: rupees up to Gold,&#10;Bombchus, ammo, sometimes a Piece of Heart)."/>
+          <ComboBox Name="set_maps_compasses" OnChanged="set.maps_compasses" Slot.Fill="0.9"
+                    Items="Vanilla|Own Dungeon|Remove (replaced by junk)|Start With"
+                    Tooltip="Vanilla: maps and compasses stay in their usual chests.&#10;Own Dungeon: maps and compasses are shuffled among the chests of their own dungeon.&#10;Remove: their chests hold a Blue Rupee and you never get them.&#10;Start With: a new save already has every dungeon's map and compass, and the chests that held them&#10;are randomized like any other check (a bonus item joins the pool for each: rupees up to Gold,&#10;Bombchus, ammo, sometimes a Piece of Heart)."/>
+          <StableBadge Name="badge_maps_compasses" LabelName="badgelab_maps_compasses"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Label Text="Small Keys" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
+                 Tooltip="Own Dungeon shuffles small keys inside their dungeon. The logic has no door-by-door key model,&#10;so a key can end up behind its own locked door.&#10;Removed: every dungeon starts with all its small keys, so every locked door opens; the small key&#10;chests hold other items.&#10;Key rings: the remake's small keys count for whichever dungeon you pick them up in, so a key can't&#10;be placed in another dungeon. Instead each dungeon with a key ring (see Key Ring Dungeons) gets one&#10;Key Ring item that gives all of its small keys at once, wherever it is found: in any dungeon, only&#10;outside dungeons (Overworld), or anywhere. The small key chests of those dungeons hold other items.&#10;The logic expects the key ring before anything in its dungeon. (From OotrR.)"/>
+          <ComboBox Name="set_small_keys" OnChanged="set.small_keys" Slot.Fill="0.9"
+                    Items="Vanilla|Own Dungeon|Removed: All Keys From the Start|Any Dungeon, as Key Rings|Overworld, as Key Rings|Anywhere, as Key Rings"
+                    Tooltip="Own Dungeon shuffles small keys inside their dungeon. The logic has no door-by-door key model,&#10;so a key can end up behind its own locked door.&#10;Removed: every dungeon starts with all its small keys, so every locked door opens; the small key&#10;chests hold other items.&#10;Key rings: the remake's small keys count for whichever dungeon you pick them up in, so a key can't&#10;be placed in another dungeon. Instead each dungeon with a key ring (see Key Ring Dungeons) gets one&#10;Key Ring item that gives all of its small keys at once, wherever it is found: in any dungeon, only&#10;outside dungeons (Overworld), or anywhere. The small key chests of those dungeons hold other items.&#10;The logic expects the key ring before anything in its dungeon. (From OotrR.)"/>
+          <StableBadge Name="badge_small_keys" LabelName="badgelab_small_keys"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Label Text="Key Ring Dungeons" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
+                 Tooltip="For Small Keys as key rings: which dungeons get a key ring (Forest, Fire, Water, Shadow and Spirit&#10;Temples, Bottom of the Well, Gerudo Training Ground, Ganon's Castle). Chosen Dungeons: the ones&#10;ticked below. Random Dungeons: each one by chance, from the seed. A dungeon without a key ring keeps&#10;its small keys where they are in the original."/>
+          <ComboBox Name="set_key_rings" OnChanged="set.key_rings" Slot.Fill="0.9"
+                    Items="All Dungeons|Chosen Dungeons|Random Dungeons"
+                    Tooltip="For Small Keys as key rings: which dungeons get a key ring (Forest, Fire, Water, Shadow and Spirit&#10;Temples, Bottom of the Well, Gerudo Training Ground, Ganon's Castle). Chosen Dungeons: the ones&#10;ticked below. Random Dungeons: each one by chance, from the seed. A dungeon without a key ring keeps&#10;its small keys where they are in the original."/>
+          <StableBadge Name="badge_key_rings" LabelName="badgelab_key_rings"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Label Text="Boss Keys" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
+                 Tooltip="Own Dungeon puts the boss key in a chest of its own dungeon (same caveat as small keys).&#10;Removed: the five temples (Forest, Fire, Water, Shadow, Spirit) start with their boss key; the boss&#10;key chests hold other items.&#10;Any Dungeon / Anywhere: each temple's boss key becomes an item of its own (&quot;Boss Key (Forest&#10;Temple)&quot;) that opens that temple's boss door wherever it is found: in any dungeon, or anywhere.&#10;The logic expects it before anything in its temple. Ganon's Castle's boss key stays where it is.&#10;(From OotrR.)"/>
+          <ComboBox Name="set_boss_keys" OnChanged="set.boss_keys" Slot.Fill="0.9"
+                    Items="Vanilla|Own Dungeon|Removed: Boss Keys From the Start|Any Dungeon|Anywhere"
+                    Tooltip="Own Dungeon puts the boss key in a chest of its own dungeon (same caveat as small keys).&#10;Removed: the five temples (Forest, Fire, Water, Shadow, Spirit) start with their boss key; the boss&#10;key chests hold other items.&#10;Any Dungeon / Anywhere: each temple's boss key becomes an item of its own (&quot;Boss Key (Forest&#10;Temple)&quot;) that opens that temple's boss door wherever it is found: in any dungeon, or anywhere.&#10;The logic expects it before anything in its temple. Ganon's Castle's boss key stays where it is.&#10;(From OotrR.)"/>
+          <StableBadge Name="badge_boss_keys" LabelName="badgelab_boss_keys"/>
+        </HBox>
+      </VBox>
+    </Border>
+    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+      <VBox Spacing="10">
+        <Label Text="Key Ring Dungeons" TextSize="16" Color="#F5CC61"/>
+        <HBox Spacing="12">
+          <Checkbox Name="set_key_ring_forest" Style="Switch" Text="Forest Temple" OnChanged="set.key_ring_forest" Slot.Fill="1"
+                    Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Forest Temple gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
+          <StableBadge Name="badge_key_ring_forest" LabelName="badgelab_key_ring_forest"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_key_ring_fire" Style="Switch" Text="Fire Temple" OnChanged="set.key_ring_fire" Slot.Fill="1"
+                    Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Fire Temple gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
+          <StableBadge Name="badge_key_ring_fire" LabelName="badgelab_key_ring_fire"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_key_ring_water" Style="Switch" Text="Water Temple" OnChanged="set.key_ring_water" Slot.Fill="1"
+                    Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Water Temple gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
+          <StableBadge Name="badge_key_ring_water" LabelName="badgelab_key_ring_water"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_key_ring_shadow" Style="Switch" Text="Shadow Temple" OnChanged="set.key_ring_shadow" Slot.Fill="1"
+                    Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Shadow Temple gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
+          <StableBadge Name="badge_key_ring_shadow" LabelName="badgelab_key_ring_shadow"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_key_ring_spirit" Style="Switch" Text="Spirit Temple" OnChanged="set.key_ring_spirit" Slot.Fill="1"
+                    Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Spirit Temple gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
+          <StableBadge Name="badge_key_ring_spirit" LabelName="badgelab_key_ring_spirit"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_key_ring_well" Style="Switch" Text="Bottom of the Well" OnChanged="set.key_ring_well" Slot.Fill="1"
+                    Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Bottom of the Well gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
+          <StableBadge Name="badge_key_ring_well" LabelName="badgelab_key_ring_well"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_key_ring_gtg" Style="Switch" Text="Gerudo Training Ground" OnChanged="set.key_ring_gtg" Slot.Fill="1"
+                    Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Gerudo Training Ground gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
+          <StableBadge Name="badge_key_ring_gtg" LabelName="badgelab_key_ring_gtg"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_key_ring_ganon" Style="Switch" Text="Ganon's Castle" OnChanged="set.key_ring_ganon" Slot.Fill="1"
+                    Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Ganon's Castle gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
+          <StableBadge Name="badge_key_ring_ganon" LabelName="badgelab_key_ring_ganon"/>
+        </HBox>
+      </VBox>
+    </Border>
+    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+      <VBox Spacing="10">
+        <Label Text="Barren Dungeons" TextSize="16" Color="#F5CC61"/>
+        <HBox Spacing="12">
+          <Label Text="Barren Dungeons" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
+                 Tooltip="This many dungeons, chosen by the seed, are barren: nothing in them is needed to finish the game.&#10;Their shuffled checks hold rupees only: no key items, songs, boss rewards, key rings or other&#10;junk. A barren dungeon's own keys stay in it when keys stay in their own dungeons. The dungeon's&#10;boss reward, boss Heart Container and song (Sheik in the Ice Cavern) are put somewhere else in the&#10;seed, whatever the reward, song and heart settings; their checks hold rupees too.&#10;Dungeons that can be barren: the Deku Tree, Dodongo's Cavern, Jabu-Jabu's Belly, the Forest, Fire,&#10;Water, Shadow and Spirit Temples, the Bottom of the Well, the Ice Cavern and the Gerudo Training&#10;Ground (never Ganon's Castle).&#10;The altar in the Temple of Time names the barren dungeons."/>
+          <ComboBox Name="set_barren_dungeons" OnChanged="set.barren_dungeons" Slot.Fill="0.9"
+                    Items="Off|1|2|3|4|5|Random (1 to 5)"
+                    Tooltip="This many dungeons, chosen by the seed, are barren: nothing in them is needed to finish the game.&#10;Their shuffled checks hold rupees only: no key items, songs, boss rewards, key rings or other&#10;junk. A barren dungeon's own keys stay in it when keys stay in their own dungeons. The dungeon's&#10;boss reward, boss Heart Container and song (Sheik in the Ice Cavern) are put somewhere else in the&#10;seed, whatever the reward, song and heart settings; their checks hold rupees too.&#10;Dungeons that can be barren: the Deku Tree, Dodongo's Cavern, Jabu-Jabu's Belly, the Forest, Fire,&#10;Water, Shadow and Spirit Temples, the Bottom of the Well, the Ice Cavern and the Gerudo Training&#10;Ground (never Ganon's Castle).&#10;The altar in the Temple of Time names the barren dungeons."/>
+          <NewFeatureBadge Name="badge_barren_dungeons" LabelName="badgelab_barren_dungeons"/>
+        </HBox>
+      </VBox>
+    </Border>
+  </VBox>
+</ScrollBox>

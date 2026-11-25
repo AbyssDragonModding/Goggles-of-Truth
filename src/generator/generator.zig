@@ -170,6 +170,14 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
             plan.exclusion_ignored.items.len, std.mem.join(a, ", ", plan.exclusion_ignored.items) catch return error.OutOfMemory,
         });
     }
+    if (plan.start_inventory.len > 0) {
+        var names: std.ArrayList([]const u8) = .empty;
+        for (plan.start_inventory) |item| names.append(a, world.itemNameById(a, item) catch return error.OutOfMemory) catch return error.OutOfMemory;
+        progress.log("Starting Inventory: {s}", .{std.mem.join(a, ", ", names.items) catch return error.OutOfMemory});
+    }
+    if (plan.start_inventory_unknown.len > 0) {
+        progress.log("warning: Starting Inventory: not items of this game, left out: {s}", .{std.mem.join(a, ", ", plan.start_inventory_unknown) catch return error.OutOfMemory});
+    }
     const user_excluded = plan.countUserExcluded();
     if (user_excluded > 0) progress.log("Excluded locations: {d} of the shuffled locations only get junk", .{user_excluded});
 
@@ -648,6 +656,11 @@ fn writeSpoiler(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Fil
         const names = a.alloc([]const u8, plan.barren_dungeons.len) catch return error.OutOfMemory;
         for (plan.barren_dungeons, 0..) |folder, k| names[k] = world.regionName(folder);
         txt.print(a, "  Barren dungeons:            {s}\n", .{std.mem.join(a, ", ", names) catch return error.OutOfMemory}) catch return error.OutOfMemory;
+    }
+    if (plan.start_inventory.len > 0) {
+        const names = a.alloc([]const u8, plan.start_inventory.len) catch return error.OutOfMemory;
+        for (plan.start_inventory, 0..) |item, k| names[k] = world.itemNameById(a, item) catch return error.OutOfMemory;
+        txt.print(a, "  Starting inventory:         {s}\n", .{std.mem.join(a, ", ", names) catch return error.OutOfMemory}) catch return error.OutOfMemory;
     }
     try txt.appendSlice(a, "\nPlaythrough:\n");
     for (playthrough.items, 1..) |sphere, n| {

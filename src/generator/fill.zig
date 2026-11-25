@@ -6,6 +6,7 @@ const world_mod = @import("../game/world.zig");
 const logic = @import("../logic/logic.zig");
 const progressive = @import("../logic/progressive.zig");
 const settings_mod = @import("../settings/settings.zig");
+const startinventory = settings_mod.startinventory;
 const gamedata = @import("gamedata.zig");
 const hash = @import("../core/hash.zig");
 const Rng = @import("../core/rng.zig").Rng;
@@ -246,7 +247,7 @@ pub const Plan = struct {
     excluded: []bool,
     user_excluded: []bool,
     start_locs: []bool,
-    /// Barren Dungeons: shuffled spots in a barren dungeon that get no key item, reward or key (barrenRefuses)
+    /// Barren Dungeons: shuffled spots in a barren dungeon, which hold rupees only (barrenRefuses)
     barren: []bool,
     /// the barren dungeons' folders, sorted (for the altar text and the spoiler log)
     barren_dungeons: []const []const u8 = &.{},
@@ -254,6 +255,11 @@ pub const Plan = struct {
     /// spots (Vanilla, Song Locations): the barren dungeons' own rewards and songs, which leave those spots and may
     /// go anywhere outside the barren dungeons
     displaced: []const ItemId = &.{},
+    /// Starting Inventory: the items a new game starts with, as the logic counts them (a progressive line's item
+    /// when the pool holds that line), in hand-over order (applyStartingInventory)
+    start_inventory: []const ItemId = &.{},
+    /// Starting Inventory names that are no item of this game (the generator's log lists them)
+    start_inventory_unknown: []const []const u8 = &.{},
     pool: std.ArrayList(ItemId),
     /// excluded spots that could only hold a song or a boss reward (their exclusion is ignored)
     exclusion_ignored: std.ArrayList([]const u8),
@@ -344,6 +350,7 @@ pub const Plan = struct {
         }
         for (self.shuffled.items) |i| try self.pool.append(allocator, world.locations.items[i].vanilla);
         try self.adjustPool();
+        try self.applyStartingInventory();
 
         // An excluded spot that can only take a song or a boss reward (Shuffle Songs: Song Locations, rewards at the
         // reward spots) can never be free of progression: excluding even one made every seed fail. Such a spot keeps
@@ -387,6 +394,46 @@ pub const Plan = struct {
         }
     }
 
+    /// Starting Inventory: the chosen items (settings/startinventory.zig) as the logic counts them, and one copy of
+    /// each out of the pool, a Blue Rupee in its place, so the seed doesn't hide a second one. Why a progressive
+    /// line's item: the logic counts that line by its copies once Progressive Items put it in the pool. A song
+    /// stays in the pool with Song Locations (every song spot needs a song; the start copy is a spare). Nothing
+    /// happens without a starting inventory, so other seeds keep their placements.
+    fn applyStartingInventory(self: *Self) FillError!void {
+        const chosen = self.st.startingInventory();
+        if (chosen.len == 0) return;
+        const allocator = self.allocator;
+        self.start_inventory_unknown = startinventory.unknownNames(allocator, chosen) catch return error.OutOfMemory;
+        const counts = startinventory.countsOf(chosen);
+        const keys = startinventory.itemKeysOf(allocator, &counts) catch return error.OutOfMemory;
+        const blue_rupee = try self.world.items.intern(refill_fallback);
+        var counted: std.ArrayList(ItemId) = .empty;
+        var unknown: std.ArrayList([]const u8) = .empty;
+        unknown.appendSlice(allocator, self.start_inventory_unknown) catch return error.OutOfMemory;
+        for (keys) |key| {
+            const tier_item = self.world.items.lookup(key) orelse blk: {
+                // an item no check holds isn't in the item list yet: added when the game has its item actor
+                const actor = std.fmt.allocPrint(allocator, "Item_{s}", .{key}) catch return error.OutOfMemory;
+                if (!self.world.actorExists(actor)) {
+                    try unknown.append(allocator, key);
+                    continue;
+                }
+                break :blk try self.world.items.intern(key);
+            };
+            var item = tier_item;
+            if (progressive.chainOfTierItem(key)) |chain| {
+                if (self.world.items.lookup(chain.key)) |line_item| {
+                    if (std.mem.indexOfScalar(ItemId, self.pool.items, line_item) != null) item = line_item;
+                }
+            }
+            try counted.append(allocator, item);
+            if (isSong(key) and !self.st.is(.shuffle_songs, "anywhere")) continue;
+            if (std.mem.indexOfScalar(ItemId, self.pool.items, item)) |k| self.pool.items[k] = blue_rupee;
+        }
+        self.start_inventory = counted.items;
+        self.start_inventory_unknown = unknown.items;
+    }
+
     /// Barren Dungeons: which dungeons are barren (their own random stream), and which of their shuffled spots
     /// that marks (barren). A spot that can't take any junk item (a song spot with Song Locations, a boss reward
     /// spot with rewards at the reward spots) is left alone, as exclusions leave it.
@@ -413,14 +460,15 @@ pub const Plan = struct {
         std.mem.sort([]const u8, chosen, {}, lessString);
         self.barren_dungeons = chosen;
 
-        // a barren dungeon's boss reward and song go elsewhere in the seed (asked for in testing): its boss spot and
-        // song spot (Sheik in Ice Cavern) hold junk. With rewards / songs anywhere that is the barren rule alone.
-        // With them kept at their own kind of spot, the dungeon's own reward or song leaves those spots and may go
-        // anywhere outside the barren dungeons, so the others still fill the remaining spots one for one. With them
-        // vanilla the spot is shuffled in for it.
+        // a barren dungeon's boss reward, song and boss heart container go elsewhere in the seed (asked for in
+        // testing): its boss spot, song spot (Sheik in Ice Cavern) and heart container hold rupees. With rewards /
+        // songs anywhere that is the barren rule alone. With them kept at their own kind of spot, the dungeon's own
+        // reward or song leaves those spots and may go anywhere outside the barren dungeons, so the others still fill
+        // the remaining spots one for one. With them vanilla (heart containers not shuffled) the spot is shuffled in
+        // for it.
         var displaced: std.ArrayList(ItemId) = .empty;
         for (self.world.locations.items, 0..) |*loc, i| {
-            if (loc.category != .reward and loc.category != .song) continue;
+            if (loc.category != .reward and loc.category != .song and loc.category != .heart_container) continue;
             const boss_dungeon: ?[]const u8 = for (boss_reward_spots) |spot| {
                 if (std.mem.eql(u8, spot.location, loc.name)) break spot.dungeon;
             } else null;
@@ -434,34 +482,35 @@ pub const Plan = struct {
                 try self.pool.append(allocator, loc.vanilla);
             }
             self.barren[i] = true;
-            const kept_to_own_spots = if (loc.category == .reward) !self.st.is(.shuffle_rewards, "anywhere") else !self.st.is(.shuffle_songs, "anywhere");
+            const kept_to_own_spots = switch (loc.category) {
+                .reward => !self.st.is(.shuffle_rewards, "anywhere"),
+                .song => !self.st.is(.shuffle_songs, "anywhere"),
+                else => false,
+            };
             if (kept_to_own_spots) try displaced.append(allocator, loc.vanilla);
         }
         self.displaced = displaced.items;
 
-        var junk_items: std.ArrayList(ItemId) = .empty;
-        for (self.pool.items) |item| {
-            if (self.barrenRefuses(item)) continue;
-            if (std.mem.indexOfScalar(ItemId, junk_items.items, item) == null) try junk_items.append(allocator, item);
-        }
+        // the other spots of a barren dungeon that can take a rupee (a spot that can't, the way exclusions leave
+        // such a spot, keeps what the other rules give it)
+        const rupee = try self.world.items.intern(refill_fallback);
         for (self.shuffled.items) |i| {
             const loc = &self.world.locations.items[i];
             const dungeon = loc.dungeon orelse eventSpotDungeon(loc.name) orelse continue;
             if (!inList(dungeon, chosen)) continue;
-            for (junk_items.items) |j| {
-                if (try self.allowed(i, j)) {
-                    self.barren[i] = true;
-                    break;
-                }
-            }
+            if (try self.allowed(i, rupee)) self.barren[i] = true;
         }
     }
 
-    /// An item a barren dungeon's spot can't hold: a key item (anything the logic needs), a boss reward, or a key
-    /// that leaves its dungeon (key rings and boss key items; a dungeon's own small keys and boss key stay allowed).
-    fn barrenRefuses(self: *const Self, item: ItemId) bool {
+    /// An item barren spot `i` can't hold. Barren dungeons hold rupees only (asked for in testing): no key item,
+    /// boss reward, song, key ring or other junk. The dungeon's own small keys, boss key, map and compass stay
+    /// allowed, since the settings keep those inside it (they are only shuffled there).
+    fn barrenRefuses(self: *const Self, i: usize, item: ItemId) bool {
         const name = self.itemName(item);
-        return logic.isProgression(item) or isReward(name) or logic.keyItemOf(name) != null;
+        if (isRupeeName(name) and !logic.isProgression(item)) return false;
+        const at = std.mem.indexOfScalar(u8, name, '@') orelse return true;
+        const dungeon = self.world.locations.items[i].dungeon orelse return true;
+        return !std.mem.eql(u8, dungeon, name[at + 1 ..]);
     }
 
     /// Test seeds (`goggles_cli generate --place`): each chosen location keeps the chosen item and leaves the
@@ -933,7 +982,7 @@ pub const Plan = struct {
         const dtype = dungeonItemType(name);
         // excluded: never progression, keys or boss rewards (maps and compasses only show the map, so they may)
         if (self.excluded[i] and (logic.isProgression(item) or isReward(name) or dtype == .small_keys or dtype == .boss_keys)) return false;
-        if (self.barren[i] and self.barrenRefuses(item)) return false;
+        if (self.barren[i] and self.barrenRefuses(i, item)) return false;
         const own_dungeon = std.mem.indexOfScalar(u8, name, '@');
         // Skip Child Zelda's start checks take any item except own-dungeon items: one a save default can hold is set
         // in the new save, any other is handed over when the game starts (faststart.giveAtStart)
@@ -993,6 +1042,11 @@ pub const Plan = struct {
 
 fn appendItem(comptime T: type, list: *std.ArrayList(T), allocator: Allocator, item: T) FillError!void {
     list.append(allocator, item) catch return error.OutOfMemory;
+}
+
+/// A rupee item (Rupee_Green, Rupee_Blue, Rupee_Red, Rupee_Purple, Rupee_Gold...): what a barren dungeon holds.
+fn isRupeeName(name: []const u8) bool {
+    return std.mem.startsWith(u8, name, "Rupee_");
 }
 
 fn lessString(_: void, a: []const u8, b: []const u8) bool {
@@ -1087,6 +1141,8 @@ pub const Filler = struct {
     /// Collects everything reachable starting from `base` items, with the items at `contents`.
     pub fn sweep(self: *Self, base: []const ItemId, items_at: []const ?ItemId) FillError!Sweep {
         var s = try logic.State.init(self.allocator, self.plan.world.items.count(), &self.plan.options);
+        // Starting Inventory: owned from the start, in every sweep (the fill's, the checks', the hints')
+        for (self.plan.start_inventory) |item| s.addKeepingCache(item);
         for (base) |item| s.addKeepingCache(item);
         const got = try Plan.boolArray(self.allocator, items_at.len);
         var spheres: std.ArrayList(std.ArrayList(usize)) = .empty;
@@ -1254,6 +1310,7 @@ pub const Filler = struct {
         try self.placeGroup(song_items.items, later.items);
         try self.placeGroup(prog_rest.items, &.{});
         self.rng.shuffle(ItemId, junk_rest.items);
+        try self.fillBarrenSpotsWithRupees(&junk_rest);
 
         // Items Shuffled Per Shop: junk on a shelf leaves its normal goods, so most chosen shelves looked unchanged
         // (0.6.2 seed 83WVJZQBZE: 10 of 13). Each empty chosen shelf first takes a real item it can sell once; junk
@@ -1323,6 +1380,42 @@ pub const Filler = struct {
                 });
             };
             try self.place(s, item);
+        }
+    }
+
+    /// Barren Dungeons: each empty barren spot takes a rupee from the junk left, before other junk is placed, so the
+    /// rupees aren't used up elsewhere first. When the rupees run out, other junk (ammo, refills: Plan.isJunk) turns
+    /// into Blue Rupees for them; a barren spot no rupee is left for fails the seed with a message. Nothing happens
+    /// without barren dungeons, so other seeds keep their placements.
+    fn fillBarrenSpotsWithRupees(self: *Self, junk_rest: *std.ArrayList(ItemId)) FillError!void {
+        const plan = self.plan;
+        if (plan.barren_dungeons.len == 0) return;
+        var spots: std.ArrayList(usize) = .empty;
+        for (plan.shuffled.items) |i| {
+            if (plan.barren[i] and self.placed[i] == null) try appendItem(usize, &spots, self.allocator, i);
+        }
+        self.rng.shuffle(usize, spots.items);
+        const blue_rupee = try plan.world.items.intern(refill_fallback);
+        for (spots.items) |i| {
+            const rupee_at = for (junk_rest.items, 0..) |item, k| {
+                if (isRupeeName(plan.itemName(item)) and try plan.allowed(i, item)) break k;
+            } else null;
+            if (rupee_at) |k| {
+                try self.place(i, junk_rest.orderedRemove(k));
+                continue;
+            }
+            const junk_at = for (junk_rest.items, 0..) |item, k| {
+                if (plan.isJunk(item)) break k;
+            } else null;
+            if (junk_at) |k| {
+                if (try plan.allowed(i, blue_rupee)) {
+                    _ = junk_rest.orderedRemove(k);
+                    try self.place(i, blue_rupee);
+                    continue;
+                }
+            }
+            // a spot that only takes the dungeon's own items keeps what the other groups gave it; an empty one fails
+            // later with "no location left", which names the spot's kind
         }
     }
 

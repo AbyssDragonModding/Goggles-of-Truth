@@ -297,7 +297,10 @@ pub fn dumps(allocator: Allocator, st: *const Settings, paths: Paths, app: App) 
                 try out.print(allocator, "\"{s}\" ({s})", .{ o.value, o.label });
             },
             .int => try out.print(allocator, "a whole number from {d} to {d}", .{ s.min, s.max }),
-            .list => try out.appendSlice(allocator, "a list of location names as the Exclusions tab shows them"),
+            .list => try out.appendSlice(allocator, switch (s.key) {
+                .starting_inventory => "a list of item keys, one per copy (\"Hookshot\" twice is the Longshot; items.txt from `goggles_cli test-catalog` names them)",
+                else => "a list of location names as the Exclusions tab shows them",
+            }),
         }
         try out.appendSlice(allocator, ". Default: ");
         var default_text: std.ArrayList(u8) = .empty;

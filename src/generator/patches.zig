@@ -534,10 +534,10 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     for (start_ids.items) |i| {
         start_check_items.append(a, placed[i] orelse plan.fixed[i] orelse continue) catch return error.OutOfMemory;
     }
-    // a test plan's start items, handed over the same ways, after the start checks' (a progressive one gives the
-    // next tier after theirs)
+    // the Starting Inventory and a test plan's start items, handed over the same ways, after the start checks' (a
+    // progressive one gives the next tier after theirs)
     const test_start_items: []const ItemId = if (inputs.test_start) |t| t.items else &.{};
-    const all_start_items = std.mem.concat(a, ItemId, &.{ start_check_items.items, test_start_items }) catch return error.OutOfMemory;
+    const all_start_items = std.mem.concat(a, ItemId, &.{ start_check_items.items, plan.start_inventory, test_start_items }) catch return error.OutOfMemory;
     for (all_start_items) |placed_item| {
         var item = placed_item;
         if (fill.progressiveChainOf(plan, placed_item)) |chain| {
@@ -590,17 +590,23 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         else => return err,
     };
     patches.endStep();
-    if (start_by_event.items.len > 0 or start_gifts.items.len > 0) {
+    // Starting Age: Adult hands the gifts over after the sword pull (teststart.giveOnArrival), unless a test plan's
+    // own spawn replaces the adult one (then the normal opening hands them over)
+    const test_spawn = if (inputs.test_start) |t| t.warp != null else false;
+    const adult_arrival = start_adult and !test_spawn;
+    const arrival_gifts: []const []const u8 = if (adult_arrival) start_gifts.items else &.{};
+    const opening_gifts: []const []const u8 = if (adult_arrival) &.{} else start_gifts.items;
+    if (start_by_event.items.len > 0 or opening_gifts.len > 0) {
         defer patches.endStep();
         const rel = faststart.start_item_flow;
         // after Skip Opening Movie's edit of the same flow, if any
         const orig = try patches.read(rel);
-        const new = faststart.giveAtStart(s, orig.data, start_by_event.items, start_gifts.items, progress) catch |err| switch (err) {
+        const new = faststart.giveAtStart(s, orig.data, start_by_event.items, opening_gifts, progress) catch |err| switch (err) {
             error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Start items: {s} is not as expected in this romfs ({s})", .{ rel, progress.failureMessage() }),
             else => return err,
         };
         try patches.emitZs(rel, orig, new);
-        if (start_gifts.items.len > 0) {
+        if (opening_gifts.len > 0) {
             const doc = try evfl.read(s, new);
             _ = storyskip.updateEventInfo(s, world, &patches, &.{.{ .name = "OpeningEvent", .flowchart = doc.flowchart.? }}, progress) catch |err| switch (err) {
                 error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Start items: the opening's event info could not be updated ({s})", .{progress.failureMessage()}),
@@ -609,7 +615,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         }
         var all: std.ArrayList([]const u8) = .empty;
         all.appendSlice(a, start_by_event.items) catch return error.OutOfMemory;
-        all.appendSlice(a, start_gifts.items) catch return error.OutOfMemory;
+        all.appendSlice(a, opening_gifts) catch return error.OutOfMemory;
         progress.log("Start items handed over when a new game starts: {s}", .{std.mem.join(a, ", ", all.items) catch return error.OutOfMemory});
     }
     // the new game's start: Starting Age: Adult and a test plan's start (a test plan's spawn wins over the adult
@@ -621,12 +627,14 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         opening_start.flags = &teststart.adult_start_flags;
         opening_start.equip = &teststart.adult_start_equip;
         opening_start.arrival = teststart.adult_start_arrival;
+        opening_start.arrival_boots_entry = arrival_gifts.len > 0;
     }
     if (inputs.test_start) |test_start| {
         if (test_start.warp) |w| {
             // a test plan's own spawn: the normal opening, with the change at its end
             opening_start.warp = w;
             opening_start.arrival = null;
+            opening_start.arrival_boots_entry = false;
         }
         opening_start.time_hour = test_start.time_hour;
     }
@@ -639,12 +647,25 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             else => return err,
         };
         try patches.emitZs(teststart.opening_flow, orig, new.data);
-        if (new.arrival_added) {
-            // the start items' windows come after the sword pull, in an entry of the opening's own
-            teststart.addArrivalRows(s, world, &patches, opening_start.arrival.?, progress) catch |err| switch (err) {
+        if (opening_start.arrival_boots_entry) {
+            // the start items' windows come after the sword pull, in the game's own first-arrival event
+            const arrival = teststart.adult_start_arrival;
+            const arrival_orig = try patches.read(arrival.flow);
+            const arrival_new = teststart.giveOnArrival(s, arrival_orig.data, arrival, arrival_gifts, progress) catch |err| switch (err) {
+                error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: {s} is not as expected ({s}); start as child", .{ arrival.flow, progress.failureMessage() }),
+                else => return err,
+            };
+            try patches.emitZs(arrival.flow, arrival_orig, arrival_new);
+            const doc = try evfl.read(s, arrival_new);
+            _ = storyskip.updateEventInfo(s, world, &patches, &.{.{ .name = arrival.flowchart, .flowchart = doc.flowchart.? }}, progress) catch |err| switch (err) {
+                error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: the arrival's event info could not be updated ({s}); start as child", .{progress.failureMessage()}),
+                else => return err,
+            };
+            teststart.addArrivalScene(s, world, &patches, arrival, progress) catch |err| switch (err) {
                 error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: the event tables are not as expected ({s}); start as child", .{progress.failureMessage()}),
                 else => return err,
             };
+            progress.log("Start items handed over after the Master Sword pull: {s}", .{std.mem.join(a, ", ", arrival_gifts) catch return error.OutOfMemory});
         }
         if (start_adult) progress.log("Starting Age: Adult (a new game starts in the Temple of Time with the Master Sword)", .{});
     }

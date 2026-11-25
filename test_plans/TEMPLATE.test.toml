@@ -28,6 +28,9 @@ name = "MYTEST1"                 # letters, digits, - and _ only; the seed folde
 # Any user_settings.toml setting, changed for this test only (an unknown name or value stops the test):
 # shuffle_ocarinas = true
 # skip_child_zelda = true
+# starting_inventory = ["Hookshot", "Hookshot", "Melody_ZeldaLullaby"]   # 0.8.0 Starting Inventory: item keys
+#                      # (items.txt, second column), one per copy; the logic counts them and one copy of each
+#                      # leaves the item pool. "Hookshot" twice is the Longshot.
 
 # ------------------------------------------------------------------------------------------- placements
 [place]
@@ -50,7 +53,9 @@ name = "MYTEST1"                 # letters, digits, - and _ only; the seed folde
 #
 # time = 20                      # the hour, 0-23
 # items = ["Hookshot", "Fairy Bow", "Bomb Bag"]   # owned from the start (items.txt); a progressive item
-#                                                 # listed twice gives its second tier
+#                                                 # listed twice gives its second tier. The logic doesn't count
+#                                                 # these, and the seed may hold them again: for a start the
+#                                                 # seed plans around, use starting_inventory in [settings]
 
 # -------------------------------------------------------------------------------------- quests and flags
 [quests]

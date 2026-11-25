@@ -1,6 +1,8 @@
-# 0.8.0: Starting Age: Adult with three Barren Dungeons. A new game should start as adult Link on the platform in
-# the Temple of Time with the Master Sword. Read the altar (second page names the barren dungeons), put the sword
-# back and walk out as child (Kokiri Forest should be open to him), then pull it again.
+# 0.8.0: Starting Age: Adult with three Barren Dungeons. A new game should go straight to adult Link pulling the
+# Master Sword in the Temple of Time (no child Link, no black screen), then hand over the start items (Rauru's check,
+# Skip Child Zelda's) with their windows. Read the altar (second page names the barren dungeons), put the sword
+# back and walk out as child (Kokiri Forest should be open to him), then pull it again. The barren dungeons'
+# checks, boss Heart Containers included, should hold only rupees.
 name = "FEAT_ADULT1"
 
 [settings]

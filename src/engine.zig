@@ -75,6 +75,8 @@ test {
     _ = gamecheck;
     _ = world;
     _ = settings;
+    _ = settings.startinventory;
+    _ = @import("ui/pagecheck.zig");
     _ = usersettings;
     _ = custompresets;
     _ = logic;

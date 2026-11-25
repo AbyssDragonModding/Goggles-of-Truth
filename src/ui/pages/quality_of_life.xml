@@ -1,5 +1,94 @@
 <!--
   The "Quality of Life" page of the randomizer window (Raven XML). src/ui/layout.zig puts it into main.xml's
-  TabView, at the page marker of the same name. Its settings cards come from src/settings/table.zig.
+  TabView, at the page marker of the same name. Every setting row is defined here; a unit test (src/ui/pagecheck.zig) checks each row
+  against its setting in src/settings/table.zig (control, label, tooltip, options, badge).
 -->
-<ScrollBox Orientation="Vertical" Slot.Title="Quality of Life"><VBox Spacing="14"><!--@@settings Quality of Life@@--></VBox></ScrollBox>
+<ScrollBox Orientation="Vertical" Slot.Title="Quality of Life">
+  <VBox Spacing="14">
+    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+      <VBox Spacing="10">
+        <Label Text="Cutscenes" TextSize="16" Color="#F5CC61"/>
+        <HBox Spacing="12">
+          <Checkbox Name="set_skip_cutscenes" Style="Switch" Text="Make All Cutscenes Skippable" OnChanged="set.skip_cutscenes" Slot.Fill="1"
+                    Tooltip="Every cutscene can be skipped with the skip button, including the opening, the staff credits and&#10;the title-screen demos that normally can't be. Cutscenes still start: items and story progress&#10;are given inside them."/>
+          <StableBadge Name="badge_skip_cutscenes" LabelName="badgelab_skip_cutscenes"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_skip_story_scenes" Style="Switch" Text="Skip Cutscenes" OnChanged="set.skip_story_scenes" Slot.Fill="1"
+                    Tooltip="Since 0.8.0 this also skips the area intros (it was a setting of its own before).&#10;&#10;The cutscenes that come with quest progress don't play; you get their item straight away:&#10;- Temple of Time: the door opening, Ganondorf, pulling the Master Sword, and Rauru's talk in the&#10;  Chamber of Sages (his Light Medallion check is given at once);&#10;- adult Temple of Time: Sheik's first talk, the sages' talks, Zelda's reveal and the Light Arrows;&#10;- after a boss: each sage's awakening and medallion, and the Deku Tree / Darunia / Ruto handing over&#10;  the Spiritual Stones;&#10;- leaving Kokiri Forest: Saria's goodbye on the bridge (the Fairy Ocarina is given at once);&#10;- the Kokiri Sword chest: Link's sword swing and Navi's tip after it (the chest opens like any other);&#10;- the rest of each post-boss chain (the Deku Tree's death, Darunia, Ruto, the Deku Sprout, the&#10;  lake refilling...), Sheik/Mido/Ruto/Nabooru before the adult temples, and Ganon's Castle's&#10;  first visit, trial barriers and tower barrier (not yet tested in-game);&#10;- Kakariko Graveyard: the Royal Family's Tomb opening to Zelda's Lullaby, and the Sun's Song stone&#10;  inside (its lesson and scene; its check is given at once; not yet tested in-game).&#10;Other song lessons, boss intros and the ending still play (Make All Cutscenes Skippable covers those).&#10;Tested in-game so far: Rauru's Light Medallion after the Master Sword, the Great Deku Tree after&#10;Gohma (his check is given) and Saria's Fairy Ocarina on the bridge. Known to still play: leaving&#10;the Temple of Time as adult.&#10;&#10;Area intros: first-arrival camera pans don't play: Kakariko, Graveyard, Hyrule Castle, Lake Hylia,&#10;Gerudo Valley/Fortress, Zora's River/Fountain, Ganon's Castle, and the Fire Temple / Bottom of the&#10;Well / Spirit Temple entrances (tested). Those areas count as visited, so their maps work without&#10;the intro's area-name banner, and Kaepora still waits at Lake Hylia for his ride.&#10;Also skipped, keeping the quest step they start (not yet tested): inside the Deku Tree, Dodongo's&#10;Cavern, Death Mountain Trail from Kakariko, Goron City, Death Mountain Crater, Zora's Domain,&#10;Lon Lon Ranch, Castle Town, Sacred Forest Meadow, Desert Colossus, Ice Cavern, Shadow Temple,&#10;Gerudo Training Ground, the Water Temple, inside Ganon's Castle and the Temple of Time&#10;(first entry, and first step out as adult)."/>
+          <NewFeatureBadge Name="badge_skip_story_scenes" LabelName="badgelab_skip_story_scenes"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_skip_npc_dialogs" Style="Switch" Text="Skip NPC Dialogs" OnChanged="set.skip_npc_dialogs" Slot.Fill="1"
+                    Tooltip="Characters' story talks that only tell the story don't play again and again: once a quest has moved&#10;on, they skip to their short line (Saria after the Deku Tree, for example). Talks that give an item,&#10;teach a song or move a quest on still play.&#10;A temporary setting while it is being tested; it will become part of Skip Cutscenes."/>
+          <NewFeatureBadge Name="badge_skip_npc_dialogs" LabelName="badgelab_skip_npc_dialogs"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_skip_kaepora" Style="Switch" Text="Skip Kaepora Gaebora" OnChanged="set.skip_kaepora" Slot.Fill="1"
+                    Tooltip="Kaepora Gaebora doesn't stop you to talk when you leave Kokiri Forest, in the Lost Woods after&#10;Saria's Song, in Hyrule Field (also on the way to Lake Hylia), in front of Hyrule Castle or at&#10;Zora's River. The quest menu and the amiibo menu item he unlocks are available anyway, the field&#10;music plays, and Castle Town works as if he had talked to you. His optional rides at Lake Hylia&#10;and Death Mountain are unchanged."/>
+          <StableBadge Name="badge_skip_kaepora" LabelName="badgelab_skip_kaepora"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_skip_opening" Style="Switch" Text="Skip Opening Movie" OnChanged="set.skip_opening" Slot.Fill="1"
+                    Tooltip="A new game doesn't play the opening movie (the narrated prologue and the Great Deku Tree's dream).&#10;The game still waits for Kokiri Forest to load.&#10;Whatever this is set to, every seed starts outside in front of the Kokiri Shop, without Navi's&#10;flight, Navi waking Link or Saria at the door."/>
+          <StableBadge Name="badge_skip_opening" LabelName="badgelab_skip_opening"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_skip_deku_talk" Style="Switch" Text="Skip the Great Deku Tree's Talk" OnChanged="set.skip_deku_talk" Slot.Fill="1"
+                    Tooltip="The Great Deku Tree's speech when you first reach him doesn't play: his mouth is open and you can&#10;walk straight in. With Mido still blocking (Kokiri Forest not Open), this happens when Mido steps&#10;aside after seeing your sword and shield."/>
+          <StableBadge Name="badge_skip_deku_talk" LabelName="badgelab_skip_deku_talk"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_quick_chests" Style="Switch" Text="Chests Without Cutscene" OnChanged="set.quick_chests" Slot.Fill="1"
+                    Tooltip="Big chests open without the camera move and Link's opening animation: the lid opens, Link holds&#10;the item up and its message shows. The fanfare starts at once. Small chests keep&#10;their own short opening. The Kokiri Sword chest's sword scene is Skip Cutscenes."/>
+          <StableBadge Name="badge_quick_chests" LabelName="badgelab_quick_chests"/>
+        </HBox>
+      </VBox>
+    </Border>
+    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+      <VBox Spacing="10">
+        <Label Text="Gameplay" TextSize="16" Color="#F5CC61"/>
+        <HBox Spacing="12">
+          <Checkbox Name="set_bag_bombs_no_bracelet" Style="Switch" Text="Bag Bombs without Goron Bracelet" OnChanged="set.bag_bombs_no_bracelet" Slot.Fill="1"
+                    Tooltip="Bombs from the bag can be pulled out and thrown as soon as you have a Bomb Bag. In the remake they&#10;normally need the Goron Bracelet, which the original always gave you first. Bomb Flowers still&#10;need the bracelet. Off: the logic expects the Goron Bracelet before bombs."/>
+          <StableBadge Name="badge_bag_bombs_no_bracelet" LabelName="badgelab_bag_bombs_no_bracelet"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_dodongo_bag_bombs" Style="Switch" Text="Bag Bombs Open Dodongo's Cavern" OnChanged="set.dodongo_bag_bombs" Slot.Fill="1"
+                    Tooltip="A bomb from your Bomb Bag breaks the boulder in front of Dodongo's Cavern when it explodes, like any&#10;bombable rock (no cutscene), so you don't need the Goron Bracelet to open it. The bomb flower still&#10;plays its cutscene.&#10;Off: only the bomb flower next to it works, which needs the bracelet."/>
+          <StableBadge Name="badge_dodongo_bag_bombs" LabelName="badgelab_dodongo_bag_bombs"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_gs_any_time" Style="Switch" Text="Gold Skulltulas Day and Night, Any Age" OnChanged="set.gs_any_time" Slot.Fill="1"
+                    Tooltip="Night-only Gold Skulltulas are there in the daytime too, and the overworld Gold Skulltulas that&#10;only appear for adult Link (Kakariko, Death Mountain Trail, Zora's River and others) are there for&#10;child Link too, at the same spot; it's the same Skulltula, so it counts once. Not copied: the ones&#10;tied to another object (Lake Hylia, Zora's Domain) and Gerudo's Fortress (child can't go there).&#10;The logic doesn't count on this: it still expects night or adult Link for them."/>
+          <StableBadge Name="badge_gs_any_time" LabelName="badgelab_gs_any_time"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_skip_ganon_trials" Style="Switch" Text="Skip Ganon's Trials" OnChanged="set.skip_ganon_trials" Slot.Fill="1"
+                    Tooltip="The six trials inside Ganon's Castle count as done from the start: the barriers are gone and the&#10;way up the tower is open. The trial rooms and their chests are still there. The logic then only&#10;needs the rainbow bridge, the Bow and the Light Arrows to beat Ganon (the trial rooms' own&#10;checks still expect what the trials need)."/>
+          <StableBadge Name="badge_skip_ganon_trials" LabelName="badgelab_skip_ganon_trials"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_saria_song_ocarina" Style="Switch" Text="Saria's Song With Just an Ocarina" OnChanged="set.saria_song_ocarina" Slot.Fill="1"
+                    Tooltip="Saria teaches her song in Sacred Forest Meadow as soon as you own an ocarina (either one);&#10;you don't need to meet Zelda first. Works with any Kokiri Forest setting."/>
+          <StableBadge Name="badge_saria_song_ocarina" LabelName="badgelab_saria_song_ocarina"/>
+        </HBox>
+      </VBox>
+    </Border>
+    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+      <VBox Spacing="10">
+        <Label Text="Minigames &amp; NPCs" TextSize="16" Color="#F5CC61"/>
+        <HBox Spacing="12">
+          <Checkbox Name="set_anju_one_cucco" Style="Switch" Text="Anju Needs Only 1 Cucco" OnChanged="set.anju_one_cucco" Slot.Fill="1"
+                    Tooltip="Return a single cucco to Anju's pen in Kakariko to finish her minigame and get the reward."/>
+          <StableBadge Name="badge_anju_one_cucco" LabelName="badgelab_anju_one_cucco"/>
+        </HBox>
+        <HBox Spacing="12">
+          <Checkbox Name="set_big_poe_one" Style="Switch" Text="Poe shop requires only 1 Big Poe" OnChanged="set.big_poe_one" Slot.Fill="1"
+                    Tooltip="Sell a single Big Poe to the ghost shop in the adult Market to get his reward (normally five,&#10;500 points). Not yet confirmed in-game."/>
+          <ExperimentalBadge Name="badge_big_poe_one" LabelName="badgelab_big_poe_one"/>
+        </HBox>
+      </VBox>
+    </Border>
+  </VBox>
+</ScrollBox>

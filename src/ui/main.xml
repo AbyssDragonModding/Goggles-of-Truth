@@ -3,10 +3,10 @@
   Main window of the randomizer, in Raven's XML layout (https://github.com/oscar-soirey/Raven).
   Status badges (<StableBadge/>, <TestingBadge/>, <ExperimentalBadge/>) are declared in widgets.xml, which
   src/ui/App.zig registers first.
-  Every page of the TabView is defined in its own file in src/ui/pages; src/ui/layout.zig puts each one in at its
-  page marker, then fills in the generated parts (the settings cards and the Not Supported list, from
-  src/settings/table.zig). src/ui/App.zig creates the window from the result, finds the widgets by Name and binds
-  the actions (OnClicked / OnChanged / OnActivated).
+  Every page of the TabView is defined in its own file in src/ui/pages, every widget written out there (the setting
+  rows too: src/ui/pagecheck.zig checks them against src/settings/table.zig). src/ui/layout.zig puts each page in at
+  its marker and fills in the preset list below. src/ui/App.zig creates the window from the result, finds the
+  widgets by Name and binds the actions (OnClicked / OnChanged / OnActivated).
 
   Look: Kokiri-green accent, Triforce-gold card titles, frosted glass cards over a generated night sky.
 -->
@@ -34,12 +34,11 @@
       <!--@@page world@@-->
       <!--@@page items@@-->
       <!--@@page dungeon_items@@-->
+      <!--@@page starting_inventory@@-->
       <!--@@page hints@@-->
       <!--@@page quality_of_life@@-->
 
       <!--@@page exclusions@@-->
-
-      <!--@@page not_supported@@-->
     </TabView>
 
     <!-- Footer: settings string, progress, log -->

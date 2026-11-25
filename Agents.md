@@ -72,6 +72,7 @@ This document outlines the mandatory architecture, coding standards, performance
 
 - **Modular Page Definitions:**
   - Every UI page/screen must be fully defined in its own independent XML file.
+  - Every widget in the page should be defined in the xml only unless it needs (dynamic) creation
   - The UI framework loads and parses XML modularly to construct the view components.
 
 ---
