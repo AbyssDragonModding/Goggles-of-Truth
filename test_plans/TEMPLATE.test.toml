@@ -1,0 +1,76 @@
+# Goggles of Truth Randomizer: test plan template.
+#
+# A test plan describes one test seed: which items go where, and how a NEW game starts in it (where Link
+# appears, his age, the time, which quests and cutscenes are already done).
+#
+# Make the seed:            goggles_cli test test_plans/my_test.test.toml
+#   The game and the output folder are the ones the window uses (user_settings.toml); --game and --out change
+#   them. The seed folder is GogglesOfTruth_<name>, and the plan is kept in it as test_plan.toml.
+# Make it again:            run the same command. The folder keeps its seed number. When the settings and
+#   placements haven't changed, its saves are kept (a changed start only shows when you start a new game).
+#   "Rebuild Seed" in the window and `goggles_cli generate --rebuild <folder>` use the kept plan too.
+# Look up names:            goggles_cli test-catalog <folder>
+#   writes scenes.txt, start_spots.txt, boot_events.txt, quests.txt, cutscenes.txt, locations.txt and items.txt
+#   for the game you have.
+#
+# The start only applies to a NEW game: start a new file in the test seed.
+# Every name is checked before anything is written. A plan with a wrong name stops with a message that says
+# which name and what the choices are.
+# Copy this file, delete what you don't need: every key except `name` can be left out.
+
+# ---------------------------------------------------------------------------------------------- the seed
+name = "MYTEST1"                 # letters, digits, - and _ only; the seed folder is GogglesOfTruth_MYTEST1
+# seed = "ABCDEFGHJK"            # leave out for a random seed (kept when the plan is made again)
+# preset = "Standard"            # Beginner, Standard, Expert or Race, on top of your own settings
+# settings_string = "eNq..."     # or a settings string instead of your own settings
+
+[settings]
+# Any user_settings.toml setting, changed for this test only (an unknown name or value stops the test):
+# shuffle_ocarinas = true
+# skip_child_zelda = true
+
+# ------------------------------------------------------------------------------------------- placements
+[place]
+# "location" = "item", names as the spoiler log and locations.txt / items.txt show them.
+# The location must be shuffled with these settings. Each item copy can be placed once.
+# "Kokiri Forest Chest 1" = "Hookshot"
+
+# ------------------------------------------------------------------------------------------- the start
+[start]
+# age = "adult"                  # "child" or "adult"
+#
+# Where Link appears (leave out `scene` for the normal start outside the Kokiri Shop):
+# scene = "KakarikoVillage"      # scenes.txt. A scene with a child and an adult version takes the one for `age`
+#                                # (KakarikoVillage -> KakarikoVillage_Adult); you can also name the version.
+#                                # Dungeons and boss rooms take Link at the age you give.
+# start_spot = "Kakariko_WellSide"   # start_spots.txt. Leave out for the scene's entrance.
+# position = [-5.78, 85.19, 44.21]   # or exact coordinates instead of a start spot
+# facing = -90                       # degrees, with `position`
+# boot_event = "SageRoom_MeetRauru"  # boot_events.txt: an event that starts as soon as the scene has loaded
+#
+# time = 20                      # the hour, 0-23
+# (Items owned from the start come with 0.8.0. For now, place them at checks near the start with [place].)
+
+# -------------------------------------------------------------------------------------- quests and flags
+[quests]
+# quest = "step", from quests.txt. Steps run from NotReady to Complete. Setting a step only moves the quest;
+# items and cutscenes that come with it are separate (place the items with [place], mark cutscenes in [cutscenes]).
+# The opening itself moves Meet_DekuTree to Step01, so that quest can't start earlier than that.
+# DoorOfTime = "Step04"
+
+[flags]
+# Any save flag by its exact name: true/false, a whole number, or a quoted value name for an Enum flag.
+# "DungeonInfo.ForestTemple.SmallKeyNum" = 5
+
+[cutscenes]
+# Cutscenes from cutscenes.txt that already count as seen (they won't play), or as not seen (they play again,
+# even when a setting skips them).
+# seen = ["Dm_Kokiri_0070"]
+# unseen = ["Dm_Kokiri_0150"]
+
+# ------------------------------------------------------------------------------------- recipe: a cutscene
+# To test a cutscene or a quest conversation, start right before it:
+#   1. find the scene and the start spot next to the trigger (start_spots.txt),
+#   2. set the quest step the trigger waits for ([quests]),
+#   3. mark the cutscene as not seen ([cutscenes] unseen), and earlier ones as seen,
+#   4. or start the event directly on arrival (boot_event).

@@ -1,0 +1,12 @@
+# Adult Link by the Kakariko well at night, with the Hover Boots in the first Kokiri Forest chest.
+# Tests: an adult scene, a start spot, the time, a placement.
+name = "TESTKIT1"
+
+[place]
+"Kokiri Forest Chest 1" = "Hover Boots"
+
+[start]
+age = "adult"
+scene = "KakarikoVillage"
+start_spot = "Kakariko_WellSide"
+time = 21

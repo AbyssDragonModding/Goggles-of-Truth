@@ -711,7 +711,6 @@ pub const PickupCloner = struct {
     /// (a heart high above a Goron Shop shelf, an item half inside a Lost Woods stump). patches.zig moves the placement
     /// by it, so the new model's bottom rests where the old one's did.
     pub fn modelBottom(self: *Self, actor: []const u8) PatchError!?f32 {
-        for (shown_bottom_overrides) |o| if (std.mem.eql(u8, o.actor, actor)) return o.bottom;
         const bottoms = try self.loadModelBottoms();
         const model_actor = self.modelActorOf(actor);
         return bottoms.get(displayBoxActorOf(model_actor) orelse model_actor);
@@ -734,25 +733,94 @@ pub const PickupCloner = struct {
         return null;
     }
 
-    /// Placed actors whose model box doesn't say how they rest where they stand: the shelf top, from the origin
-    /// (metres, up), measured in the Kokiri Shop against what clearly rests on each shelf: the Deku Nut bundles (box
-    /// from their origin) on the lower shelves, the recovery heart (its own box, 0.034, matches: a Heart Container
-    /// there sat right, HEIGHTTEST1) on the upper ones.
-    /// - The single Deku Stick stands upright, while its box is the stick lying down (from -0.38): the lower shelf
-    ///   top is 0.045 m above it (the nut bundles' bottom, 111.187, against the stick's origin, 111.141).
-    /// - The Deku Seed bundles' box reaches 0.13 m below their origin, while the upper shelf top is 0.06 m above it
-    ///   (the recovery heart's bottom, 111.878, against the bundles' origin, 111.819).
-    /// Before these (0.7.5 test seeds) the Deku Stick shelf was given the seed bundles' box, which only looked right
-    /// for the arrows: a Heart Container there sank (TEST075). The arrows' own error is shelf_measured_lift's.
-    const shown_bottom_overrides = [_]struct { actor: []const u8, bottom: f32 }{
-        .{ .actor = "Shop_DekuStick", .bottom = 0.045 },
-        .{ .actor = "Shop_DekuSeedBundle_01", .bottom = 0.06 },
-        .{ .actor = "Shop_DekuSeedBundle_02", .bottom = 0.06 },
-        // The Red Potion's jar stands lower than its shelf: in the Goron Shop its origin is 99.986 and its box starts
-        // 0.013 below it, while the recovery heart on the same shelf (100.041, box from +0.034) puts the shelf top at
-        // 100.075, 0.09 above the potion's origin. A Gift of Halved Damage put there sank into the shelf (test report).
-        .{ .actor = "Shop_Bottle_RedPotion", .bottom = 0.09 },
+    /// The shop shelves' shelf tops: for each shuffleable shelf, how far above its origin the shelf it stands on is
+    /// (metres, up). An item put on the shelf rests there (patches.zig restOnOriginalModelBottom), instead of where
+    /// the shelf item's model box says its bottom is, which many shelf models get wrong: the Deku Stick's box is
+    /// the stick lying down (from -0.38 m), the arrows' and Deku Seeds' boxes reach 0.13 to 0.16 m below them, the
+    /// pots stand lower than their shelf.
+    ///
+    /// Each shop row (the shelves at one height, both cabinets) has one shelf top: the average of the tops its
+    /// trusted shelves give (row height + their own offset), which agree within 2 cm where measured, except the
+    /// Potion Shops' upper row (4 cm between jars and pots: both are now 2 cm off). Trusted: measured in-game, the
+    /// Deku Stick 0.045 and Deku Seed bundles 0.06 (Kokiri Shop against the nut bundles and recovery heart,
+    /// HEIGHTTEST1) and the Potion Shops' pots 0.04 (SHELFTEST1); model box confirmed in-game, the recovery heart
+    /// (0.034), the Deku Nut bundles and the jars (a Heart Container on the Poe jar shelf sat right, SHELFTEST1).
+    /// A row with no trusted shelf (the Zora Shop's upper one: pots and arrows) takes the average offset its shelf
+    /// models get in the rows that have one. The Bombchu Shop's shelves are in no measured row: their model box
+    /// stays (not in the table). Each shop's copies in the child, adult and alternative stage files stand alike
+    /// (one Kokiri Shop shelf differs by 1 cm between child and adult). Worked out from the shelves' heights in the
+    /// stage files (the first copy of each shop); before this table, each shelf model had a guess of its own.
+    const shelf_tops = [_]struct { location: []const u8, top: f32 }{
+        .{ .location = "Goron Shop Item 1", .top = 0.034 },
+        .{ .location = "Goron Shop Item 2", .top = 0.090 },
+        .{ .location = "Goron Shop Item 3", .top = -0.002 },
+        .{ .location = "Goron Shop Item 4", .top = 0.003 },
+        .{ .location = "Goron Shop Item 5", .top = 0.095 },
+        .{ .location = "Goron Shop Item 6", .top = 0.095 },
+        .{ .location = "Goron Shop Item 7", .top = 0.007 },
+        .{ .location = "Goron Shop Item 8", .top = 0.007 },
+
+        .{ .location = "Kakariko Bazaar Item 1", .top = 0.024 },
+        .{ .location = "Kakariko Bazaar Item 2", .top = -0.001 },
+        .{ .location = "Kakariko Bazaar Item 3", .top = 0.057 },
+        .{ .location = "Kakariko Bazaar Item 4", .top = 0.043 },
+        .{ .location = "Kakariko Bazaar Item 5", .top = 0.007 },
+        .{ .location = "Kakariko Bazaar Item 6", .top = 0.007 },
+        .{ .location = "Kakariko Bazaar Item 7", .top = 0.048 },
+        .{ .location = "Kakariko Bazaar Item 8", .top = 0.048 },
+
+        .{ .location = "Kakariko Potion Shop Item 1", .top = 0.019 },
+        .{ .location = "Kakariko Potion Shop Item 2", .top = 0.019 },
+        .{ .location = "Kakariko Potion Shop Item 3", .top = -0.001 },
+        .{ .location = "Kakariko Potion Shop Item 4", .top = -0.002 },
+        .{ .location = "Kakariko Potion Shop Item 5", .top = 0.020 },
+        .{ .location = "Kakariko Potion Shop Item 6", .top = 0.018 },
+        .{ .location = "Kakariko Potion Shop Item 7", .top = -0.002 },
+        .{ .location = "Kakariko Potion Shop Item 8", .top = -0.002 },
+
+        .{ .location = "Kokiri Shop Item 1", .top = 0.038 },
+        .{ .location = "Kokiri Shop Item 2", .top = 0.063 },
+        .{ .location = "Kokiri Shop Item 3", .top = -0.007 },
+        .{ .location = "Kokiri Shop Item 4", .top = 0.005 },
+        .{ .location = "Kokiri Shop Item 5", .top = 0.053 },
+        .{ .location = "Kokiri Shop Item 6", .top = 0.059 },
+        .{ .location = "Kokiri Shop Item 7", .top = 0.004 },
+        .{ .location = "Kokiri Shop Item 8", .top = 0.042 },
+
+        .{ .location = "Market Bazaar Item 1", .top = 0.024 },
+        .{ .location = "Market Bazaar Item 2", .top = -0.001 },
+        .{ .location = "Market Bazaar Item 3", .top = 0.057 },
+        .{ .location = "Market Bazaar Item 4", .top = 0.043 },
+        .{ .location = "Market Bazaar Item 5", .top = 0.007 },
+        .{ .location = "Market Bazaar Item 6", .top = 0.007 },
+        .{ .location = "Market Bazaar Item 7", .top = 0.048 },
+        .{ .location = "Market Bazaar Item 8", .top = 0.048 },
+
+        .{ .location = "Market Potion Shop Item 1", .top = 0.019 },
+        .{ .location = "Market Potion Shop Item 2", .top = 0.019 },
+        .{ .location = "Market Potion Shop Item 3", .top = -0.001 },
+        .{ .location = "Market Potion Shop Item 4", .top = -0.002 },
+        .{ .location = "Market Potion Shop Item 5", .top = 0.020 },
+        .{ .location = "Market Potion Shop Item 6", .top = 0.018 },
+        .{ .location = "Market Potion Shop Item 7", .top = -0.002 },
+        .{ .location = "Market Potion Shop Item 8", .top = -0.002 },
+
+        .{ .location = "Zora Shop Item 1", .top = 0.043 },
+        .{ .location = "Zora Shop Item 2", .top = 0.043 },
+        .{ .location = "Zora Shop Item 3", .top = -0.001 },
+        .{ .location = "Zora Shop Item 4", .top = 0.027 },
+        .{ .location = "Zora Shop Item 5", .top = 0.019 },
+        .{ .location = "Zora Shop Item 6", .top = 0.019 },
+        .{ .location = "Zora Shop Item 7", .top = -0.002 },
+        .{ .location = "Zora Shop Item 8", .top = -0.020 },
     };
+
+    /// How far above its origin shop shelf `location` (its check's name) has its shelf top, or null for a shelf the
+    /// table doesn't know (its model box gives it then).
+    pub fn shelfTopAboveOrigin(location: []const u8) ?f32 {
+        for (shelf_tops) |entry| if (std.mem.eql(u8, entry.location, location)) return entry.top;
+        return null;
+    }
 
     /// Height corrections for shop shelves only (metres at full size, up; scaled with the item), by the actor whose
     /// model is shown. The magic arrows' boxes reach 0.37 m below the arrow drawn on a shelf: with the true shelf
@@ -765,6 +833,18 @@ pub const PickupCloner = struct {
         .{ .model_actor = "Item_Arrow_Ice", .lift = -0.37 },
         .{ .model_actor = "Item_Arrow_Light", .lift = -0.37 },
         .{ .model_actor = harp, .lift = -0.25 },
+        // The scales are drawn about 0.22 m below their box on a shelf: a Silver Scale on the Market Potion Shop's
+        // Half Milk shelf sank 0.04 m low by its box, then its top stood 0.15 m below where its box puts it next to
+        // the seated jars (test reports, seeds FBRZU9NLY4 and SHELFMALON1; measured from the screenshots, to confirm
+        // with SHELFTEST1). The Golden Scale is the same kind of model.
+        .{ .model_actor = "Item_Scale_Silver", .lift = 0.22 },
+        .{ .model_actor = "Item_Scale_Gold", .lift = 0.22 },
+        // The Bomb Bag's cushion is drawn about 0.05 m below its box: on the Market Bazaar's Deku Stick shelf it dipped
+        // into the shelf (about 20 px of its 112 px height; test report, SHELFTEST1), while Farore's Wind sat right on
+        // the same shelf. The bigger bags are the same model.
+        .{ .model_actor = "Item_BombBag_Small", .lift = 0.05 },
+        .{ .model_actor = "Item_BombBag_Medium", .lift = 0.05 },
+        .{ .model_actor = "Item_BombBag_Large", .lift = 0.05 },
     };
 
     /// The shelf-only correction for `actor`'s model (0 when there is none).

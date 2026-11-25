@@ -986,6 +986,58 @@ pub fn patchGanonTrials(patches: *PatchSet, progress: *Progress) PatchError!void
     progress.log("Skip Ganon's Trials: the Defeat_Ganon quest goes on to Step04 when you first see the tower barrier", .{});
 }
 
+// --- Malon and Talon: their later visits wait until the first one is over --------------------------------
+// Child Malon first waits at Hyrule Castle (her placement shows until Goto_HyruleCastle is past Step03_02, the talk
+// with Zelda), with Talon asleep by the castle wall. After each dungeon, SubEvent_GetEponaSong:GetEponaSong_StepCheck
+// (called from Dm_SY_BancChange_EscapeDungeon) sends her on: with the Goron Ruby she is back at the castle, sitting
+// with Talon by the crates (IsMalonAppear_HyruleCastleSecondTime); with the Zora Sapphire too, in the Market
+// (IsMalonAppear_Market). The game takes for granted that Zelda was met long before the Ruby; in a seed the Ruby can
+// come first, and then the first visit and the later one both showed: two Malons and two Talons at the castle (test
+// report, seed FBRZU9NLY4). So the step check now sets either flag only once the castle quest is past Step03_02: a
+// switch on Malon's own first-visit flag takes the set's place. Before that she stays at her first visit, and the
+// next dungeon's step check moves her on as the game would.
+pub const malon_step_flow = "Event/EventFlow/SubEvent_GetEponaSong.bfevfl.zs";
+/// the condition of Malon's first castle placement (HyruleCastle_Static, IsNegation): past it, the first visit is over
+const malon_first_visit_over_exp = "Goto_HyruleCastle_IsAfter_Step03_02_Exp";
+/// the flags the step check sets for Malon's later visits
+const malon_later_visit_flags = [_][]const u8{ "IsMalonAppear_HyruleCastleSecondTime", "IsMalonAppear_Market" };
+
+pub fn malonLaterVisitsGuard(allocator: Allocator, data: []const u8, progress: *Progress) PatchError![]u8 {
+    var doc = try flows.readFlow(allocator, data, "SubEvent_GetEponaSong", progress);
+    const fc = doc.flowchart orelse return progress.fail(error.NotAsExpected, "no flowchart", .{});
+    if (fc.findActor("GameDataActor") == null) return progress.fail(error.NotAsExpected, "SubEvent_GetEponaSong has no GameDataActor", .{});
+    const query = (try fc.queryIndex(allocator, "GameDataActor", "EventQueryIsGameDataBoolExp")) orelse
+        return progress.fail(error.NotAsExpected, "SubEvent_GetEponaSong has no flag check to model the switch on", .{});
+    for (malon_later_visit_flags) |flag| {
+        // the one event that turns the visit on (Value true; the others clear it)
+        var hits: std.ArrayList(u16) = .empty;
+        for (fc.events.items, 0..) |*e, i| {
+            if (!fc.isAction(e, "GameDataActor", "EventTriggerSetGameDataBool")) continue;
+            const p = e.kind.action.params orelse continue;
+            if (!p.isString("GameDataName", flag)) continue;
+            const value = p.get("Value") orelse continue;
+            if (value != .bool or !value.bool) continue;
+            hits.append(allocator, @intCast(i)) catch return error.OutOfMemory;
+        }
+        if (hits.items.len != 1) return progress.fail(error.NotAsExpected, "expected 1 event turning {s} on, found {d}", .{ flag, hits.items.len });
+        const i = hits.items[0];
+        // the set moves to the end; the switch takes its place. A bool check answers 0 for true; false goes nowhere,
+        // so the flow ends there as it would after the set.
+        const set_event = fc.events.items[i];
+        const moved = try fc.addEvent(allocator, set_event);
+        var cases: std.ArrayList(evfl.Case) = .empty;
+        cases.append(allocator, .{ .value = 0, .event = moved }) catch return error.OutOfMemory;
+        const name = std.fmt.allocPrint(allocator, "RandoMalon_FirstVisitOver_{s}", .{flag}) catch return error.OutOfMemory;
+        fc.events.items[i] = .{ .name = name, .kind = .{ .switch_ = .{
+            .actor = query[0],
+            .query = query[1],
+            .cases = cases,
+            .params = try Container.from(allocator, &.{.{ .name = "GameDataName", .value = .{ .string = malon_first_visit_over_exp } }}),
+        } } };
+    }
+    return flows.writeBack(allocator, &doc, "SubEvent_GetEponaSong", progress);
+}
+
 // --- Rainbow Bridge Requirement: keep the castle quest from going back -------------------------------------
 // The bridge's own event moves the castle quest to Step02, and the quest goes on inside the castle. With a bridge
 // requirement other than vanilla, the bridge can appear before Zelda's Light Arrows scene, and that scene (AllSage)

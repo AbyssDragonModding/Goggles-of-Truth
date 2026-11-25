@@ -8,6 +8,12 @@
 //!                                                     stored per-seed saves are kept)
 //!   --place "LOCATION=ITEM" (generate, repeatable)    test seeds: put an item at a location before the fill (names
 //!                                                     as the spoiler log shows them); kept in settings.txt
+//!   goggles_cli test <plan.test.toml> [--game G] [--out O] [--dump-placement F]
+//!                                                     make a test seed from a test plan (core/testplan.zig): placed
+//!                                                     items, spawn, age, time, start items, quests, flags, cutscenes.
+//!                                                     The game and output folder default to user_settings.toml's.
+//!   goggles_cli test-catalog [--game G] <folder>      write the names a test plan can use (scenes, start spots, boot
+//!                                                     events, quests, cutscenes, locations, items) into <folder>
 //!   goggles_cli check <.nup, romfs or exefs>          game version check (prints the exefs/main SHA-256)
 //!   goggles_cli scan <.nup or romfs>                  scan the game and list a sample of the locations
 //!   goggles_cli vanilla-test <.nup or romfs>          is the vanilla placement beatable under the logic?
@@ -29,6 +35,8 @@ const usage =
     \\                       [--from-user-settings] [--exefs <folder>] [--no-cache] [--preset NAME]
     \\  goggles_cli generate --game <.nup or romfs> --rebuild <seed folder>
     \\  (generate also takes --place "LOCATION=ITEM", repeatable, for test seeds)
+    \\  goggles_cli test <plan.test.toml> [--game G] [--out O] [--dump-placement F]
+    \\  goggles_cli test-catalog [--game G] <folder>
     \\  goggles_cli check <.nup, romfs or exefs>
     \\  goggles_cli scan <.nup or romfs>
     \\  goggles_cli vanilla-test <.nup or romfs>
@@ -56,6 +64,10 @@ pub fn main(init: std.process.Init) !u8 {
     const rest = args[2..];
     const result = if (std.mem.eql(u8, command, "generate"))
         cmdGenerate(gpa, &env, rest)
+    else if (std.mem.eql(u8, command, "test"))
+        cmdTest(gpa, &env, rest)
+    else if (std.mem.eql(u8, command, "test-catalog"))
+        cmdTestCatalog(gpa, &env, rest)
     else if (std.mem.eql(u8, command, "check"))
         cmdCheck(gpa, fs, rest)
     else if (std.mem.eql(u8, command, "scan"))
@@ -215,6 +227,147 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         try json.print(a, "{f}", .{std.json.fmt(.{ .placement = result.placement, .hints = result.hints }, .{})});
         try env.fs.writeAll(file, json.items);
     }
+}
+
+/// `goggles_cli test <plan>`: a test seed from a test plan. The plan names the seed folder (GogglesOfTruth_<name>);
+/// the game and output folder come from --game / --out or user_settings.toml. Making a plan again into its folder
+/// keeps the folder's seed number (unless the plan sets one), and when the seed, settings and placements are the same
+/// it is a rebuild, which keeps the seed's saves (only the start changed, and a start only applies to new games).
+fn cmdTest(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u8) !void {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var plan_path: ?[]const u8 = null;
+    var game: []const u8 = "";
+    var out: []const u8 = "";
+    var dump_placement: ?[]const u8 = null;
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "--game")) game = try optionValue(args, &i)
+        else if (std.mem.eql(u8, arg, "--out")) out = try optionValue(args, &i)
+        else if (std.mem.eql(u8, arg, "--dump-placement")) dump_placement = try optionValue(args, &i)
+        else if (plan_path == null and !std.mem.startsWith(u8, arg, "--")) plan_path = arg
+        else return error.BadArguments;
+    }
+    const path = plan_path orelse return error.BadArguments;
+    const text = env.fs.readAll(a, path) catch |err| {
+        std.debug.print("error: the test plan {s} can't be read ({s})\n", .{ path, @errorName(err) });
+        return error.Failed;
+    };
+    var problem = engine.testplan.Problem{};
+    const plan = engine.testplan.parse(a, text, &problem) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidPlan => {
+            std.debug.print("error: {s}: {s}\n", .{ path, problem.message });
+            return error.Failed;
+        },
+    };
+
+    const user = try engine.usersettings.load(a, env);
+    if (game.len == 0) game = user.paths.game;
+    if (out.len == 0) out = user.paths.output;
+    if (game.len == 0 or out.len == 0) {
+        std.debug.print("error: no game or output folder: give --game and --out, or set them in the window once (user_settings.toml)\n", .{});
+        return error.Failed;
+    }
+
+    // settings: the plan's settings string, else the user's own; then the plan's preset and [settings] on top
+    var st = user.settings;
+    if (plan.settings_string.len > 0) {
+        st = engine.settings.fromString(a, plan.settings_string) catch {
+            std.debug.print("error: {s}: settings_string can't be read by this version\n", .{path});
+            return error.Failed;
+        };
+        st.set(.per_seed_saves, user.settings.get(.per_seed_saves));
+    }
+    if (plan.preset.len > 0) {
+        const preset = engine.settings.findPreset(plan.preset) orelse {
+            std.debug.print("error: {s}: no built-in preset named {s} (Beginner, Standard, Expert, Race)\n", .{ path, plan.preset });
+            return error.Failed;
+        };
+        st = engine.settings.applyPreset(st, preset);
+    }
+    var warnings: std.ArrayList([]const u8) = .empty;
+    st = try engine.usersettings.applyOverrides(a, st, plan.setting_overrides, &warnings, "");
+    if (warnings.items.len > 0) {
+        // a test only means something with the settings it names: a setting that didn't apply stops it
+        for (warnings.items) |w| std.debug.print("error: {s}: [settings] {s}\n", .{ path, w });
+        return error.Failed;
+    }
+
+    const mod_name = try std.fmt.allocPrint(a, "{s}{s}", .{ engine.longshot.mod_prefix, plan.name });
+    const folder = try std.fs.path.join(a, &.{ out, mod_name });
+    var seed: ?[]const u8 = if (plan.seed.len > 0) plan.seed else null;
+    var rebuild = false;
+    switch (try engine.generator.checkRebuild(a, env.fs, folder)) {
+        .not_a_seed => {},
+        .other_placements => |info| {
+            std.debug.print("note: {s} was made by {s}, whose placements differ; it is made anew\n", .{ mod_name, info.release });
+        },
+        .ready => |info| {
+            if (seed == null) seed = info.seed;
+            const settings_string = try engine.settings.toString(a, &st);
+            const placements_text = try engine.seedinfo.formatTestPlacements(a, plan.placements);
+            rebuild = std.mem.eql(u8, seed.?, info.seed) and std.mem.eql(u8, settings_string, info.settings_string) and
+                std.mem.eql(u8, placements_text, info.test_placements);
+            if (rebuild) {
+                std.debug.print("{s} exists with the same seed, settings and placements: rebuilt, its saves kept (a changed start only shows in a new game)\n", .{mod_name});
+            } else {
+                std.debug.print("{s} exists with other settings or placements: made anew with its seed {s}\n", .{ mod_name, seed.? });
+            }
+        },
+    }
+
+    var progress = engine.Progress.stderrPrinter();
+    const result = engine.generator.generate(gpa, a, env, .{
+        .game_path = game,
+        .out_dir = out,
+        .settings = st,
+        .seed = seed,
+        .mod_name = mod_name,
+        .test_placements = plan.placements,
+        .test_plan_text = text,
+        .rebuild = rebuild,
+    }, null, &progress) catch |err| {
+        std.debug.print("Generation failed: {s}\n", .{if (progress.failureMessage().len > 0) progress.failureMessage() else @errorName(err)});
+        return error.Failed;
+    };
+    std.debug.print("Test seed {s} written to {s}\nStart a NEW game in it to get the test start.\n", .{ result.seed, result.mod_root });
+    if (dump_placement) |file| {
+        var json: std.ArrayList(u8) = .empty;
+        try json.print(a, "{f}", .{std.json.fmt(.{ .placement = result.placement, .hints = result.hints }, .{})});
+        try env.fs.writeAll(file, json.items);
+    }
+}
+
+/// `goggles_cli test-catalog [--game G] <folder>`: the names a test plan can use, read from this game.
+fn cmdTestCatalog(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u8) !void {
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var game: []const u8 = "";
+    var folder: ?[]const u8 = null;
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "--game")) game = try optionValue(args, &i)
+        else if (folder == null and !std.mem.startsWith(u8, arg, "--")) folder = arg
+        else return error.BadArguments;
+    }
+    const out_folder = folder orelse return error.BadArguments;
+    if (game.len == 0) game = (try engine.usersettings.load(a, env)).paths.game;
+    if (game.len == 0) {
+        std.debug.print("error: no game: give --game, or set it in the window once (user_settings.toml)\n", .{});
+        return error.Failed;
+    }
+    const w = try openWorld(gpa, env.fs, game, true);
+    defer w.deinit();
+    const written = engine.teststart.writeCatalog(a, w, env.fs, out_folder) catch |err| {
+        std.debug.print("error: the catalog couldn't be written ({s})\n", .{@errorName(err)});
+        return error.Failed;
+    };
+    for (written) |file| std.debug.print("wrote {s}\n", .{file});
 }
 
 fn cmdCheck(gpa: Allocator, fs: engine.fs.Fs, args: []const [:0]const u8) !void {

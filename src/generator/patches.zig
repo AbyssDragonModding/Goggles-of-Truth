@@ -20,6 +20,7 @@ const hints = @import("hints.zig");
 const npcrewards = @import("npcrewards.zig");
 const textpatches = @import("textpatches.zig");
 const ocarina_handover = @import("ocarina_handover.zig");
+const teststart = @import("teststart.zig");
 const door = @import("door.zig");
 const pickups = @import("pickups.zig");
 const flows = @import("flows.zig");
@@ -138,7 +139,7 @@ fn locationGetsPlacedItem(plan: *const fill.Plan, i: usize) bool {
 }
 
 fn requireActor(allocator: Allocator, world: *World, item: ItemId, context: World.Context, progress: *Progress) PatchError![]const u8 {
-    return (try world.actorForId(allocator, item, context)) orelse
+    return (try world.handedOutActorForId(allocator, item, context)) orelse
         progress.fail(error.NotAsExpected, "no actor for item {s} in {s} context", .{ world.items.name(item), @tagName(context) });
 }
 
@@ -151,6 +152,8 @@ pub const Inputs = struct {
     out_romfs: []const u8,
     /// the file cache: where compressed files are reused from, or null to compress every file
     cache: ?*filecache.FileCache = null,
+    /// a test seed's start (teststart.resolve), or null
+    test_start: ?*const teststart.Resolved = null,
 };
 
 /// Every changed file goes to `inputs.out_romfs`. Returns the written romfs-relative paths.
@@ -359,7 +362,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     const FlowEdit = struct {
         what: []const u8,
         rel: []const u8,
-        kind: enum { stones_without_mask, opening_without_movie, start_outside, memory_game, dampe_prize_spot, bridge_guard, deku_meeting, quick_chest, epona },
+        kind: enum { stones_without_mask, opening_without_movie, start_outside, memory_game, dampe_prize_spot, bridge_guard, deku_meeting, quick_chest, epona, malon_visits },
     };
     var flow_edits: std.ArrayList(FlowEdit) = .empty;
     if (st.is(.gossip_stones, "no_mask")) flow_edits.append(a, .{ .what = "Gossip Stones: No Mask of Truth", .rel = hints.gossip_flow, .kind = .stones_without_mask }) catch return error.OutOfMemory;
@@ -374,6 +377,8 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         if (world.files.exists(rel)) flow_edits.append(a, .{ .what = "Dampé's gravedigging tour", .rel = rel, .kind = .dampe_prize_spot }) catch return error.OutOfMemory;
     }
     if (!st.is(.rainbow_bridge, "vanilla")) flow_edits.append(a, .{ .what = "Rainbow Bridge", .rel = qol.allsage_flow, .kind = .bridge_guard }) catch return error.OutOfMemory;
+    // every seed: Malon's later visits wait until her first one at Hyrule Castle is over (no double Malon and Talon)
+    flow_edits.append(a, .{ .what = "Malon and Talon", .rel = qol.malon_step_flow, .kind = .malon_visits }) catch return error.OutOfMemory;
     if (st.flag(.skip_deku_talk) and !st.is(.open_forest, "open")) flow_edits.append(a, .{ .what = "Skip the Great Deku Tree's Talk", .rel = faststart.mido_flow, .kind = .deku_meeting }) catch return error.OutOfMemory;
     if (st.flag(.quick_chests)) flow_edits.append(a, .{ .what = "Chests Without Cutscene", .rel = faststart.chest_flow, .kind = .quick_chest }) catch return error.OutOfMemory;
     if (st.flag(.skip_epona_race)) flow_edits.append(a, .{ .what = "Skip Epona Race", .rel = faststart.epona_song_flow, .kind = .epona }) catch return error.OutOfMemory;
@@ -389,6 +394,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             .deku_meeting => faststart.completeDekuMeeting(s, orig.data, progress),
             .quick_chest => faststart.quickChest(s, orig.data, progress),
             .epona => faststart.eponaWithoutRace(s, orig.data, progress),
+            .malon_visits => qol.malonLaterVisitsGuard(s, orig.data, progress),
         }) catch |err| switch (err) {
             error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "{s}: {s} is not as expected in this romfs ({s}); turn the setting off", .{ fe.what, fe.rel, progress.failureMessage() }),
             else => return err,
@@ -511,7 +517,8 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         if (unique.items.len > 0 and presenceEql(unique.items[unique.items.len - 1], p)) continue;
         unique.append(a, p) catch return error.OutOfMemory;
     }
-    const gd_ok = gamedata.apply(s, world, &patches, st, progress, bridge_ok, start_items.items, unique.items) catch |err| switch (err) {
+    const test_changes: []const gamedata.Change = if (inputs.test_start) |t| t.changes else &.{};
+    const gd_ok = gamedata.apply(s, world, &patches, st, progress, bridge_ok, start_items.items, unique.items, test_changes) catch |err| switch (err) {
         error.NotAsExpected => return progress.fail(error.SettingFailed, "Items Shuffled Per Shop: {s}; turn the setting off", .{progress.failureMessage()}),
         else => return err,
     };
@@ -538,6 +545,16 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         all.appendSlice(a, start_gifts.items) catch return error.OutOfMemory;
         progress.log("Start items handed over when a new game starts: {s}", .{std.mem.join(a, ", ", all.items) catch return error.OutOfMemory});
     }
+    if (inputs.test_start) |test_start| if (test_start.warp != null or test_start.time_hour != null) {
+        // after the start items' edit of the same flow, so the scene change comes after the items are handed over
+        defer patches.endStep();
+        const orig = try patches.read(teststart.opening_flow);
+        const new = teststart.startAtTestSpawn(s, orig.data, test_start.warp, test_start.time_hour, progress) catch |err| switch (err) {
+            error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Test start: {s} is not as expected ({s})", .{ teststart.opening_flow, progress.failureMessage() }),
+            else => return err,
+        };
+        try patches.emitZs(teststart.opening_flow, orig, new);
+    };
 
     if (st.flag(.saria_song_ocarina)) {
         if (gd_ok) {
@@ -702,7 +719,7 @@ fn patchActor(
             const shelf_actor = try cloner.shopActor(event_actor, plan.shop_prices[edit.loc].?);
             // a big item (a Heart Container, a permanent upgrade) at half size on the shelf (pickups.shopShelfScale)
             const shelf_scale = try cloner.shopShelfScale(shelf_actor);
-            try restOnOriginalModelBottom(a, cloner, actor, shelf_actor, shelf_scale, true);
+            try restOnOriginalModelBottom(a, cloner, actor, shelf_actor, shelf_scale, .{ .location = loc.name });
             if (shelf_scale != 1.0) {
                 const scale = try byml.Array.create(a);
                 for (0..3) |_| try scale.append(a, .{ .float = @floatCast(shelf_scale) });
@@ -758,7 +775,7 @@ fn patchActor(
             // an unchanged vanilla pickup keeps its own actor (and its own A/walk-over behaviour)
             const world_actor = try requireActor(a, world, item, .world, progress);
             const placed_actor = try cloner.worldActor(world_actor, item != loc.vanilla);
-            try restOnOriginalModelBottom(a, cloner, actor, placed_actor, 1.0, false);
+            try restOnOriginalModelBottom(a, cloner, actor, placed_actor, 1.0, null);
             try actor.put(a, "Gyaml", .{ .string = placed_actor });
         },
     }
@@ -844,10 +861,16 @@ fn placementPosition(actor: *const byml.Dict) ?[3]f64 {
 /// up axis (Translate's second value; the scenes stand items upright, turned only about that axis).
 /// `new_scale`: the scale the new item gets on top of the placement's own (shop shelves: shopShelfScale).
 /// `on_shelf`: a shop shelf, which adds the shelf-only corrections (pickups.shelfMeasuredLift).
-fn restOnOriginalModelBottom(a: Allocator, cloner: *pickups.PickupCloner, actor: *byml.Dict, new_actor: []const u8, new_scale: f64, on_shelf: bool) PatchError!void {
+/// A placement on a shop shelf: its check's name (`location`), which says where the shelf top is
+/// (pickups.shelfTopAboveOrigin).
+const OnShelf = struct { location: []const u8 };
+
+fn restOnOriginalModelBottom(a: Allocator, cloner: *pickups.PickupCloner, actor: *byml.Dict, new_actor: []const u8, new_scale: f64, shelf: ?OnShelf) PatchError!void {
+    const on_shelf = shelf != null;
     const old_actor = actor.getString("Gyaml") orelse return;
     if (std.mem.eql(u8, old_actor, new_actor)) return;
-    const old_bottom = (try cloner.modelBottom(old_actor)) orelse return;
+    const old_bottom = (if (shelf) |s| pickups.PickupCloner.shelfTopAboveOrigin(s.location) else null) orelse
+        (try cloner.modelBottom(old_actor)) orelse return;
     const new_bottom = (try cloner.modelBottom(new_actor)) orelse return;
     const height_scale: f64 = if (actor.get("Scale")) |scale| switch (scale) {
         .array => |values| if (values.items.items.len == 3) values.items.items[1].asFloat() orelse 1.0 else 1.0,

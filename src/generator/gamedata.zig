@@ -131,7 +131,8 @@ pub const ganon_trials = [_][]const u8{ "Forest", "Fire", "Water", "Shadow", "Sp
 
 // ------------------------------------------------------------------------------------------- the patcher
 
-const RowKind = enum { Bool, BoolExp, Int, Enum, Struct, String64Array, other };
+/// A save flag's kind, as GameDataList groups its rows.
+pub const RowKind = enum { Bool, BoolExp, Int, Enum, Struct, String64Array, other };
 
 const Row = struct {
     kind: RowKind,
@@ -206,6 +207,20 @@ pub const GameDataPatcher = struct {
 
     pub fn hasFlag(self: *const Self, name: []const u8) bool {
         return self.lookup(name) != null;
+    }
+
+    /// The kind of save flag `name`, or null when the save data has no such flag (test plans check their flags).
+    pub fn flagKind(self: *const Self, name: []const u8) ?RowKind {
+        const hit = self.lookup(name) orelse return null;
+        return hit.kind;
+    }
+
+    /// The value names of Enum flag `name` ("NotReady", "Ready", "Step01"... for a quest's Step_<quest>), or null when
+    /// there is no such Enum.
+    pub fn enumValueNames(self: *const Self, name: []const u8) ?[]const byml.Value {
+        const row = self.find(name, .Enum) orelse return null;
+        const raw = row.getArray("RawValues") orelse return null;
+        return raw.items.items;
     }
 
     pub fn isBool(self: *const Self, name: []const u8) bool {
@@ -841,9 +856,10 @@ pub const ShopPresence = struct {
 };
 
 /// Applies the seed's save-data edits. `start_items`: actors a new save already owns (Skip Child Zelda);
-/// `shop_presences`: computed flags for shuffled shelves with a story condition. Returns false when the Saria gate
+/// `shop_presences`: computed flags for shuffled shelves with a story condition; `test_changes`: a test plan's quest
+/// steps, flags and cutscenes (applied last). Returns false when the Saria gate
 /// flag or the bridge could not be made (the caller warns).
-pub fn apply(allocator: Allocator, world: *world_mod.World, patches: *patchset.PatchSet, st: *const Settings, progress: *Progress, ocarina_bridge_patched: bool, start_items: []const []const u8, shop_presences: []const ShopPresence) PatchError!bool {
+pub fn apply(allocator: Allocator, world: *world_mod.World, patches: *patchset.PatchSet, st: *const Settings, progress: *Progress, ocarina_bridge_patched: bool, start_items: []const []const u8, shop_presences: []const ShopPresence, test_changes: []const Change) PatchError!bool {
     const rel = try world.find(allocator, "GameData", "GameDataList");
     const original = try patches.read(rel);
     var gd = try GameDataPatcher.init(allocator, rel, original.data, original.dictionary, progress);
@@ -857,7 +873,10 @@ pub fn apply(allocator: Allocator, world: *world_mod.World, patches: *patchset.P
     for (start_items) |actor| {
         if (!try gd.grantItem(actor)) progress.log("warning: could not give {s} at the start", .{actor});
     }
-    for (try plannedChanges(allocator, st, ocarina_bridge_patched)) |c| {
+    // a test plan's changes come last, so they win over what the settings set (teststart.zig checked each one)
+    const settings_changes = try plannedChanges(allocator, st, ocarina_bridge_patched);
+    const all_changes = std.mem.concat(allocator, Change, &.{ settings_changes, test_changes }) catch return error.OutOfMemory;
+    for (all_changes) |c| {
         switch (c.kind) {
             .bool_flag => _ = try gd.setBool(c.flag, c.bool_value),
             .int_flag => _ = try gd.setInt(c.flag, c.int_value),

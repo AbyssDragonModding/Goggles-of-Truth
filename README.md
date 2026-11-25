@@ -2,7 +2,7 @@
 
 **An item randomizer for the Switch 2 remake of *The Legend of Zelda: Ocarina of Time* (OoT26), attempting to bring back most of the settings from the classic randomizer (with some additional qol settings).**
 
-## Version **0.7.7** · [Discord](https://discord.gg/adSV8cWfBY) ·
+## Version **0.7.8** · [Discord](https://discord.gg/adSV8cWfBY) ·
 [Source](https://github.com/AbyssDragonModding/Goggles-of-Truth)
 
 Goggles of Truth shuffles chests, songs, dungeon rewards, NPC gifts, shop items, Gold Skulltulas and more, and
@@ -440,6 +440,28 @@ seeds.
 
 ## Testing and reporting problems
 
+### Test seeds
+
+A test seed starts a new game exactly where you want to test something. Describe it in a test plan (copy
+[`test_plans/TEMPLATE.test.toml`](test_plans/TEMPLATE.test.toml); [`test_plans/examples`](test_plans/examples) has
+ready ones), then make it with the command-line tool:
+
+```
+goggles_cli test test_plans/my_test.test.toml
+```
+
+A plan can put items at chosen locations, and start a new game in any area and start spot (or at exact
+coordinates), as a child or an adult, at any hour, with quests at a chosen step, any save flag
+set, and cutscenes counted as seen or not seen. With `boot_event` an event starts as soon as Link arrives. The seed
+goes to the output folder the window uses, as `GogglesOfTruth_<name>`. Running the plan again keeps the seed, and
+its saves when only the start changed. **Rebuild Seed** keeps the plan too. Start a **new game** in the test seed to
+get its start.
+
+`goggles_cli test-catalog <folder>` writes the names a plan can use, read from your game: `scenes.txt`,
+`start_spots.txt` (with their coordinates), `boot_events.txt`, `quests.txt` (with every step), `cutscenes.txt`,
+`locations.txt` and `items.txt`. A plan with a wrong name stops before anything is written and says what the
+choices are.
+
 ### The checklist
 
 Every seed with a spoiler log comes with `checklist.xlsx`. It opens in Excel, LibreOffice or Google Sheets
@@ -673,7 +695,7 @@ changes where items go (the logic, the item pool, the hints...). A version that 
 same seed number and settings string put every item in the same place. `settings.txt` shows both:
 
 ```
-Goggles of Truth Randomizer 0.7.7
+Goggles of Truth Randomizer 0.7.8
 Placement version: 0.7.6
 ```
 

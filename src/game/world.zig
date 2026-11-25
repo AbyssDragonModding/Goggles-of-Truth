@@ -574,6 +574,29 @@ pub const World = struct {
         return self.actorFor(allocator, self.items.name(id), context);
     }
 
+    /// Items the randomizer hands out as another item than the one the logic and the spoiler log name: the Weird
+    /// Egg as the Cucco that hatches from it. Why: the egg only hatches at one moment of the Hyrule Castle quest
+    /// (Goto_HyruleCastle:Step03_01_Npc_Navi_StepStart runs :EggHatch, which swaps Item_WeirdEgg for
+    /// Item_AlarmCucco), so an egg found after that moment never hatched (test report, seed FBRZU9NLY4: the egg at
+    /// King Dodongo). Handing out the hatched Cucco straight away is what the egg would have become; Talon wakes up
+    /// when the Cucco is used near him, whatever the quest's step. Malon's own egg, when her check isn't shuffled,
+    /// is the game's and still hatches as usual.
+    const handed_out_as = [_]struct { item: []const u8, given: []const u8 }{
+        .{ .item = "WeirdEgg", .given = "AlarmCucco" },
+    };
+
+    /// The actor the randomizer writes to hand item `id` out in a placement context: actorForId, but for an item
+    /// of handed_out_as, the actor of what it is given as. Only for writing patches: the fill and the logic go on
+    /// using the item itself, so placements don't change.
+    pub fn handedOutActorForId(self: *const Self, allocator: Allocator, id: ItemId, context: Context) error{OutOfMemory}!?[]const u8 {
+        const key = self.items.name(id);
+        for (handed_out_as) |entry| {
+            if (!std.mem.eql(u8, entry.item, key)) continue;
+            if (try self.actorFor(allocator, entry.given, context)) |given_actor| return given_actor;
+        }
+        return self.actorFor(allocator, key, context);
+    }
+
     pub fn location(self: *Self, id: []const u8) ?*Location {
         for (self.locations.items) |*l| if (std.mem.eql(u8, l.id, id)) return l;
         return null;

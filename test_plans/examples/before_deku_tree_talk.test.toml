@@ -1,0 +1,10 @@
+# Child Link in front of the Great Deku Tree, before his talk.
+# Tests: a start spot by a trigger, a cutscene marked as not seen.
+name = "TESTKIT3"
+
+[start]
+scene = "KokiriForest"
+start_spot = "FrontDekuTree"
+
+[cutscenes]
+unseen = ["Dm_Kokiri_0070"]

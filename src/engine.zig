@@ -11,6 +11,7 @@ pub const host = @import("platform/host.zig");
 pub const Progress = @import("core/Progress.zig");
 pub const version = @import("version.zig");
 pub const seedinfo = @import("core/seedinfo.zig");
+pub const testplan = @import("core/testplan.zig");
 
 // ---- file formats
 pub const zstd = @import("formats/zstd.zig");
@@ -40,6 +41,7 @@ pub const logic = @import("logic/logic.zig");
 pub const patchset = @import("generator/patchset.zig");
 pub const fill = @import("generator/fill.zig");
 pub const generator = @import("generator/generator.zig");
+pub const teststart = @import("generator/teststart.zig");
 pub const filecache = @import("generator/filecache.zig");
 pub const compressor = @import("generator/compressor.zig");
 
@@ -53,6 +55,7 @@ test {
     _ = bytes;
     _ = threads;
     _ = seedinfo;
+    _ = testplan;
     _ = host;
     _ = hash;
     _ = fs;
@@ -75,6 +78,7 @@ test {
     _ = custompresets;
     _ = logic;
     _ = @import("generator/ocarina_handover.zig");
+    _ = @import("generator/teststart.zig");
     _ = generator;
     _ = filecache;
     _ = compressor;

@@ -15,6 +15,26 @@ pub fn indexOf(list: []const []const u8, s: []const u8) ?usize {
     return null;
 }
 
+/// Adds system actor `name` (PouchSystemActor, GameDataActor...) to a flow that doesn't use it yet, with the
+/// parameters of a system actor the flow already has. Why modelled on another: a system actor's parameters are the
+/// flow's own placeholders, the same for every system actor in a flow. Nothing happens when it is already there.
+pub fn ensureSystemActor(fc: *evfl.Flowchart, allocator: Allocator, name: []const u8, rel: []const u8, progress: *Progress) PatchError!void {
+    if (fc.findActor(name) != null) return;
+    const template = fc.findActor("GameSystemActor") orelse fc.findActor("EventSystemActor") orelse fc.findActor("GameDataActor") orelse
+        anySystemActor(fc) orelse
+        return progress.fail(error.NotAsExpected, "{s} has no system actor to model {s} on", .{ rel, name });
+    const template_params = fc.actors.items[template].params;
+    const params = if (template_params) |p| try p.clone(allocator) else try evfl.Container.create(allocator);
+    fc.actors.append(allocator, evfl.Actor{ .name = name, .params = params }) catch return error.OutOfMemory;
+}
+
+fn anySystemActor(fc: *const evfl.Flowchart) ?u16 {
+    for (fc.actors.items, 0..) |actor, i| {
+        if (std.mem.endsWith(u8, actor.name, "SystemActor") and actor.secondary_name.len == 0) return @intCast(i);
+    }
+    return null;
+}
+
 /// The document's flowchart, which must be named `name`.
 pub fn expectFlowchart(doc: *evfl.Document, name: []const u8, progress: *Progress) PatchError!*evfl.Flowchart {
     const fc = doc.flowchart orelse return progress.fail(error.NotAsExpected, "{s} flowchart not found", .{name});

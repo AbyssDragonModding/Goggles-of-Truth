@@ -7,6 +7,35 @@ fix raises the last number (0.7.**5**).
 the same placement version put items in the same places, so you can rebuild an older seed with a newer version and
 keep your saves. When a version changes where items go, it gets a new placement version.
 
+## 0.7.8 - 2026-11-25
+
+Bug fixes, and 0.8.0's test seeds released early. Items stay in the same places, so you can rebuild any 0.7.6 or
+0.7.7 seed with **Rebuild Seed** to get these fixes and keep your saves.
+
+### New
+- **Test seeds from a plan file** (for test seeds, on the command line), brought over early from 0.8.0. One small
+  file says which items go where and how a new game starts: in which area and spot (or at exact coordinates), as a
+  child or an adult, at what time of day, with quests already at a chosen step, and with cutscenes counted as seen
+  or not seen, so you can start right before the thing you want to test. Making the plan again keeps the seed and
+  its saves. `test_plans/TEMPLATE.test.toml` explains everything, and a second command lists every area, spot,
+  quest, cutscene, location and item name you can use.
+- The parts of it that rely on 0.8.0's changes were left out and come with 0.8.0: starting with items already
+  owned (a plan that asks for them says so; place the items at nearby checks instead), and the hint for placing
+  progressive items. Starting an event on arrival is not tested yet.
+
+### Fixed
+- **Two Malons and two Talons at Hyrule Castle.** If you got the Goron Ruby before meeting Zelda, Malon and Talon's
+  later visit showed up next to their first one. Now Malon stays at her first visit until you've met Zelda, and
+  moves on after your next dungeon.
+- **Items sinking into or floating above shop shelves.** Every shop shelf a randomized item can go on now has its
+  shelf height worked out from the shelves around it, so items rest on the shelf in every shop (the Bombchu Shop
+  keeps its old placement). This fixes items sinking behind the price board on the Bazaars' arrow shelves and the
+  Zora Shop's arrow spots, and items floating in the Potion Shops' pot spots. The Silver and Golden Scales and the
+  Bomb Bags, which sank into any shelf, now rest on it too.
+- **The Weird Egg never hatched** when you found it after the point where Malon's egg would hatch (with Shuffle
+  Weird Egg on). Every Weird Egg the randomizer gives you is now the hatched Cucco straight away, ready to wake
+  Talon. The spoiler log and hints still call it the Weird Egg. Not tested in-game yet.
+
 ## 0.7.7 - 2026-11-24
 
 Bug fixes only. Items stay in the same places, so you can rebuild any 0.7.6 seed with **Rebuild Seed** to get these

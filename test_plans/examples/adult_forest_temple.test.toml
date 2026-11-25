@@ -1,0 +1,7 @@
+# Adult Link at the Forest Temple entrance. The Forest Temple has no child/adult versions, so this tests the age
+# being set for a scene that keeps Link's age.
+name = "TESTKIT2"
+
+[start]
+age = "adult"
+scene = "ForestTemple"
