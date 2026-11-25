@@ -440,6 +440,28 @@ seeds.
 
 ## Testing and reporting problems
 
+### Test seeds
+
+A test seed starts a new game exactly where you want to test something. Describe it in a test plan (copy
+[`test_plans/TEMPLATE.test.toml`](test_plans/TEMPLATE.test.toml); [`test_plans/examples`](test_plans/examples) has
+ready ones), then make it with the command-line tool:
+
+```
+goggles_cli test test_plans/my_test.test.toml
+```
+
+A plan can put items at chosen locations, and start a new game in any area and start spot (or at exact
+coordinates), as a child or an adult, at any hour, with items already owned, quests at a chosen step, any save flag
+set, and cutscenes counted as seen or not seen. With `boot_event` an event starts as soon as Link arrives. The seed
+goes to the output folder the window uses, as `GogglesOfTruth_<name>`. Running the plan again keeps the seed, and
+its saves when only the start changed. **Rebuild Seed** keeps the plan too. Start a **new game** in the test seed to
+get its start.
+
+`goggles_cli test-catalog <folder>` writes the names a plan can use, read from your game: `scenes.txt`,
+`start_spots.txt` (with their coordinates), `boot_events.txt`, `quests.txt` (with every step), `cutscenes.txt`,
+`locations.txt` and `items.txt`. A plan with a wrong name stops before anything is written and says what the
+choices are.
+
 ### The checklist
 
 Every seed with a spoiler log comes with `checklist.xlsx`. It opens in Excel, LibreOffice or Google Sheets

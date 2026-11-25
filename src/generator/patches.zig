@@ -20,6 +20,7 @@ const hints = @import("hints.zig");
 const npcrewards = @import("npcrewards.zig");
 const textpatches = @import("textpatches.zig");
 const ocarina_handover = @import("ocarina_handover.zig");
+const teststart = @import("teststart.zig");
 const door = @import("door.zig");
 const pickups = @import("pickups.zig");
 const flows = @import("flows.zig");
@@ -168,6 +169,8 @@ pub const Inputs = struct {
     out_romfs: []const u8,
     /// the file cache: where compressed files are reused from, or null to compress every file
     cache: ?*filecache.FileCache = null,
+    /// a test seed's start (teststart.resolve), or null
+    test_start: ?*const teststart.Resolved = null,
 };
 
 /// Every changed file goes to `inputs.out_romfs`. Returns the written romfs-relative paths.
@@ -526,8 +529,15 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     // a progressive item handed over at the start can't branch: the first copy of a line is its first tier, the
     // next copy the second, and so on (nothing of the line is owned before the start)
     var start_copies = std.StringHashMap(usize).init(a);
+    var start_check_items: std.ArrayList(ItemId) = .empty;
     for (start_ids.items) |i| {
-        const placed_item = placed[i] orelse plan.fixed[i] orelse continue;
+        start_check_items.append(a, placed[i] orelse plan.fixed[i] orelse continue) catch return error.OutOfMemory;
+    }
+    // a test plan's start items, handed over the same ways, after the start checks' (a progressive one gives the
+    // next tier after theirs)
+    const test_start_items: []const ItemId = if (inputs.test_start) |t| t.items else &.{};
+    const all_start_items = std.mem.concat(a, ItemId, &.{ start_check_items.items, test_start_items }) catch return error.OutOfMemory;
+    for (all_start_items) |placed_item| {
         var item = placed_item;
         if (fill.progressiveChainOf(plan, placed_item)) |chain| {
             const slot = start_copies.getOrPut(chain.key) catch return error.OutOfMemory;
@@ -556,7 +566,8 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         if (unique.items.len > 0 and presenceEql(unique.items[unique.items.len - 1], p)) continue;
         unique.append(a, p) catch return error.OutOfMemory;
     }
-    const gd_ok = gamedata.apply(s, world, &patches, st, progress, bridge_ok, start_items.items, unique.items) catch |err| switch (err) {
+    const test_changes: []const gamedata.Change = if (inputs.test_start) |t| t.changes else &.{};
+    const gd_ok = gamedata.apply(s, world, &patches, st, progress, bridge_ok, start_items.items, unique.items, test_changes) catch |err| switch (err) {
         error.NotAsExpected => return progress.fail(error.SettingFailed, "Items Shuffled Per Shop: {s}; turn the setting off", .{progress.failureMessage()}),
         else => return err,
     };
@@ -583,6 +594,16 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         all.appendSlice(a, start_gifts.items) catch return error.OutOfMemory;
         progress.log("Start items handed over when a new game starts: {s}", .{std.mem.join(a, ", ", all.items) catch return error.OutOfMemory});
     }
+    if (inputs.test_start) |test_start| if (test_start.warp != null or test_start.time_hour != null) {
+        // after the start items' edit of the same flow, so the scene change comes after the items are handed over
+        defer patches.endStep();
+        const orig = try patches.read(teststart.opening_flow);
+        const new = teststart.startAtTestSpawn(s, orig.data, test_start.warp, test_start.time_hour, progress) catch |err| switch (err) {
+            error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Test start: {s} is not as expected ({s})", .{ teststart.opening_flow, progress.failureMessage() }),
+            else => return err,
+        };
+        try patches.emitZs(teststart.opening_flow, orig, new);
+    };
 
     if (st.flag(.saria_song_ocarina)) {
         if (gd_ok) {

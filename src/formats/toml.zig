@@ -1,6 +1,6 @@
 //! A small TOML reader for user_settings.toml: [tables], key = value lines, comments, basic "..." and literal '...'
-//! strings, integers, booleans and (multi-line) arrays. Anything else (floats, dates, inline tables, dotted keys)
-//! reads as `.other`, which the settings code treats as an invalid value.
+//! strings, integers, decimal numbers (a test plan's coordinates), booleans and (multi-line) arrays. Anything else
+//! (dates, inline tables, dotted keys, inf/nan) reads as `.other`, which the settings code treats as an invalid value.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -14,9 +14,20 @@ pub const TomlError = error{
 pub const Value = union(enum) {
     string: []const u8,
     int: i64,
+    /// a number with a decimal point or an exponent ("1.5", "-2e3"); a whole number is `.int`
+    float: f64,
     bool: bool,
     array: []Value,
     other,
+
+    /// The number, for an integer or a decimal number (a test plan's coordinates may be written either way).
+    pub fn asNumber(self: Value) ?f64 {
+        return switch (self) {
+            .int => |n| @floatFromInt(n),
+            .float => |x| x,
+            else => null,
+        };
+    }
 };
 
 pub const Entry = struct {
@@ -205,7 +216,15 @@ const Parser = struct {
         if (std.mem.eql(u8, word, "false")) return Value{ .bool = false };
         var digits: std.ArrayList(u8) = .empty;
         for (word) |x| if (x != '_') digits.append(self.allocator, x) catch return error.OutOfMemory;
-        if (std.fmt.parseInt(i64, digits.items, 10)) |n| return Value{ .int = n } else |_| return Value.other;
+        if (std.fmt.parseInt(i64, digits.items, 10)) |n| return Value{ .int = n } else |_| {}
+        // a decimal number: digits with a '.' or an exponent (inf and nan are not numbers a test plan needs)
+        const looks_decimal = std.mem.indexOfAny(u8, digits.items, ".eE") != null and
+            std.mem.indexOfAny(u8, digits.items, "0123456789") != null and
+            std.mem.indexOfAny(u8, digits.items, "iInN") == null;
+        if (looks_decimal) {
+            if (std.fmt.parseFloat(f64, digits.items)) |x| return Value{ .float = x } else |_| {}
+        }
+        return Value.other;
     }
 
     fn array(self: *Self) TomlError!Value {
@@ -295,4 +314,21 @@ test "settings file subset" {
     try std.testing.expect(st.get("open_dmt").?.bool);
     try std.testing.expectEqual(@as(i64, 40), st.get("bridge_tokens").?.int);
     try std.testing.expectEqual(@as(usize, 2), st.get("excluded_locations").?.array.len);
+}
+
+test "decimal numbers" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const doc = try parse(arena.allocator(),
+        \\position = [12.5, -3, 1e2]
+        \\facing = -90.25
+        \\bad = 1.2.3
+    , null);
+    const root = doc.table("").?;
+    const position = root.get("position").?.array;
+    try std.testing.expectEqual(@as(f64, 12.5), position[0].asNumber().?);
+    try std.testing.expectEqual(@as(i64, -3), position[1].int);
+    try std.testing.expectEqual(@as(f64, 100), position[2].float);
+    try std.testing.expectEqual(@as(f64, -90.25), root.get("facing").?.float);
+    try std.testing.expect(root.get("bad").? == .other);
 }

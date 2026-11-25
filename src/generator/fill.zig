@@ -352,6 +352,10 @@ pub const Plan = struct {
                 }
             }
             const item = if (pool_index) |chosen_index| self.pool.orderedRemove(chosen_index) else (try self.takeItemFromOutsideThePool(request.item)) orelse {
+                // a tier of an upgrade line isn't in the pool with Progressive Items: say what to place instead
+                if (try self.progressiveLineOfName(request.item)) |chain| {
+                    return std.fmt.allocPrint(allocator, "no \"{s}\" in the item pool: with Progressive Items on, place \"{s}\" (each copy gives the next tier)", .{ request.item, chain.display_name }) catch error.OutOfMemory;
+                }
                 return std.fmt.allocPrint(allocator, "no \"{s}\" left in the item pool (use the name the spoiler log shows; each copy can be placed once)", .{request.item}) catch error.OutOfMemory;
             };
             const shuffled_position = std.mem.indexOfScalar(usize, self.shuffled.items, location_index).?;
@@ -369,6 +373,21 @@ pub const Plan = struct {
     /// a Big Poe in a bottle at a start check), placed in place of one junk item taken out of the pool, so the pool
     /// still fills every check exactly. Why: some features need an item no seed shuffles to be tested quickly (the
     /// Big Poe buyer). Null when the game has no such item or the pool has no junk left.
+    /// The upgrade line whose tier has key or name `name` ("Bomb Bag" -> Progressive Bomb Bag) when Progressive Items
+    /// put that line's progressive item in the pool, else null. Only for test placement messages.
+    fn progressiveLineOfName(self: *Self, name: []const u8) FillError!?*const progressive.Chain {
+        for (0..self.world.items.count()) |i| {
+            const id: ItemId = @intCast(i);
+            const key = self.world.items.name(id);
+            const display_name = self.world.itemNameById(self.allocator, id) catch return error.OutOfMemory;
+            if (!std.mem.eql(u8, key, name) and !std.mem.eql(u8, display_name, name)) continue;
+            const chain = progressive.chainOfTierItem(key) orelse continue;
+            const line_item = self.world.items.lookup(chain.key) orelse continue;
+            if (std.mem.indexOfScalar(ItemId, self.pool.items, line_item) != null) return chain;
+        }
+        return null;
+    }
+
     fn takeItemFromOutsideThePool(self: *Self, item_key: []const u8) FillError!?ItemId {
         // an item no check holds isn't in the item list yet: added when the game has its item actor ("Item_<key>")
         const outside_item = self.world.items.lookup(item_key) orelse blk: {

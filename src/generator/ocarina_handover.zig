@@ -91,20 +91,7 @@ pub fn appendOnce(allocator: Allocator, list: *std.ArrayList(Ocarina), ocarina: 
 /// Adds PouchSystemActor when the flow has none, with the parameters of one of its system actors. Why copied: a named
 /// actor without them crashed the game (OotrR; faststart.giveAtStart does the same).
 fn ensurePouchActor(fc: *evfl.Flowchart, allocator: Allocator, rel: []const u8, progress: *Progress) PatchError!void {
-    if (fc.findActor(pouch_actor_name) != null) return;
-    const template = fc.findActor("GameSystemActor") orelse fc.findActor("EventSystemActor") orelse fc.findActor("GameDataActor") orelse
-        anySystemActor(fc) orelse
-        return progress.fail(error.NotAsExpected, "{s} has no system actor to model {s} on", .{ rel, pouch_actor_name });
-    const template_params = fc.actors.items[template].params;
-    const params = if (template_params) |p| try p.clone(allocator) else try Container.create(allocator);
-    fc.actors.append(allocator, evfl.Actor{ .name = pouch_actor_name, .params = params }) catch return error.OutOfMemory;
-}
-
-fn anySystemActor(fc: *const evfl.Flowchart) ?u16 {
-    for (fc.actors.items, 0..) |actor, i| {
-        if (std.mem.endsWith(u8, actor.name, "SystemActor") and actor.secondary_name.len == 0) return @intCast(i);
-    }
-    return null;
+    try flows.ensureSystemActor(fc, allocator, pouch_actor_name, rel, progress);
 }
 
 /// The parameters of a silent pouch change, as the game's own scenes write them (Dm_Kokiri_0155 Event68).

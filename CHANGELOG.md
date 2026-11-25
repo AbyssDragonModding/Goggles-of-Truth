@@ -21,6 +21,13 @@ with the version that made them, and your saves are safe. Make a new seed to get
   what you already have.
 - Progressive items are found in chests and given by characters, minigames and Business Scrubs, never lying on the
   ground, on a Gold Skulltula or on a shop shelf. Not tested in-game yet.
+- **Test seeds from a plan file** (for testers, on the command line). One small file says which items go where and
+  how a new game starts: in which area and spot (or at exact coordinates), as a child or an adult, at what time of
+  day, with which items, with quests already at a chosen step, and with cutscenes counted as seen or not seen, so
+  you can start right before the thing you want to test. Making the plan again keeps the seed and its saves.
+  `test_plans/TEMPLATE.test.toml` explains everything, and a second command lists every area, spot, quest, cutscene,
+  location and item name you can use. Tested starting as an adult in Kakariko and the Forest Temple and as a child
+  by the Deku Tree; starting an event on arrival is not tested yet.
 
 ### Changed
 - **The Skulltula House wallets** can now also be given by characters, minigames and scrubs, not only chests.

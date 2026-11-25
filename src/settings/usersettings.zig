@@ -63,6 +63,7 @@ fn reprToml(allocator: Allocator, v: toml.Value) error{OutOfMemory}![]const u8 {
     return switch (v) {
         .string => |s| std.fmt.allocPrint(allocator, "'{s}'", .{s}),
         .int => |n| std.fmt.allocPrint(allocator, "{d}", .{n}),
+        .float => |x| std.fmt.allocPrint(allocator, "{d}", .{x}),
         .bool => |b| if (b) "True" else "False",
         .array => "[...]",
         .other => "(unreadable)",
@@ -91,13 +92,20 @@ fn tomlInput(allocator: Allocator, v: toml.Value) error{OutOfMemory}!settings_mo
             }
             break :blk .{ .list = list };
         },
-        .other => .other,
+        // no setting takes a decimal number
+        .float, .other => .other,
     };
 }
 
 /// Known keys with valid values on top of the defaults; a warning for everything else.
 fn validate(allocator: Allocator, entries: []const toml.Entry, warnings: *std.ArrayList([]const u8), prefix: []const u8) error{OutOfMemory}!Settings {
-    var st = Settings.defaults();
+    return applyOverrides(allocator, Settings.defaults(), entries, warnings, prefix);
+}
+
+/// `base` with each known key in `entries` set to its value (when valid); a warning for everything else. A test plan's
+/// [settings] table changes a few settings this way on top of the user's own or a preset's.
+pub fn applyOverrides(allocator: Allocator, base: Settings, entries: []const toml.Entry, warnings: *std.ArrayList([]const u8), prefix: []const u8) error{OutOfMemory}!Settings {
+    var st = base;
     for (entries) |e| {
         const name = settings_mod.currentName(e.key);
         if (settings_mod.isRetired(name)) continue; // now part of every seed, or removed

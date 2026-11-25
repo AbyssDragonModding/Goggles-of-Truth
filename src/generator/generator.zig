@@ -21,6 +21,8 @@ const longshot = @import("../platform/longshot.zig");
 const saves = @import("../platform/saves.zig");
 const version_mod = @import("../version.zig");
 const seedinfo = @import("../core/seedinfo.zig");
+const testplan = @import("../core/testplan.zig");
+const teststart = @import("teststart.zig");
 const Allocator = std.mem.Allocator;
 const Settings = settings_mod.Settings;
 const World = world_mod.World;
@@ -50,6 +52,10 @@ pub const Request = struct {
     /// Test seeds only (`goggles_cli generate --place`): items put at chosen locations before the fill. Written to
     /// settings.txt, so a rebuild places them again.
     test_placements: []const seedinfo.TestPlacement = &.{},
+    /// Test seeds only (`goggles_cli test`): the test plan's text (core/testplan.zig), for its start: spawn, age, time,
+    /// start items, quests, flags, cutscenes. Kept in the seed folder as test_plan.toml; a rebuild without one here
+    /// uses the folder's. Its placements come in `test_placements`.
+    test_plan_text: ?[]const u8 = null,
     /// Rebuild Seed / `--rebuild`: the same seed made again into its own folder. Its saves stay with it
     /// (saves.keepSavesForRebuild): the game's slots are never emptied or switched away for it.
     rebuild: bool = false,
@@ -121,6 +127,30 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
         };
         break :blk own_world.?;
     };
+
+    // a test plan's start (teststart.zig): the request's, or when rebuilding, the plan the seed folder keeps. Checked
+    // against the game before the fill, so a wrong name stops the test at once (and before the earlier build's files,
+    // the kept plan among them, are removed).
+    const plan_folder = fsmod.join(a, &.{ request.out_dir, name }) catch return error.OutOfMemory;
+    const test_plan_text: ?[]const u8 = request.test_plan_text orelse if (request.rebuild)
+        (testplan.readFromSeedFolder(a, fs, plan_folder) catch return error.OutOfMemory)
+    else
+        null;
+    var test_start: ?teststart.Resolved = null;
+    if (test_plan_text) |text| {
+        var problem = testplan.Problem{};
+        const test_plan = testplan.parse(a, text, &problem) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.InvalidPlan => return progress.fail(error.GenerationFailed, "test plan: {s}", .{problem.message}),
+        };
+        switch (teststart.resolve(a, world, &test_plan.start) catch |err| return patchError(err, progress)) {
+            .problem => |message| return progress.fail(error.GenerationFailed, "test plan: {s}", .{message}),
+            .ready => |resolved| {
+                for (resolved.summary) |line| progress.log("Test start: {s}", .{line});
+                test_start = resolved;
+            },
+        }
+    }
 
     progress.log("Building item pool...", .{});
     // why: the placement version, not the release, so a release that only fixes patches places a seed the same way
@@ -262,6 +292,7 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
         .hint_list = hint_list,
         .out_romfs = out_romfs,
         .cache = cache,
+        .test_start = if (test_start) |*resolved| resolved else null,
     }, progress) catch |err| return patchError(err, progress);
     if (cache) |c| {
         progress.log("File cache: {d} of {d} large files reused, {d} compressed and stored", .{ c.hits, c.hits + c.misses, c.misses });
@@ -280,6 +311,11 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     const settings_txt = settingsText(a, seed, sstr, plan.test_placements_text) catch return error.OutOfMemory;
     fs.writeAll(fsmod.join(a, &.{ mod_root, "settings.txt" }) catch return error.OutOfMemory, settings_txt) catch |err|
         return progress.fail(error.GenerationFailed, "couldn't write settings.txt ({s})", .{@errorName(err)});
+    if (test_plan_text) |text| {
+        // kept with the seed, so a rebuild makes the same start (testplan.readFromSeedFolder)
+        fs.writeAll(fsmod.join(a, &.{ mod_root, testplan.file_name_in_seed_folder }) catch return error.OutOfMemory, text) catch |err|
+            return progress.fail(error.GenerationFailed, "couldn't write {s} ({s})", .{ testplan.file_name_in_seed_folder, @errorName(err) });
+    }
 
     try switchOtherSeeds(a, env, request.out_dir, name, st, request.rebuild, progress);
 
@@ -476,7 +512,7 @@ pub fn placementMismatchMessage(allocator: Allocator, seed_name: []const u8, inf
 
 /// What every build writes at the top of a mod folder. Everything else there (the stored per-seed saves in saves/)
 /// is kept when a seed is made again into its own folder.
-const generated_entries = [_][]const u8{ "romfs", "exefs", "settings.txt", "spoiler.txt", "spoiler.json", "checklist.xlsx" };
+const generated_entries = [_][]const u8{ "romfs", "exefs", "settings.txt", "spoiler.txt", "spoiler.json", "checklist.xlsx", testplan.file_name_in_seed_folder };
 
 /// Rebuilding a seed into its folder: the earlier build's files go first, so a file the new build no longer changes
 /// doesn't stay behind. Only the entries a build writes are removed.
