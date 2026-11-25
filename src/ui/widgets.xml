@@ -34,4 +34,9 @@
     <Badge LabelName="{LabelName}" Text="Experimental" Background="#D64545" Foreground="#FFFFFF"/>
   </Widget>
 
+  <!-- New in the release being made, still being tested by its developer -->
+  <Widget Name="NewFeatureBadge" LabelName="">
+    <Badge LabelName="{LabelName}" Text="0.8.0 Feature" Background="#7B4FD6" Foreground="#FFFFFF"/>
+  </Widget>
+
 </Widgets>

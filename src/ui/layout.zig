@@ -58,12 +58,15 @@ pub const app_icon_png = @embedFile("GogglesRandoAppIcon.png");
 pub const gold_hex = "#F5CC61";
 pub const muted_hex = "#C7D1DBD9";
 
+pub const status_count = std.meta.tags(settings.Status).len;
+
 /// The status badge widgets of widgets.xml, one per status.
 pub fn badgeTag(status: settings.Status) []const u8 {
     return switch (status) {
         .stable => "StableBadge",
         .testing => "TestingBadge",
         .experimental => "ExperimentalBadge",
+        .new_feature => "NewFeatureBadge",
     };
 }
 
@@ -87,8 +90,8 @@ fn attribute(xml: []const u8, from: usize, name: []const u8) ?[]const u8 {
 }
 
 /// Text / Background / Foreground of each status badge in widgets.xml.
-pub fn badgeStyles() [3]BadgeStyle {
-    var out: [3]BadgeStyle = undefined;
+pub fn badgeStyles() [status_count]BadgeStyle {
+    var out: [status_count]BadgeStyle = undefined;
     for (std.meta.tags(settings.Status), 0..) |status, i| {
         // unreachable is proven: the longest tag, "ExperimentalBadge", makes a 32-byte needle, under the buffer's 64
         var search: [64]u8 = undefined;

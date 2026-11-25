@@ -114,6 +114,23 @@ pub const renamed = [_][2][]const u8{.{ "free_bombs", "bag_bombs_no_bracelet" }}
 pub const built_in = [_][]const u8{ "skip_saria_intro", "cache_files" };
 pub const removed = [_][]const u8{"unrestricted_items"};
 
+/// Settings merged into another (old name, new name): an old settings string or file with the old one on turns
+/// the new one on. Skip Area Intro Cutscenes (skip_area_intros) is part of Skip Cutscenes since 0.8.0.
+pub const merged = [_][2][]const u8{.{ "skip_area_intros", "skip_story_scenes" }};
+
+/// The setting `name` was merged into (merged), or null.
+pub fn mergedInto(name: []const u8) ?Key {
+    for (merged) |m| {
+        if (std.mem.eql(u8, m[0], name)) return keyByName(m[1]);
+    }
+    return null;
+}
+
+/// Turns on each setting an old, merged setting that was on went into (`merged_on`: the merged settings seen on).
+pub fn applyMerged(st: *Settings, merged_on: []const Key) void {
+    for (merged_on) |key| st.set(key, .{ .boolean = true });
+}
+
 /// The current name of a setting that may have been renamed.
 pub fn currentName(name: []const u8) []const u8 {
     for (renamed) |r| {
@@ -320,7 +337,12 @@ comptime {
 
 // ---------------------------------------------------------------------------------------------- test status
 
-pub const Status = enum { stable, testing, experimental };
+/// A setting's state, shown as a badge in the window. `new_feature`: added in the release being made and still being
+/// tested by its developer (label note "(0.8.0 feature)"); it wins over the other notes, so new work stands out.
+pub const Status = enum { stable, testing, experimental, new_feature };
+
+/// The label note that marks a setting of the release being made (Status.new_feature).
+pub const new_feature_note = "0.8.0 feature";
 
 pub const SplitStatus = struct {
     text: []const u8,
@@ -332,7 +354,8 @@ fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {
 }
 
 fn isStatusNote(text: []const u8) bool {
-    return containsIgnoreCase(text, "experimental") or containsIgnoreCase(text, "testing") or containsIgnoreCase(text, "not working");
+    return containsIgnoreCase(text, "experimental") or containsIgnoreCase(text, "testing") or containsIgnoreCase(text, "not working") or
+        containsIgnoreCase(text, new_feature_note);
 }
 
 /// "Skip Area Intro Cutscenes" and .testing for "Skip Area Intro Cutscenes (needs further testing)".
@@ -350,7 +373,11 @@ pub fn splitStatus(buffer: []u8, text: []const u8) SplitStatus {
             if (std.mem.indexOfAnyPos(u8, text, i + 1, "()")) |close| {
                 if (text[close] == ')' and isStatusNote(text[i + 1 .. close])) {
                     const note = text[i + 1 .. close];
-                    if (containsIgnoreCase(note, "testing")) {
+                    if (containsIgnoreCase(note, new_feature_note)) {
+                        status = .new_feature;
+                    } else if (status == .new_feature) {
+                        // a 0.8.0 feature keeps its badge whatever else its notes say
+                    } else if (containsIgnoreCase(note, "testing")) {
                         status = .testing;
                     } else if (status == .stable) {
                         status = .experimental;
@@ -516,10 +543,15 @@ pub fn fromString(allocator: Allocator, text: []const u8) StringError!Settings {
     var st = Settings.defaults();
     var it = object.iterator();
     var legacy_scrubs: ?Input = null;
+    var merged_on: std.ArrayList(Key) = .empty;
     while (it.next()) |entry| {
         const name = currentName(entry.key_ptr.*);
-        const key = keyByName(name) orelse continue;
         const input = try jsonInput(allocator, entry.value_ptr.*);
+        if (mergedInto(name)) |target| {
+            if (input == .boolean and input.boolean) try merged_on.append(allocator, target);
+            continue;
+        }
+        const key = keyByName(name) orelse continue;
         if (key == .shuffle_scrubs and input == .string) {
             legacy_scrubs = input;
             continue;
@@ -527,6 +559,8 @@ pub fn fromString(allocator: Allocator, text: []const u8) StringError!Settings {
         if (checkInput(key, input)) |v| st.set(key, v);
     }
     if (legacy_scrubs) |input| _ = applyLegacyScrubs(&st, input, object.contains("scrub_prices"));
+    // after the rest, so an old setting that was on wins over its new setting's default
+    applyMerged(&st, merged_on.items);
     return st;
 }
 

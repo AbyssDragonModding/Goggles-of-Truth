@@ -1,0 +1,8 @@
+# 0.8.0: Skip NPC Dialogs and Skip Cutscenes (which now has the area intros). Talk to Saria and the other Kokiri at
+# each step of the Deku Tree quest: they should go straight to their short lines. Characters who give checks should
+# still give them.
+name = "FEAT_NPC1"
+
+[settings]
+skip_npc_dialogs = true
+skip_story_scenes = true

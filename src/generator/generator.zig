@@ -641,6 +641,14 @@ fn writeSpoiler(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Fil
         try padded(&txt, a, std.fmt.allocPrint(a, "{s}:", .{s.label}) catch return error.OutOfMemory, 28);
         txt.print(a, " {s}\n", .{try valueText(a, plan.st.get(s.key))}) catch return error.OutOfMemory;
     }
+    // what the seed chose for Starting Age: Random and Barren Dungeons
+    try txt.appendSlice(a, "\nThis seed:\n");
+    txt.print(a, "  Starting age:               {s}\n", .{if (plan.options.start_adult) "Adult" else "Child"}) catch return error.OutOfMemory;
+    if (plan.barren_dungeons.len > 0) {
+        const names = a.alloc([]const u8, plan.barren_dungeons.len) catch return error.OutOfMemory;
+        for (plan.barren_dungeons, 0..) |folder, k| names[k] = world.regionName(folder);
+        txt.print(a, "  Barren dungeons:            {s}\n", .{std.mem.join(a, ", ", names) catch return error.OutOfMemory}) catch return error.OutOfMemory;
+    }
     try txt.appendSlice(a, "\nPlaythrough:\n");
     for (playthrough.items, 1..) |sphere, n| {
         txt.print(a, "  Sphere {d}\n", .{n}) catch return error.OutOfMemory;

@@ -21,6 +21,7 @@ const npcrewards = @import("npcrewards.zig");
 const textpatches = @import("textpatches.zig");
 const ocarina_handover = @import("ocarina_handover.zig");
 const teststart = @import("teststart.zig");
+const npcdialogs = @import("npcdialogs.zig");
 const door = @import("door.zig");
 const pickups = @import("pickups.zig");
 const flows = @import("flows.zig");
@@ -465,7 +466,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         try storyskip.patchStoryScenes(world, &patches, progress, &storyskip.skips, "Skip Cutscenes", false);
         patches.endStep();
     }
-    if (st.flag(.skip_area_intros)) {
+    if (st.flag(.skip_story_scenes)) {
         // the intros whose arrival also advances a quest (the others count as played in the save data)
         try storyskip.patchAreaIntros(world, &patches, progress);
         patches.endStep();
@@ -566,7 +567,24 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         if (unique.items.len > 0 and presenceEql(unique.items[unique.items.len - 1], p)) continue;
         unique.append(a, p) catch return error.OutOfMemory;
     }
-    const test_changes: []const gamedata.Change = if (inputs.test_start) |t| t.changes else &.{};
+    // Starting Age: Adult's save data, then a test plan's (applied last, after the settings' own)
+    const start_adult = plan.options.start_adult;
+    var age_changes: std.ArrayList(gamedata.Change) = .empty;
+    if (start_adult) {
+        age_changes.appendSlice(a, &teststart.adult_start_changes) catch return error.OutOfMemory;
+        // the opened door (door.zig) opens from quest step Ready on, as with Door of Time: Open; Skip Child Zelda
+        // already moves the quest further
+        if (!st.flag(.skip_child_zelda)) age_changes.append(a, .{ .kind = .enum_value, .flag = gamedata.door_quest_enum, .text = gamedata.door_quest_step }) catch return error.OutOfMemory;
+    }
+    if (st.flag(.skip_npc_dialogs)) {
+        // the long story talks that only talk count as heard (npcdialogs.zig)
+        const heard = try npcdialogs.heardFlags(a, world);
+        const heard_changes = try npcdialogs.changes(a, world, heard);
+        age_changes.appendSlice(a, heard_changes) catch return error.OutOfMemory;
+        progress.log("Skip NPC Dialogs: {d} story talks count as heard", .{heard_changes.len});
+    }
+    const plan_changes: []const gamedata.Change = if (inputs.test_start) |t| t.changes else &.{};
+    const test_changes = std.mem.concat(a, gamedata.Change, &.{ age_changes.items, plan_changes }) catch return error.OutOfMemory;
     const gd_ok = gamedata.apply(s, world, &patches, st, progress, bridge_ok, start_items.items, unique.items, test_changes) catch |err| switch (err) {
         error.NotAsExpected => return progress.fail(error.SettingFailed, "Items Shuffled Per Shop: {s}; turn the setting off", .{progress.failureMessage()}),
         else => return err,
@@ -594,16 +612,30 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         all.appendSlice(a, start_gifts.items) catch return error.OutOfMemory;
         progress.log("Start items handed over when a new game starts: {s}", .{std.mem.join(a, ", ", all.items) catch return error.OutOfMemory});
     }
-    if (inputs.test_start) |test_start| if (test_start.warp != null or test_start.time_hour != null) {
+    // the new game's start: Starting Age: Adult and a test plan's start (a test plan's spawn wins over the adult
+    // spawn; the adult start's quests, flags and Master Sword stay)
+    var opening_start = teststart.OpeningStart{};
+    if (start_adult) {
+        opening_start.warp = teststart.adult_start_warp;
+        opening_start.quest_steps = &teststart.adult_start_quests;
+        opening_start.flags = &teststart.adult_start_flags;
+        opening_start.equip = &teststart.adult_start_equip;
+    }
+    if (inputs.test_start) |test_start| {
+        if (test_start.warp) |w| opening_start.warp = w;
+        opening_start.time_hour = test_start.time_hour;
+    }
+    if (!opening_start.isEmpty()) {
         // after the start items' edit of the same flow, so the scene change comes after the items are handed over
         defer patches.endStep();
         const orig = try patches.read(teststart.opening_flow);
-        const new = teststart.startAtTestSpawn(s, orig.data, test_start.warp, test_start.time_hour, progress) catch |err| switch (err) {
-            error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Test start: {s} is not as expected ({s})", .{ teststart.opening_flow, progress.failureMessage() }),
+        const new = teststart.startAtSpawn(s, orig.data, opening_start, progress) catch |err| switch (err) {
+            error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "New game start: {s} is not as expected ({s})", .{ teststart.opening_flow, progress.failureMessage() }),
             else => return err,
         };
         try patches.emitZs(teststart.opening_flow, orig, new);
-    };
+        if (start_adult) progress.log("Starting Age: Adult (a new game starts in the Temple of Time with the Master Sword)", .{});
+    }
 
     if (st.flag(.saria_song_ocarina)) {
         if (gd_ok) {
@@ -615,7 +647,9 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     if (st.is(.open_forest, "open")) _ = try qol.patchOpenForestMido(&patches, progress);
     if (st.flag(.skip_child_zelda)) _ = try qol.patchKokiriSchedules(world, &patches, progress);
     if (st.is(.open_zora, "open")) _ = try qol.patchOpenZoraArrival(&patches, progress, gamedata.zora_open_quest_step);
-    if (st.is(.open_door, "open") and !try door.patchOpenDoor(&patches, progress)) {
+    // an adult start needs the door open (OotrR forces Door of Time: Open with it): child Link walks out through it
+    if ((st.is(.open_door, "open") or start_adult) and !try door.patchOpenDoor(&patches, progress)) {
+        if (start_adult) return progress.fail(error.SettingFailed, "Starting Age: Adult needs the Door of Time open, which could not be applied to this romfs; start as child", .{});
         return progress.fail(error.SettingFailed, "Door of Time: Open could not be applied to this romfs; set the Door of Time to Closed", .{});
     }
     if (!st.is(.shuffle_songs, "vanilla")) try qol.patchSongTeaching(world, &patches, progress);
@@ -663,7 +697,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     }
 
     // last of the flow edits, so every other change to DoorOfTime is in: the altar tells the bridge requirement
-    textpatches.writeBridgeText(world, &patches, st, progress) catch |err| switch (err) {
+    textpatches.writeBridgeText(world, &patches, st, plan.barren_dungeons, progress) catch |err| switch (err) {
         error.NotAsExpected, error.InvalidData => progress.log("warning: the Temple of Time altar couldn't show the bridge requirement ({s})", .{progress.failureMessage()}),
         else => return err,
     };

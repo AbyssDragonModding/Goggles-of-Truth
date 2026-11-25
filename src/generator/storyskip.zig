@@ -1,4 +1,5 @@
-//! Skip Cutscenes (setting key skip_story_scenes; called Skip Story Scenes before 0.7.4): the Temple of Time,
+//! Skip Cutscenes (setting key skip_story_scenes; called Skip Story Scenes before 0.7.4; it took in Skip Area Intro
+//! Cutscenes in 0.8.0): the Temple of Time,
 //! Chamber of Sages, sage-awakening and Royal Family's Tomb scenes don't play (and Skip Area Intros
 //! for the intros whose arrival also advances a quest).
 //!
@@ -743,24 +744,24 @@ fn emptyIntro(allocator: Allocator, world: *World, data: []const u8, progress: *
 
 /// Skip Area Intros for the intros area_skips and area_standalone list.
 pub fn patchAreaIntros(world: *World, patches: *PatchSet, progress: *Progress) PatchError!void {
-    try patchStoryScenes(world, patches, progress, &area_skips, "Skip Area Intros", true);
+    try patchStoryScenes(world, patches, progress, &area_skips, "Skip Cutscenes (area intros)", true);
     const a = patches.allocator;
     for (area_standalone) |scene| {
         const rel = try flowRel(a, scene);
         if (!world.files.exists(rel)) {
-            progress.log("warning: Skip Area Intros: {s} not found; it still plays", .{scene});
+            progress.log("warning: Skip Cutscenes (area intros): {s} not found; it still plays", .{scene});
             continue;
         }
         const orig = try patches.read(rel);
         const result = emptyIntro(a, world, orig.data, progress) catch |err| switch (err) {
             error.NotAsExpected, error.InvalidData => {
-                progress.log("warning: Skip Area Intros: {s} not changed ({s}); it still plays", .{ scene, progress.failureMessage() });
+                progress.log("warning: Skip Cutscenes (area intros): {s} not changed ({s}); it still plays", .{ scene, progress.failureMessage() });
                 continue;
             },
             else => return err,
         };
         try patches.emitZs(rel, orig, result.data);
         const joined = std.mem.join(a, ", ", result.flags) catch return error.OutOfMemory;
-        progress.log("Skip Area Intros: {s} emptied (sets {s})", .{ scene, if (joined.len > 0) joined else "nothing" });
+        progress.log("Skip Cutscenes (area intros): {s} emptied (sets {s})", .{ scene, if (joined.len > 0) joined else "nothing" });
     }
 }

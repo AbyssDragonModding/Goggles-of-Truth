@@ -82,6 +82,7 @@ test {
     _ = @import("generator/progressive_flows.zig");
     _ = @import("generator/ocarina_handover.zig");
     _ = @import("generator/teststart.zig");
+    _ = @import("generator/npcdialogs.zig");
     _ = generator;
     _ = filecache;
     _ = compressor;

@@ -223,8 +223,27 @@ fn requirement(allocator: Allocator, st: *const settings_mod.Settings) error{Out
     return null;
 }
 
-/// The status line's raw UTF-8 text (with its terminator).
-fn bridgeMessage(allocator: Allocator, st: *const settings_mod.Settings) error{OutOfMemory}![]const u8 {
+/// The status line's raw UTF-8 text (with its terminator), and with Barren Dungeons a second page naming them
+/// (`barren`: their names; a page break is the game's own tag 0:4).
+fn bridgeMessage(allocator: Allocator, st: *const settings_mod.Settings, barren: []const []const u8) error{OutOfMemory}![]const u8 {
+    const status = try bridgeStatus(allocator, st);
+    if (barren.len == 0) return status;
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(allocator, status[0 .. status.len - 1]); // without its terminator
+    try out.appendSlice(allocator, try tagBytes(allocator, 0, 4, ""));
+    try out.appendSlice(allocator, try tagBytes(allocator, 0, 3, "\x00\x00"));
+    try out.appendSlice(allocator, if (barren.len == 1) "Barren Dungeon" else "Barren Dungeons");
+    try out.appendSlice(allocator, try tagBytes(allocator, 0, 3, "\xff\xff"));
+    // two names a line, so the box fits up to five dungeons on its three lines
+    for (barren, 0..) |name, k| {
+        try out.appendSlice(allocator, if (k % 2 == 0) "\n" else ", ");
+        try out.appendSlice(allocator, name);
+    }
+    try out.append(allocator, 0);
+    return out.items;
+}
+
+fn bridgeStatus(allocator: Allocator, st: *const settings_mod.Settings) error{OutOfMemory}![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(allocator, try tagBytes(allocator, 0, 3, "\x00\x00"));
     try out.appendSlice(allocator, "Rainbow Bridge to Ganon's Castle");
@@ -347,13 +366,15 @@ fn counted(fc: *evfl.Flowchart, allocator: Allocator, add_aa: [2]u16, q_aa: [2]u
 }
 
 /// The altar's status line in every language, and the flow edit.
-pub fn writeBridgeText(world: *World, patches: *patchset.PatchSet, st: *const settings_mod.Settings, progress: *Progress) PatchError!void {
+pub fn writeBridgeText(world: *World, patches: *patchset.PatchSet, st: *const settings_mod.Settings, barren_folders: []const []const u8, progress: *Progress) PatchError!void {
     const a = patches.allocator;
     const orig = try patches.read(bridge_flow);
     const new = try bridgeFlow(a, orig.data, st, progress);
-    const line = try bridgeMessage(a, st);
+    const barren = a.alloc([]const u8, barren_folders.len) catch return error.OutOfMemory;
+    for (barren_folders, 0..) |folder, k| barren[k] = world.regionName(folder);
+    const line = try bridgeMessage(a, st, barren);
     const done = try addToArchives(world, patches, bridge_messages, &.{.{ .label = bridge_label, .text = line }}, "altar", progress);
     if (done == 0) return progress.fail(error.NotAsExpected, "no message archive holds {s}", .{bridge_messages});
     try patches.emitZs(bridge_flow, orig, new);
-    progress.log("Temple of Time altar: shows the Rainbow Bridge requirement ({d} languages)", .{done});
+    progress.log("Temple of Time altar: shows the Rainbow Bridge requirement{s} ({d} languages)", .{ if (barren.len > 0) " and the barren dungeons" else "", done });
 }

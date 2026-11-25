@@ -20,8 +20,9 @@
 //! just before the change for the rest. Kokiri Forest's own load has already forced child by then, so the flag is
 //! set after it.
 //!
-//! Rotation: the start spot table stores radians (StartPos.byml: Rot [0, 1.570796, 0]); the Door of Time flow passes
-//! NextStartRot [0, 1.5, 0] with a position. A plan's `facing` is in degrees and is converted.
+//! Rotation: NextStartRot is in degrees (the game's own time travel, Market_Child_Field_ChildToAdult, passes
+//! [0, 90, 0]; OotrR's adult start copies it). The start spot table stores radians (StartPos.byml: Rot
+//! [0, 1.570796, 0]), so an unnamed spot's direction is converted.
 //!
 //! The rest is save data (gamedata.apply's test changes): quest steps (Enum Step_<quest>), flags, and cutscenes as
 //! seen or unseen (HavePlayedEvent.<event>). Start items are handed over like the start checks' (patches.zig).
@@ -65,10 +66,71 @@ pub const Warp = struct {
     /// a start spot of the scene, or "" for `position`
     start_spot: []const u8,
     position: [3]f32,
-    facing_radians: f32,
+    /// degrees around the vertical axis (NextStartRot's middle value)
+    facing_degrees: f32,
     boot_event: []const u8,
     /// set Sequence_IsChildhood to this before the change (scenes without an age version), or null
     childhood: ?bool,
+    /// Sequence_BancChangeFadePattern: 1 BlackFade (Dm_SY_BancChangeGo), 2 WhiteFade (the time travel)
+    fade_pattern: i32 = fade_black,
+};
+
+/// A quest moved on by the game's own action (ChallengeSystemActor.EventExecuteProgressChallengeStep).
+pub const QuestProgress = struct { quest: []const u8, step: []const u8 };
+
+/// A Bool save flag set in the opening (GameDataActor.EventTriggerSetGameDataBool).
+pub const FlagSet = struct { name: []const u8, value: bool };
+
+/// What the opening does before its autosave, in this order: the time, quest steps, flags, equipment added and
+/// equipped (as the Door of Time flow adds the Master Sword), then the scene change.
+pub const OpeningStart = struct {
+    warp: ?Warp = null,
+    time_hour: ?u8 = null,
+    quest_steps: []const QuestProgress = &.{},
+    flags: []const FlagSet = &.{},
+    /// actors added to the pouch and equipped (PouchSystemActor.EventTriggerAddOrRemovePouchContent, IsEquipDIrect)
+    equip: []const []const u8 = &.{},
+
+    pub fn isEmpty(self: OpeningStart) bool {
+        return self.warp == null and self.time_hour == null and self.quest_steps.len == 0 and self.flags.len == 0 and self.equip.len == 0;
+    }
+};
+
+// ------------------------------------------------------------------------------------- Starting Age: Adult
+// As OotrR does it (src/oot_rando/patching/adult_start.py, MIT License, Copyright (c) 2026 Mozencaz): the new game
+// still loads Kokiri Forest, then the opening moves the Sheik and Forest quests to Step01 (without AllSage past Ready
+// Sheik stands by the pedestal and blocks putting the sword back), marks the first trip to adult as made, and
+// changes to adult Castle Town with the game's own time-travel values (Market_Child_Field_ChildToAdult: the
+// platform in the Temple of Time, NextStartRot [0, 90, 0], white fade), starting Dm_TimeTemple_0085 (Link at the
+// pedestal). The Master Sword is added and equipped as the Door of Time flow does. The Door of Time is opened
+// (door.zig) and the save data has the rest (adultStartChanges).
+pub const adult_start_warp = Warp{
+    .scene = "Market_Adult",
+    .start_spot = "",
+    .position = .{ 137.2084, 106.1201, -34.0 },
+    .facing_degrees = 90,
+    .boot_event = "Dm_TimeTemple_0085",
+    .childhood = false,
+    .fade_pattern = 2,
+};
+pub const adult_start_quests = [_]QuestProgress{
+    .{ .quest = "AllSage", .step = "Step01" },
+    .{ .quest = "SageOfForest", .step = "Step01" },
+};
+pub const adult_start_flags = [_]FlagSet{.{ .name = "Market_Child_Firsttime_GotoAdult", .value = true }};
+pub const adult_start_equip = [_][]const u8{"Weapon_Sword_Master"};
+
+/// The save data of an adult start. Not in OotrR's version:
+/// - the Ganondorf scene of the first pull counts as seen, so pulling the sword again as child is plain time travel
+///   (DoorOfTime:DoorOfTime_Draw takes the first-pull path, to Ganondorf and Rauru, until it has played); Rauru's
+///   check is handed over at the start instead (fill.zig);
+/// - the Kokiri boy at the forest exit is gone, so child Link, who first appears in the Temple of Time, can get into
+///   Kokiri Forest (the logic counts on it);
+/// - the door's own flag (door.zig opens the door itself).
+pub const adult_start_changes = [_]gamedata.Change{
+    .{ .kind = .bool_flag, .flag = "HavePlayedEvent.Dm_TimeTemple_0040" },
+    .{ .kind = .bool_flag, .flag = gamedata.forest_exit, .bool_value = false },
+    .{ .kind = .bool_flag, .flag = "Market_Child_TimeTempleDoor_Opened" },
 };
 
 /// A test start ready to patch: everything in it exists in this game.
@@ -186,7 +248,7 @@ fn resolveWarp(allocator: Allocator, world: *World, spawn: testplan.Spawn, age: 
         .scene = scene,
         .start_spot = "",
         .position = .{ 0, 0, 0 },
-        .facing_radians = std.math.degreesToRadians(spawn.facing_degrees),
+        .facing_degrees = spawn.facing_degrees,
         .boot_event = spawn.boot_event,
         .childhood = childhood,
     };
@@ -204,7 +266,7 @@ fn resolveWarp(allocator: Allocator, world: *World, spawn: testplan.Spawn, age: 
         } else {
             // an unnamed spot can't be asked for by name: its coordinates and direction instead
             warp.position = chosen.position;
-            warp.facing_radians = chosen.facing_radians;
+            warp.facing_degrees = std.math.radiansToDegrees(chosen.facing_radians);
         }
     }
 
@@ -438,13 +500,14 @@ fn appendLine(allocator: Allocator, lines: *std.ArrayList([]const u8), comptime 
 
 // --------------------------------------------------------------------------------------------- the opening edit
 
-/// OpeningEvent with the test start's time, age and scene change just before its autosave (see the top of the file).
-/// `warp` null and `time_hour` null: nothing to add (the caller doesn't call it then).
-pub fn startAtTestSpawn(allocator: Allocator, data: []const u8, warp: ?Warp, time_hour: ?u8, progress: *Progress) PatchError![]u8 {
+/// OpeningEvent with `start` just before its autosave (see the top of the file). Refused when it is empty or the
+/// opening already has a start added.
+pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart, progress: *Progress) PatchError![]u8 {
+    if (start.isEmpty()) return progress.fail(error.NotAsExpected, "nothing to add to the opening", .{});
     var doc = try evfl.read(allocator, data);
     const fc = try flows.expectFlowchart(&doc, "OpeningEvent", progress);
     for (fc.events.items) |e| {
-        if (std.mem.startsWith(u8, e.name, added_prefix)) return progress.fail(error.NotAsExpected, "the test start is already in the opening", .{});
+        if (std.mem.startsWith(u8, e.name, added_prefix)) return progress.fail(error.NotAsExpected, "a start is already in the opening", .{});
     }
 
     // the one autosave, reached from one event: the opening's own last step, or the last start item (an added pouch
@@ -465,13 +528,13 @@ pub fn startAtTestSpawn(allocator: Allocator, data: []const u8, warp: ?Warp, tim
 
     // built from the autosave backwards: each new event leads to the one added before it
     var next: u16 = save.?;
-    if (warp) |w| {
+    if (start.warp) |w| {
         const change_aa = try flows.requireAction(fc, allocator, "GameSystemActor", "EventReserveBancChange", progress);
         const position = allocator.alloc(f32, 3) catch return error.OutOfMemory;
         @memcpy(position, &w.position);
         const rotation = allocator.alloc(f32, 3) catch return error.OutOfMemory;
         rotation[0] = 0;
-        rotation[1] = w.facing_radians;
+        rotation[1] = w.facing_degrees;
         rotation[2] = 0;
         var params: std.ArrayList(evfl.Item) = .empty;
         params.appendSlice(allocator, &.{
@@ -480,22 +543,44 @@ pub fn startAtTestSpawn(allocator: Allocator, data: []const u8, warp: ?Warp, tim
             .{ .name = "NextStartPos", .value = .{ .string = w.start_spot } },
             .{ .name = "NextPosition", .value = .{ .float_array = position } },
             .{ .name = "NextStartRot", .value = .{ .float_array = rotation } },
-            .{ .name = "FadePattern", .value = .{ .int = fade_black } },
+            .{ .name = "FadePattern", .value = .{ .int = w.fade_pattern } },
         }) catch return error.OutOfMemory;
         if (w.boot_event.len > 0) params.append(allocator, .{ .name = "BootEventName", .value = .{ .string = w.boot_event } }) catch return error.OutOfMemory;
         next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_Warp", change_aa, next, try Container.from(allocator, params.items)));
-
-        if (w.childhood) |is_child| {
-            try flows.ensureSystemActor(fc, allocator, "GameDataActor", opening_flow, progress);
-            const set_aa = try flows.requireAction(fc, allocator, "GameDataActor", "EventTriggerSetGameDataBool", progress);
-            next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_Age", set_aa, next, try Container.from(allocator, &.{
-                .{ .name = "GameDataName", .value = .{ .string = childhood_flag } },
-                .{ .name = "Index", .value = .{ .int = -1 } },
-                .{ .name = "Value", .value = .{ .bool = is_child } },
-            })));
-        }
+        if (w.childhood) |is_child| next = try setFlag(fc, allocator, "Age", childhood_flag, is_child, next, progress);
     }
-    if (time_hour) |hour| {
+    var k = start.equip.len;
+    while (k > 0) {
+        k -= 1;
+        try flows.ensureSystemActor(fc, allocator, "PouchSystemActor", opening_flow, progress);
+        const pouch_aa = try flows.requireAction(fc, allocator, "PouchSystemActor", "EventTriggerAddOrRemovePouchContent", progress);
+        const name = std.fmt.allocPrint(allocator, "{s}_Equip{d}", .{ added_prefix, k }) catch return error.OutOfMemory;
+        // as DoorOfTime:Event115 adds the Master Sword
+        next = try fc.addEvent(allocator, evfl.makeAction(name, pouch_aa, next, try Container.from(allocator, &.{
+            .{ .name = "Num", .value = .{ .int = 1 } },
+            .{ .name = "IsSetMessageTargetActorName", .value = .{ .bool = true } },
+            .{ .name = "Actor", .value = .{ .string = start.equip[k] } },
+            .{ .name = "IsEquipDIrect", .value = .{ .bool = true } },
+        })));
+    }
+    k = start.flags.len;
+    while (k > 0) {
+        k -= 1;
+        const suffix = std.fmt.allocPrint(allocator, "Flag{d}", .{k}) catch return error.OutOfMemory;
+        next = try setFlag(fc, allocator, suffix, start.flags[k].name, start.flags[k].value, next, progress);
+    }
+    k = start.quest_steps.len;
+    while (k > 0) {
+        k -= 1;
+        const step_aa = try flows.requireAction(fc, allocator, "ChallengeSystemActor", "EventExecuteProgressChallengeStep", progress);
+        const name = std.fmt.allocPrint(allocator, "{s}_Quest{d}", .{ added_prefix, k }) catch return error.OutOfMemory;
+        next = try fc.addEvent(allocator, evfl.makeAction(name, step_aa, next, try Container.from(allocator, &.{
+            .{ .name = "ChallengeName", .value = .{ .string = start.quest_steps[k].quest } },
+            .{ .name = "StepName", .value = .{ .string = start.quest_steps[k].step } },
+            .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+        })));
+    }
+    if (start.time_hour) |hour| {
         // the opening already has this actor (Event9 sets 6:00); the added call comes later, so it wins
         const time_aa = try flows.requireAction(fc, allocator, "EventWorldManagerController", "EventTrigger_SetTime", progress);
         next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_Time", time_aa, next, try Container.from(allocator, &.{
@@ -503,7 +588,19 @@ pub fn startAtTestSpawn(allocator: Allocator, data: []const u8, warp: ?Warp, tim
         })));
     }
     fc.events.items[before[0]].nextPtr().?.* = next;
-    return flows.writeBack(allocator, &doc, "OpeningEvent (test start)", progress);
+    return flows.writeBack(allocator, &doc, "OpeningEvent (start)", progress);
+}
+
+/// GameDataActor.EventTriggerSetGameDataBool {name = value} -> `then`. Returns the new event.
+fn setFlag(fc: *evfl.Flowchart, allocator: Allocator, suffix: []const u8, name: []const u8, value: bool, then: u16, progress: *Progress) PatchError!u16 {
+    try flows.ensureSystemActor(fc, allocator, "GameDataActor", opening_flow, progress);
+    const set_aa = try flows.requireAction(fc, allocator, "GameDataActor", "EventTriggerSetGameDataBool", progress);
+    const event_name = std.fmt.allocPrint(allocator, "{s}_{s}", .{ added_prefix, suffix }) catch return error.OutOfMemory;
+    return fc.addEvent(allocator, evfl.makeAction(event_name, set_aa, then, try Container.from(allocator, &.{
+        .{ .name = "GameDataName", .value = .{ .string = name } },
+        .{ .name = "Index", .value = .{ .int = -1 } },
+        .{ .name = "Value", .value = .{ .bool = value } },
+    })));
 }
 
 // ---------------------------------------------------------------------------------------------------- catalog
@@ -637,11 +734,11 @@ test "the test start goes before the opening's autosave" {
         .scene = "ForestTemple",
         .start_spot = "",
         .position = .{ 1, 2, 3 },
-        .facing_radians = 1.5,
+        .facing_degrees = 90,
         .boot_event = "SomeEvent",
         .childhood = false,
     };
-    const patched = try startAtTestSpawn(a, original, warp, 20, &progress);
+    const patched = try startAtSpawn(a, original, .{ .warp = warp, .time_hour = 20 }, &progress);
     const back = try evfl.read(a, patched);
     const out = back.flowchart.?;
     // Event10 -> time -> age -> warp -> autosave
@@ -658,7 +755,7 @@ test "the test start goes before the opening's autosave" {
     try std.testing.expect(params.isString("BootEventName", "SomeEvent"));
     try std.testing.expect(out.findActor("GameDataActor") != null);
     // a second edit is refused
-    try std.testing.expectError(error.NotAsExpected, startAtTestSpawn(a, patched, warp, null, &progress));
+    try std.testing.expectError(error.NotAsExpected, startAtSpawn(a, patched, .{ .warp = warp }, &progress));
 }
 
 test "Enum values are matched in any letter case" {

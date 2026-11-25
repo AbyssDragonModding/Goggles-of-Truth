@@ -15,6 +15,7 @@ pub const Key = enum {
     open_door,
     open_zora,
     open_dmt,
+    starting_age,
     rainbow_bridge,
     bridge_medallions,
     bridge_tokens,
@@ -51,11 +52,12 @@ pub const Key = enum {
     key_ring_gtg,
     key_ring_ganon,
     boss_keys,
+    barren_dungeons,
     hint_distribution,
     gossip_stones,
     skip_cutscenes,
     skip_story_scenes,
-    skip_area_intros,
+    skip_npc_dialogs,
     skip_kaepora,
     skip_opening,
     skip_deku_talk,
@@ -171,6 +173,27 @@ pub const specs = [_]Spec{
             \\to show Zelda's Letter to the soldier. The Happy Mask Shop opens too, and the soldier's mask trade
             \\is ready. Zelda's Letter has no use then, so it isn't in the seed: a Red Rupee takes its place in
             \\the item pool, and Zelda gives a random item, also when quest rewards aren't shuffled.
+        ,
+    },
+    .{
+        .key = .starting_age,
+        .tab = "World",
+        .group = "Starting Age",
+        .label = "Starting Age (0.8.0 feature)",
+        .kind = .choice,
+        .options = &.{
+            .{ .value = "child", .label = "Child" },
+            .{ .value = "adult", .label = "Adult" },
+            .{ .value = "random", .label = "Random" },
+        },
+        .default = .{ .choice = "child" },
+        .tip =
+            \\Child: a new game starts as child Link outside the Kokiri Shop, as always.
+            \\Adult: a new game starts as adult Link on the pedestal platform in the Temple of Time, with the
+            \\Master Sword, as if he had just pulled it. Rauru's check (the Light Medallion spot) is given at
+            \\once, the Door of Time is open, and the Kokiri boy at the forest exit is gone, so child Link can
+            \\get back into the forest. Put the Master Sword back to become a child.
+            \\Random: child or adult, chosen by the seed (the spoiler log says which).
         ,
     },
     .{
@@ -743,6 +766,34 @@ pub const specs = [_]Spec{
         ,
     },
     .{
+        .key = .barren_dungeons,
+        .tab = "Dungeon Items",
+        .group = "Barren Dungeons",
+        .label = "Barren Dungeons (0.8.0 feature)",
+        .kind = .choice,
+        .options = &.{
+            .{ .value = "off", .label = "Off" },
+            .{ .value = "1", .label = "1" },
+            .{ .value = "2", .label = "2" },
+            .{ .value = "3", .label = "3" },
+            .{ .value = "4", .label = "4" },
+            .{ .value = "5", .label = "5" },
+            .{ .value = "random", .label = "Random (1 to 5)" },
+        },
+        .default = .{ .choice = "off" },
+        .tip =
+            \\This many dungeons, chosen by the seed, are barren: nothing in them is needed to finish the game.
+            \\Their shuffled checks hold no key items, songs or boss rewards, and when keys are shuffled out
+            \\of their dungeons (key rings, boss keys anywhere), no keys either. A barren dungeon's own keys
+            \\stay in it when keys stay in their own dungeons. A spot that can only hold a song or a boss reward
+            \\keeps it.
+            \\Dungeons that can be barren: the Deku Tree, Dodongo's Cavern, Jabu-Jabu's Belly, the Forest, Fire,
+            \\Water, Shadow and Spirit Temples, the Bottom of the Well, the Ice Cavern and the Gerudo Training
+            \\Ground (never Ganon's Castle).
+            \\The altar in the Temple of Time names the barren dungeons.
+        ,
+    },
+    .{
         .key = .hint_distribution,
         .tab = "Hints",
         .group = "Gossip Stones",
@@ -799,10 +850,12 @@ pub const specs = [_]Spec{
         .key = .skip_story_scenes,
         .tab = "Quality of Life",
         .group = "Cutscenes",
-        .label = "Skip Cutscenes (experimental, needs additional testing)",
+        .label = "Skip Cutscenes (0.8.0 feature)",
         .kind = .boolean,
         .default = .{ .boolean = false },
         .tip =
+            \\Since 0.8.0 this also skips the area intros (it was a setting of its own before).
+            \\
             \\The cutscenes that come with quest progress don't play; you get their item straight away:
             \\- Temple of Time: the door opening, Ganondorf, pulling the Master Sword, and Rauru's talk in the
             \\  Chamber of Sages (his Light Medallion check is given at once);
@@ -820,25 +873,30 @@ pub const specs = [_]Spec{
             \\Tested in-game so far: Rauru's Light Medallion after the Master Sword, the Great Deku Tree after
             \\Gohma (his check is given) and Saria's Fairy Ocarina on the bridge. Known to still play: leaving
             \\the Temple of Time as adult.
-        ,
-    },
-    .{
-        .key = .skip_area_intros,
-        .tab = "Quality of Life",
-        .group = "Cutscenes",
-        .label = "Skip Area Intro Cutscenes (needs further testing)",
-        .kind = .boolean,
-        .default = .{ .boolean = false },
-        .tip =
-            \\First-arrival camera pans don't play: Kakariko, Graveyard, Hyrule Castle, Lake Hylia, Gerudo
-            \\Valley/Fortress, Zora's River/Fountain, Ganon's Castle, and the Fire Temple / Bottom of the Well /
-            \\Spirit Temple entrances (tested). Those areas count as visited, so their maps work without the
-            \\intro's area-name banner, and Kaepora still waits at Lake Hylia for his ride.
+            \\
+            \\Area intros: first-arrival camera pans don't play: Kakariko, Graveyard, Hyrule Castle, Lake Hylia,
+            \\Gerudo Valley/Fortress, Zora's River/Fountain, Ganon's Castle, and the Fire Temple / Bottom of the
+            \\Well / Spirit Temple entrances (tested). Those areas count as visited, so their maps work without
+            \\the intro's area-name banner, and Kaepora still waits at Lake Hylia for his ride.
             \\Also skipped, keeping the quest step they start (not yet tested): inside the Deku Tree, Dodongo's
             \\Cavern, Death Mountain Trail from Kakariko, Goron City, Death Mountain Crater, Zora's Domain,
             \\Lon Lon Ranch, Castle Town, Sacred Forest Meadow, Desert Colossus, Ice Cavern, Shadow Temple,
             \\Gerudo Training Ground, the Water Temple, inside Ganon's Castle and the Temple of Time
             \\(first entry, and first step out as adult).
+        ,
+    },
+    .{
+        .key = .skip_npc_dialogs,
+        .tab = "Quality of Life",
+        .group = "Cutscenes",
+        .label = "Skip NPC Dialogs (0.8.0 feature)",
+        .kind = .boolean,
+        .default = .{ .boolean = false },
+        .tip =
+            \\Characters' story talks that only tell the story don't play again and again: once a quest has moved
+            \\on, they skip to their short line (Saria after the Deku Tree, for example). Talks that give an item,
+            \\teach a song or move a quest on still play.
+            \\A temporary setting while it is being tested; it will become part of Skip Cutscenes.
         ,
     },
     .{
@@ -1048,6 +1106,7 @@ pub const presets = [_]Preset{
             .{ .key = .open_door, .value = .{ .choice = "open" } },
             .{ .key = .open_zora, .value = .{ .choice = "open" } },
             .{ .key = .open_dmt, .value = .{ .boolean = true } },
+            .{ .key = .starting_age, .value = .{ .choice = "child" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "vanilla" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 6 } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
@@ -1084,11 +1143,12 @@ pub const presets = [_]Preset{
             .{ .key = .key_ring_gtg, .value = .{ .boolean = true } },
             .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "strong" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "no_mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
             .{ .key = .skip_story_scenes, .value = .{ .boolean = false } },
-            .{ .key = .skip_area_intros, .value = .{ .boolean = false } },
+            .{ .key = .skip_npc_dialogs, .value = .{ .boolean = false } },
             .{ .key = .skip_kaepora, .value = .{ .boolean = true } },
             .{ .key = .skip_opening, .value = .{ .boolean = true } },
             .{ .key = .skip_deku_talk, .value = .{ .boolean = true } },
@@ -1117,6 +1177,7 @@ pub const presets = [_]Preset{
             .{ .key = .open_door, .value = .{ .choice = "open" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
             .{ .key = .open_dmt, .value = .{ .boolean = false } },
+            .{ .key = .starting_age, .value = .{ .choice = "child" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "vanilla" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 6 } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
@@ -1153,11 +1214,12 @@ pub const presets = [_]Preset{
             .{ .key = .key_ring_gtg, .value = .{ .boolean = true } },
             .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
             .{ .key = .skip_story_scenes, .value = .{ .boolean = false } },
-            .{ .key = .skip_area_intros, .value = .{ .boolean = false } },
+            .{ .key = .skip_npc_dialogs, .value = .{ .boolean = false } },
             .{ .key = .skip_kaepora, .value = .{ .boolean = true } },
             .{ .key = .skip_opening, .value = .{ .boolean = true } },
             .{ .key = .skip_deku_talk, .value = .{ .boolean = true } },
@@ -1188,6 +1250,7 @@ pub const presets = [_]Preset{
             .{ .key = .open_door, .value = .{ .choice = "closed" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
             .{ .key = .open_dmt, .value = .{ .boolean = false } },
+            .{ .key = .starting_age, .value = .{ .choice = "child" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "medallions" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 6 } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
@@ -1224,11 +1287,12 @@ pub const presets = [_]Preset{
             .{ .key = .key_ring_gtg, .value = .{ .boolean = true } },
             .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
             .{ .key = .skip_story_scenes, .value = .{ .boolean = false } },
-            .{ .key = .skip_area_intros, .value = .{ .boolean = false } },
+            .{ .key = .skip_npc_dialogs, .value = .{ .boolean = false } },
             .{ .key = .skip_kaepora, .value = .{ .boolean = true } },
             .{ .key = .skip_opening, .value = .{ .boolean = true } },
             .{ .key = .skip_deku_talk, .value = .{ .boolean = true } },
@@ -1259,6 +1323,7 @@ pub const presets = [_]Preset{
             .{ .key = .open_door, .value = .{ .choice = "open" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
             .{ .key = .open_dmt, .value = .{ .boolean = false } },
+            .{ .key = .starting_age, .value = .{ .choice = "child" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "medallions" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 4 } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
@@ -1295,11 +1360,12 @@ pub const presets = [_]Preset{
             .{ .key = .key_ring_gtg, .value = .{ .boolean = true } },
             .{ .key = .key_ring_ganon, .value = .{ .boolean = true } },
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
+            .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "strong" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "no_mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
             .{ .key = .skip_story_scenes, .value = .{ .boolean = false } },
-            .{ .key = .skip_area_intros, .value = .{ .boolean = false } },
+            .{ .key = .skip_npc_dialogs, .value = .{ .boolean = false } },
             .{ .key = .skip_kaepora, .value = .{ .boolean = true } },
             .{ .key = .skip_opening, .value = .{ .boolean = true } },
             .{ .key = .skip_deku_talk, .value = .{ .boolean = true } },

@@ -47,6 +47,7 @@ badge the window shows next to each option:
 | 🟢 **Stable** | green | Confirmed in-game |
 | 🟡 **Semi-tested** | yellow (*In Testing*) | Partly confirmed: some of it was seen working, the rest still needs a check |
 | 🔴 **Not tested** | red (*Experimental*) | Built and checked on the files, but not yet confirmed in-game |
+| 🟣 **0.8.0 feature** | purple (*0.8.0 Feature*) | New in 0.8.0 and still being tested |
 
 When only some choices of an option have a different status, they're named in the table.
 
@@ -66,6 +67,7 @@ When only some choices of an option have a different status, they're named in th
 | The Temple of Time altar shows the bridge requirement and your progress | always on | 🟢 Stable |
 | Skip Child Zelda (her, Malon's and Impa's checks can hold any item) | Off, On | 🟢 Stable |
 | Skip Epona Race (Epona comes with just Epona's Song: no race, no child Malon check first) | On | 🟢 Stable |
+| Starting Age (Adult starts on the Temple of Time platform with the Master Sword) | Child, Adult, Random | 🟣 0.8.0 feature |
 
 ### Items
 
@@ -105,6 +107,7 @@ When only some choices of an option have a different status, they're named in th
 | | Own Dungeon (can fail to place items with some settings) | 🔴 Not tested |
 | | Removed (the five temples start with their boss key) | 🔴 Not tested |
 | | Any Dungeon, Anywhere (each temple's boss key becomes an item of its own) | 🔴 Not tested |
+| Barren Dungeons (no key items in them; the Temple of Time altar names them) | Off, 1–5, Random | 🟣 0.8.0 feature |
 
 ### Hints
 
@@ -123,8 +126,8 @@ When only some choices of an option have a different status, they're named in th
 | Skip the Great Deku Tree's Talk | Off, On | 🟢 Stable |
 | Skip Kaepora Gaebora | Off, On | 🟢 Stable |
 | Chests Without Cutscene (big chests) | Off, On | 🟢 Stable |
-| Skip Area Intro Cutscenes | On | 🟡 Semi-tested |
-| Skip Cutscenes (was Skip Story Scenes) | On | 🟡 Semi-tested (a few scenes confirmed, most not yet; the Royal Family's Tomb added in 0.7.4) |
+| Skip Cutscenes (was Skip Story Scenes; takes in Skip Area Intro Cutscenes since 0.8.0) | On | 🟣 0.8.0 feature (a few scenes and most area intros confirmed; the Royal Family's Tomb added in 0.7.4) |
+| Skip NPC Dialogs (story talks that only talk; will join Skip Cutscenes) | Off, On | 🟣 0.8.0 feature |
 | Bag Bombs without Goron Bracelet | Off, On | 🟢 Stable |
 | Bag Bombs Open Dodongo's Cavern (no cutscene) | Off, On | 🟡 Semi-tested |
 | Gold Skulltulas Day and Night, Any Age | Off, On | 🟢 Stable |

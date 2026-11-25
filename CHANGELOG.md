@@ -28,8 +28,20 @@ with the version that made them, and your saves are safe. Make a new seed to get
   `test_plans/TEMPLATE.test.toml` explains everything, and a second command lists every area, spot, quest, cutscene,
   location and item name you can use. Tested starting as an adult in Kakariko and the Forest Temple and as a child
   by the Deku Tree; starting an event on arrival is not tested yet.
+- **Starting Age**: Child, Adult or Random. As an adult you start on the platform in the Temple of Time with the
+  Master Sword, Rauru's item is already yours, and the Door of Time is open. Put the sword back to become a child.
+  Random picks one for the seed, and the spoiler log says which. Not tested in-game yet.
+- **Barren Dungeons**: 1 to 5 dungeons, or a random number, hold nothing you need to finish the game (no key items,
+  songs or boss rewards, and no keys when keys are shuffled out of their dungeons). The altar in the Temple of Time
+  tells you which ones on its second page. Not tested in-game yet.
+- **Skip NPC Dialogs**: characters skip their long story talks and go straight to their short line, for example
+  Saria after the Deku Tree. Talks that give an item or move a quest on still play. A setting of its own while it's
+  being tested; it will become part of Skip Cutscenes. Not tested in-game yet.
+- Settings new in 0.8.0 carry a purple **0.8.0 Feature** badge in the window while they're being tested.
 
 ### Changed
+- **Skip Area Intro Cutscenes is now part of Skip Cutscenes.** Turning on Skip Cutscenes also skips the area intros.
+  Old settings still work: if you had the area intros skipped, Skip Cutscenes is turned on for you.
 - **The Skulltula House wallets** can now also be given by characters, minigames and scrubs, not only chests.
 - **The strongest upgrades are no longer held back** to places that need the weaker one first: any copy can be
   anywhere it's allowed.

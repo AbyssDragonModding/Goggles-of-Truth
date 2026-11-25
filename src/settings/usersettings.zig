@@ -106,9 +106,15 @@ fn validate(allocator: Allocator, entries: []const toml.Entry, warnings: *std.Ar
 /// [settings] table changes a few settings this way on top of the user's own or a preset's.
 pub fn applyOverrides(allocator: Allocator, base: Settings, entries: []const toml.Entry, warnings: *std.ArrayList([]const u8), prefix: []const u8) error{OutOfMemory}!Settings {
     var st = base;
+    var merged_on: std.ArrayList(settings_mod.Key) = .empty;
     for (entries) |e| {
         const name = settings_mod.currentName(e.key);
         if (settings_mod.isRetired(name)) continue; // now part of every seed, or removed
+        if (settings_mod.mergedInto(name)) |target| {
+            // e.g. Skip Area Intro Cutscenes = true: Skip Cutscenes, which has the area intros since 0.8.0
+            if (e.value == .bool and e.value.bool) try merged_on.append(allocator, target);
+            continue;
+        }
         const key = settings_mod.keyByName(name) orelse {
             try warnings.append(allocator, try std.fmt.allocPrint(allocator, "{s}unknown setting '{s}' ignored (removed in this version, or misspelled)", .{ prefix, e.key }));
             continue;
@@ -121,6 +127,7 @@ pub fn applyOverrides(allocator: Allocator, base: Settings, entries: []const tom
         };
         st.set(key, value);
     }
+    settings_mod.applyMerged(&st, merged_on.items);
     return st;
 }
 
@@ -315,4 +322,21 @@ pub fn save(allocator: Allocator, env: *const Env, st: *const Settings, paths: P
     const file = try path(a, env);
     env.fs.writeAtomic(a, file, text) catch |err| return try std.fmt.allocPrint(allocator, "{s}", .{@errorName(err)});
     return null;
+}
+
+test "Skip Area Intro Cutscenes from an older file turns on Skip Cutscenes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var warnings: std.ArrayList([]const u8) = .empty;
+    // the window wrote every setting, so the old file has Skip Cutscenes off too, before or after it
+    const entries = [_]toml.Entry{
+        .{ .key = "skip_area_intros", .value = .{ .bool = true } },
+        .{ .key = "skip_story_scenes", .value = .{ .bool = false } },
+    };
+    const st = try applyOverrides(a, Settings.defaults(), &entries, &warnings, "");
+    try std.testing.expect(st.flag(.skip_story_scenes));
+    try std.testing.expectEqual(@as(usize, 0), warnings.items.len);
+    const off = [_]toml.Entry{.{ .key = "skip_area_intros", .value = .{ .bool = false } }};
+    try std.testing.expect(!(try applyOverrides(a, Settings.defaults(), &off, &warnings, "")).flag(.skip_story_scenes));
 }

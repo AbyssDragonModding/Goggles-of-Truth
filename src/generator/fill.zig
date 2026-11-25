@@ -51,6 +51,15 @@ pub const rewards = [_][]const u8{
 
 /// Skip Child Zelda: the checks whose items a new save already owns (gamedata.grantItem)
 pub const start_locations = [_][]const u8{ "event:HC Zeldas Letter", "event:HC Malon Egg", "event:Song from Impa" };
+/// Starting Age: Adult hands this check over at the start (the Master Sword is never pulled, so Rauru never talks)
+pub const rauru_location = "Rauru (Light Medallion)";
+/// Barren Dungeons: the dungeons that can be barren (Ganon's Castle never is: the game ends there)
+pub const barren_candidates = [_][]const u8{
+    "InsideTheDekuTree", "DodongoCavern",  "InsideJabuJabuBelly", "ForestTemple",         "FireTemple", "WaterTemple",
+    "ShadowTemple",      "SpiritTemple",   "BottomOfTheWell",     "GerudoTrainingGround", "IceCavern",
+};
+/// Barren Dungeons: Random picks 1 to this many
+const barren_random_max = 5;
 /// Open Death Mountain takes Zelda's Letter out of the seed: a Red Rupee takes its place in the pool, and Zelda's
 /// check is shuffled (it gets a random item) even with quest rewards off
 pub const open_dmt_letter_junk = "Rupee_Red";
@@ -216,6 +225,10 @@ pub const Plan = struct {
     excluded: []bool,
     user_excluded: []bool,
     start_locs: []bool,
+    /// Barren Dungeons: shuffled spots in a barren dungeon that get no key item, reward or key (barrenRefuses)
+    barren: []bool,
+    /// the barren dungeons' folders, sorted (for the altar text and the spoiler log)
+    barren_dungeons: []const []const u8 = &.{},
     pool: std.ArrayList(ItemId),
     /// excluded spots that could only hold a song or a boss reward (their exclusion is ignored)
     exclusion_ignored: std.ArrayList([]const u8),
@@ -249,6 +262,7 @@ pub const Plan = struct {
             .excluded = try boolArray(allocator, n),
             .user_excluded = try boolArray(allocator, n),
             .start_locs = try boolArray(allocator, n),
+            .barren = try boolArray(allocator, n),
             .pool = .empty,
             .exclusion_ignored = .empty,
             .grantable_cache = std.AutoHashMap(ItemId, bool).init(allocator),
@@ -256,6 +270,7 @@ pub const Plan = struct {
             .gs_refuses_cache = std.AutoHashMap(ItemId, bool).init(allocator),
         };
         self.chooseKeyItems();
+        self.chooseStartingAge();
         for (world.locations.items, 0..) |*loc, i| self.rules[i] = locationRuleFor(loc, &world.items);
         try self.chooseShopSlots();
         try self.chooseScrubPrices();
@@ -295,6 +310,13 @@ pub const Plan = struct {
                 if (inList(loc.id, &start_locations)) self.start_locs[i] = true;
             }
         }
+        if (self.options.start_adult) {
+            // an adult start never pulls the Master Sword, so Rauru never talks: his check is handed over at the
+            // start like Skip Child Zelda's
+            for (world.locations.items, 0..) |loc, i| {
+                if (std.mem.eql(u8, loc.name, rauru_location)) self.start_locs[i] = true;
+            }
+        }
         for (self.shuffled.items) |i| try self.pool.append(allocator, world.locations.items[i].vanilla);
         try self.adjustPool();
 
@@ -324,7 +346,70 @@ pub const Plan = struct {
             }
         }
         @memcpy(self.user_excluded, self.excluded);
+        try self.chooseBarrenDungeons();
         return self;
+    }
+
+    /// Starting Age: Random is drawn from the seed with a stream of its own, so it never changes other choices.
+    fn chooseStartingAge(self: *Self) void {
+        const mode = self.st.choice(.starting_age);
+        if (std.mem.eql(u8, mode, "adult")) {
+            self.options.start_adult = true;
+        } else if (std.mem.eql(u8, mode, "random")) {
+            var key_buf: [1024]u8 = undefined;
+            var rng = Rng.fromText(std.fmt.bufPrint(&key_buf, "starting_age|{s}", .{self.seed_key}) catch self.seed_key);
+            self.options.start_adult = rng.below(2) == 1;
+        }
+    }
+
+    /// Barren Dungeons: which dungeons are barren (their own random stream), and which of their shuffled spots
+    /// that marks (barren). A spot that can't take any junk item (a song spot with Song Locations, a boss reward
+    /// spot with rewards at the reward spots) is left alone, as exclusions leave it.
+    fn chooseBarrenDungeons(self: *Self) FillError!void {
+        const mode = self.st.choice(.barren_dungeons);
+        if (std.mem.eql(u8, mode, "off")) return;
+        const allocator = self.allocator;
+        var key_buf: [1024]u8 = undefined;
+        var rng = Rng.fromText(std.fmt.bufPrint(&key_buf, "barren_dungeons|{s}", .{self.seed_key}) catch self.seed_key);
+        const count: usize = if (std.mem.eql(u8, mode, "random"))
+            1 + rng.below(barren_random_max)
+        else
+            std.fmt.parseInt(usize, mode, 10) catch 0; // the table's other options are digits; anything else: none
+
+        // the candidates in a fixed order, shuffled, the first `count` taken
+        var candidates: [barren_candidates.len][]const u8 = barren_candidates;
+        var k: usize = candidates.len;
+        while (k > 1) {
+            k -= 1;
+            const j = rng.below(k + 1);
+            std.mem.swap([]const u8, &candidates[k], &candidates[j]);
+        }
+        const chosen = allocator.dupe([]const u8, candidates[0..@min(count, candidates.len)]) catch return error.OutOfMemory;
+        std.mem.sort([]const u8, chosen, {}, lessString);
+        self.barren_dungeons = chosen;
+
+        var junk_items: std.ArrayList(ItemId) = .empty;
+        for (self.pool.items) |item| {
+            if (self.barrenRefuses(item)) continue;
+            if (std.mem.indexOfScalar(ItemId, junk_items.items, item) == null) try junk_items.append(allocator, item);
+        }
+        for (self.shuffled.items) |i| {
+            const dungeon = self.world.locations.items[i].dungeon orelse continue;
+            if (!inList(dungeon, chosen)) continue;
+            for (junk_items.items) |j| {
+                if (try self.allowed(i, j)) {
+                    self.barren[i] = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    /// An item a barren dungeon's spot can't hold: a key item (anything the logic needs), a boss reward, or a key
+    /// that leaves its dungeon (key rings and boss key items; a dungeon's own small keys and boss key stay allowed).
+    fn barrenRefuses(self: *const Self, item: ItemId) bool {
+        const name = self.itemName(item);
+        return logic.isProgression(item) or isReward(name) or logic.keyItemOf(name) != null;
     }
 
     /// Test seeds (`goggles_cli generate --place`): each chosen location keeps the chosen item and leaves the
@@ -796,6 +881,7 @@ pub const Plan = struct {
         const dtype = dungeonItemType(name);
         // excluded: never progression, keys or boss rewards (maps and compasses only show the map, so they may)
         if (self.excluded[i] and (logic.isProgression(item) or isReward(name) or dtype == .small_keys or dtype == .boss_keys)) return false;
+        if (self.barren[i] and self.barrenRefuses(item)) return false;
         const own_dungeon = std.mem.indexOfScalar(u8, name, '@');
         // Skip Child Zelda's start checks take any item except own-dungeon items: one a save default can hold is set
         // in the new save, any other is handed over when the game starts (faststart.giveAtStart)

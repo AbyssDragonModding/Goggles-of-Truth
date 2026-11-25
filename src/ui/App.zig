@@ -128,7 +128,7 @@ gen_btn: r.Widget,
 /// per setting: its control (null for the excluded-locations list)
 controls: [settings.key_count]?r.Widget = @splat(null),
 badges: [settings.key_count]?struct { border: r.Border, label: r.Label } = @splat(null),
-badge_styles: [3]layout.BadgeStyle,
+badge_styles: [layout.status_count]layout.BadgeStyle,
 
 st: Settings,
 /// the presets the player saved (custom_presets.toml); the drop-down lists them after the built-in ones

@@ -1,0 +1,8 @@
+# 0.8.0: Starting Age: Adult with three Barren Dungeons. A new game should start as adult Link on the platform in
+# the Temple of Time with the Master Sword. Read the altar (second page names the barren dungeons), put the sword
+# back and walk out as child (Kokiri Forest should be open to him), then pull it again.
+name = "FEAT_ADULT1"
+
+[settings]
+starting_age = "adult"
+barren_dungeons = "3"

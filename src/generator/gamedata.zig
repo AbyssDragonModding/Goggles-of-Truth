@@ -772,7 +772,7 @@ pub fn plannedChanges(allocator: Allocator, st: *const Settings, ocarina_bridge_
     if (st.flag(.open_dmt)) try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = dmt_gate_open });
     // a new save owns Epona (the horse list the race fills); Epona's Song calls her
     if (st.flag(.skip_epona_race)) try addChange(&out, allocator, .{ .kind = .string_array, .flag = epona_owned_list, .text = epona_actor });
-    if (st.flag(.skip_area_intros)) {
+    if (st.flag(.skip_story_scenes)) {
         for (area_intros) |ev| try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = try played(allocator, ev) });
         // the Lake Hylia intros are what put Kaepora on the lake for his optional ride
         try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = "Npc_Kaepora_LakeHrl_Appeared_FromValley" });

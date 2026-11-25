@@ -171,6 +171,10 @@ pub const Options = struct {
     bridge_medallions: i64 = 6,
     bridge_tokens: i64 = 100,
     skip_epona_race: bool = false,
+    /// Starting Age: Adult (or Random that chose adult; the Plan sets it). Adult Link is there from the start, and
+    /// child Link is one trip to the Temple of Time away: putting the Master Sword back, he walks out of the
+    /// Temple of Time into Castle Town (and the Kokiri boy at the forest exit is gone, gamedata.zig).
+    start_adult: bool = false,
     /// per key_dungeons entry: the dungeon's small keys are its key ring (the Plan sets these: Random Dungeons
     /// depends on the seed)
     key_ring: [key_dungeons.len]bool = @splat(false),
@@ -429,8 +433,10 @@ fn evalDerived(s: *State, d: Derived) bool {
         // the shield is bought in the forest shop
         .deku_done => s.has(.Sword_Kokiri) and s.has(.Range_SlingShot),
         // the exit blocker stays until Gohma
-        .child_out => o.open_forest != .closed or s.is(.deku_done),
+        .child_out => o.open_forest != .closed or o.start_adult or s.is(.deku_done),
         .adult => blk: {
+            // Starting Age: Adult
+            if (o.start_adult) break :blk true;
             // Door of Time starts open
             if (o.open_door) break :blk s.is(.hf_child);
             // The altar reacts to the Song of Time once the moat scene is done; nothing checks which ocarina plays
