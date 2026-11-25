@@ -60,6 +60,27 @@ pub const barren_candidates = [_][]const u8{
 };
 /// Barren Dungeons: Random picks 1 to this many
 const barren_random_max = 5;
+/// Barren Dungeons: each dungeon's boss reward spot (an event location, so it has no dungeon of its own)
+const boss_reward_spots = [_]struct { location: []const u8, dungeon: []const u8 }{
+    .{ .location = "Queen Gohma (Kokiri Emerald)", .dungeon = "InsideTheDekuTree" },
+    .{ .location = "King Dodongo (Goron Ruby)", .dungeon = "DodongoCavern" },
+    .{ .location = "Barinade (Zora Sapphire)", .dungeon = "InsideJabuJabuBelly" },
+    .{ .location = "Phantom Ganon (Forest Medallion)", .dungeon = "ForestTemple" },
+    .{ .location = "Volvagia (Fire Medallion)", .dungeon = "FireTemple" },
+    .{ .location = "Morpha (Water Medallion)", .dungeon = "WaterTemple" },
+    .{ .location = "Bongo Bongo (Shadow Medallion)", .dungeon = "ShadowTemple" },
+    .{ .location = "Twinrova (Spirit Medallion)", .dungeon = "SpiritTemple" },
+};
+/// Barren Dungeons: other event locations inside a dungeon (they have no dungeon of their own either); they follow
+/// the barren rule like the dungeon's chests (test seed BR_reward_1 had a medallion on Sheik in a barren Ice Cavern)
+const dungeon_event_spots = [_]struct { location: []const u8, dungeon: []const u8 }{
+    .{ .location = "Sheik in Ice Cavern", .dungeon = "IceCavern" },
+};
+
+fn eventSpotDungeon(name: []const u8) ?[]const u8 {
+    for (dungeon_event_spots) |spot| if (std.mem.eql(u8, spot.location, name)) return spot.dungeon;
+    return null;
+}
 /// Open Death Mountain takes Zelda's Letter out of the seed: a Red Rupee takes its place in the pool, and Zelda's
 /// check is shuffled (it gets a random item) even with quest rewards off
 pub const open_dmt_letter_junk = "Rupee_Red";
@@ -229,6 +250,9 @@ pub const Plan = struct {
     barren: []bool,
     /// the barren dungeons' folders, sorted (for the altar text and the spoiler log)
     barren_dungeons: []const []const u8 = &.{},
+    /// Barren Dungeons with rewards kept at the reward spots (Vanilla, Dungeon Reward Locations): the barren
+    /// dungeons' own rewards, which leave the reward spots and may go anywhere outside the barren dungeons
+    displaced_rewards: []const ItemId = &.{},
     pool: std.ArrayList(ItemId),
     /// excluded spots that could only hold a song or a boss reward (their exclusion is ignored)
     exclusion_ignored: std.ArrayList([]const u8),
@@ -388,13 +412,37 @@ pub const Plan = struct {
         std.mem.sort([]const u8, chosen, {}, lessString);
         self.barren_dungeons = chosen;
 
+        // the boss reward of a barren dungeon goes elsewhere in the seed (asked for in testing): its boss spot holds
+        // junk. With rewards anywhere that is the barren rule alone. With rewards at the reward spots, the dungeon's
+        // own reward leaves them and may go anywhere outside the barren dungeons, so the other rewards still fill the
+        // remaining reward spots one for one. With vanilla rewards the boss spot is shuffled in for it.
+        const anywhere = self.st.is(.shuffle_rewards, "anywhere");
+        var displaced: std.ArrayList(ItemId) = .empty;
+        for (self.world.locations.items, 0..) |*loc, i| {
+            const dungeon = for (boss_reward_spots) |spot| {
+                if (std.mem.eql(u8, spot.location, loc.name)) break spot.dungeon;
+            } else continue;
+            if (!inList(dungeon, chosen)) continue;
+            if (!self.is_shuffled[i]) {
+                // Vanilla rewards: the spot and its reward join the shuffle
+                try self.shuffled.append(allocator, i);
+                self.is_shuffled[i] = true;
+                self.fixed[i] = null;
+                try self.pool.append(allocator, loc.vanilla);
+            }
+            self.barren[i] = true;
+            if (!anywhere) try displaced.append(allocator, loc.vanilla);
+        }
+        self.displaced_rewards = displaced.items;
+
         var junk_items: std.ArrayList(ItemId) = .empty;
         for (self.pool.items) |item| {
             if (self.barrenRefuses(item)) continue;
             if (std.mem.indexOfScalar(ItemId, junk_items.items, item) == null) try junk_items.append(allocator, item);
         }
         for (self.shuffled.items) |i| {
-            const dungeon = self.world.locations.items[i].dungeon orelse continue;
+            const loc = &self.world.locations.items[i];
+            const dungeon = loc.dungeon orelse eventSpotDungeon(loc.name) orelse continue;
             if (!inList(dungeon, chosen)) continue;
             for (junk_items.items) |j| {
                 if (try self.allowed(i, j)) {
@@ -901,10 +949,13 @@ pub const Plan = struct {
             if (std.mem.eql(u8, mode, "overworld") and loc.dungeon != null) return false;
         }
         if (loc.kind == .gs and try self.gsRefuses(item)) return false;
-        const is_reward_loc = loc.category == .reward;
+        // a barren dungeon's boss spot takes junk like any other spot, and its displaced reward goes to an ordinary
+        // spot (chooseBarrenDungeons)
+        const is_reward_loc = loc.category == .reward and !self.barren[i];
         const is_song_loc = loc.category == .song;
         if (!st.is(.shuffle_rewards, "anywhere")) {
-            if (isReward(name)) return is_reward_loc;
+            const displaced = std.mem.indexOfScalar(ItemId, self.displaced_rewards, item) != null;
+            if (isReward(name) and !displaced) return is_reward_loc;
             if (is_reward_loc) return false;
         }
         if (isSong(name)) {

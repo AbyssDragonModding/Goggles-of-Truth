@@ -620,9 +620,14 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         opening_start.quest_steps = &teststart.adult_start_quests;
         opening_start.flags = &teststart.adult_start_flags;
         opening_start.equip = &teststart.adult_start_equip;
+        opening_start.arrival = teststart.adult_start_arrival;
     }
     if (inputs.test_start) |test_start| {
-        if (test_start.warp) |w| opening_start.warp = w;
+        if (test_start.warp) |w| {
+            // a test plan's own spawn: the normal opening, with the change at its end
+            opening_start.warp = w;
+            opening_start.arrival = null;
+        }
         opening_start.time_hour = test_start.time_hour;
     }
     if (!opening_start.isEmpty()) {
@@ -633,7 +638,14 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "New game start: {s} is not as expected ({s})", .{ teststart.opening_flow, progress.failureMessage() }),
             else => return err,
         };
-        try patches.emitZs(teststart.opening_flow, orig, new);
+        try patches.emitZs(teststart.opening_flow, orig, new.data);
+        if (new.arrival_added) {
+            // the start items' windows come after the sword pull, in an entry of the opening's own
+            teststart.addArrivalRows(s, world, &patches, opening_start.arrival.?, progress) catch |err| switch (err) {
+                error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: the event tables are not as expected ({s}); start as child", .{progress.failureMessage()}),
+                else => return err,
+            };
+        }
         if (start_adult) progress.log("Starting Age: Adult (a new game starts in the Temple of Time with the Master Sword)", .{});
     }
 
