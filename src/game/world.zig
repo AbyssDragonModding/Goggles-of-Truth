@@ -182,6 +182,9 @@ pub const StageRef = struct {
 pub const EventRef = struct {
     rel: []const u8,
     offset: usize,
+    /// the item is handed over by a call of the game's hand-over flows (a sub-flow: GetInEvent, GetPouchContent...),
+    /// which creates the named actor in Link's hands; false for a silent add (AddOrRemovePouchContent)
+    held_up: bool = false,
 };
 
 /// A Business Scrub's Price parameter.
@@ -521,6 +524,13 @@ pub const World = struct {
 
     /// Items whose Item_ actor is equipment Link wears; a chest shows their Pouch_ actor instead (actorFor).
     const equipment_shown_by_pouch_actor = [_][]const u8{ "Ocarina_Fairy", "Ocarina_Time" };
+
+    /// The item key's base ("Ocarina_Time") when its Item_ actor is equipment Link wears, which can't be held up
+    /// (equipment_shown_by_pouch_actor); null for every other item.
+    pub fn wornEquipmentBase(key: []const u8) ?[]const u8 {
+        const base = if (std.mem.indexOfScalar(u8, key, '@')) |i| key[0..i] else key;
+        return if (isListed(&equipment_shown_by_pouch_actor, base)) base else null;
+    }
 
     fn isListed(list: []const []const u8, name: []const u8) bool {
         for (list) |entry| if (std.mem.eql(u8, entry, name)) return true;
@@ -880,15 +890,15 @@ pub const World = struct {
                             break;
                         };
                         for (found) |f| {
-                            refs.append(a, EventRef{ .rel = rel, .offset = f.item_offset }) catch return error.OutOfMemory;
+                            refs.append(a, EventRef{ .rel = rel, .offset = f.item_offset, .held_up = f.held_up }) catch return error.OutOfMemory;
                             if (f.price_offset) |po| {
                                 price_refs.append(a, PriceRef{ .rel = rel, .offset = po, .price = f.price }) catch return error.OutOfMemory;
                             }
                         }
                         continue;
                     }
-                    const offsets = try giftNodes(c, view, spec.vanilla, spec.via);
-                    for (offsets) |off| refs.append(a, EventRef{ .rel = rel, .offset = off }) catch return error.OutOfMemory;
+                    const nodes = try giftNodes(c, view, spec.vanilla, spec.via);
+                    for (nodes) |n| refs.append(a, EventRef{ .rel = rel, .offset = n.offset, .held_up = n.held_up }) catch return error.OutOfMemory;
                 }
             }
             if (refs.items.len == 0) {
@@ -915,6 +925,7 @@ pub const World = struct {
 
     const NamedFound = struct {
         item_offset: usize,
+        held_up: bool,
         price_offset: ?usize,
         price: i64,
     };
@@ -944,7 +955,7 @@ pub const World = struct {
                 }
             }
             if (hits != 1) return null;
-            var found = NamedFound{ .item_offset = found_key.?, .price_offset = null, .price = 0 };
+            var found = NamedFound{ .item_offset = found_key.?, .held_up = e.type == .sub_flow, .price_offset = null, .price = 0 };
             if (spec.price) |price| {
                 const actual = p.getInt("Price") orelse return null;
                 const off = p.intOffset("Price") orelse return null;
@@ -957,9 +968,11 @@ pub const World = struct {
         return out.items;
     }
 
+    const GiftNode = struct { offset: usize, held_up: bool };
+
     /// The item field offsets of every gift node handing over `item` (optionally only through sub-flow `via`).
-    fn giftNodes(allocator: Allocator, view: *const evfl_view.View, item: []const u8, via: ?[]const u8) WorldError![]usize {
-        var out: std.ArrayList(usize) = .empty;
+    fn giftNodes(allocator: Allocator, view: *const evfl_view.View, item: []const u8, via: ?[]const u8) WorldError![]GiftNode {
+        var out: std.ArrayList(GiftNode) = .empty;
         for (view.flowcharts) |fc| {
             for (fc.events) |*e| {
                 const p = e.params orelse continue;
@@ -984,7 +997,7 @@ pub const World = struct {
                             ok = true;
                         }
                     }
-                    if (ok) out.append(allocator, off) catch return error.OutOfMemory;
+                    if (ok) out.append(allocator, .{ .offset = off, .held_up = e.type == .sub_flow }) catch return error.OutOfMemory;
                 }
             }
         }

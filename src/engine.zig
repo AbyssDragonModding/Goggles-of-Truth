@@ -74,6 +74,7 @@ test {
     _ = usersettings;
     _ = custompresets;
     _ = logic;
+    _ = @import("generator/ocarina_handover.zig");
     _ = generator;
     _ = filecache;
     _ = compressor;

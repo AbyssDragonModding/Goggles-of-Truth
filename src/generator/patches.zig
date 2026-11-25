@@ -19,6 +19,7 @@ const storyskip = @import("storyskip.zig");
 const hints = @import("hints.zig");
 const npcrewards = @import("npcrewards.zig");
 const textpatches = @import("textpatches.zig");
+const ocarina_handover = @import("ocarina_handover.zig");
 const door = @import("door.zig");
 const pickups = @import("pickups.zig");
 const flows = @import("flows.zig");
@@ -66,7 +67,13 @@ const StageEdit = struct {
 
 const EventEdit = struct {
     offset: usize,
-    value: union(enum) { actor: []const u8, price: i64 },
+    value: union(enum) {
+        actor: []const u8,
+        /// an Ocarina handed over by a hand-over call: written as its held-up display actor (built by the pickup
+        /// builder, so resolved when the edits are applied), or `fallback` if that can't be built
+        held_up_ocarina: struct { item_base: []const u8, fallback: []const u8 },
+        price: i64,
+    },
 };
 
 fn lessString(_: void, x: []const u8, y: []const u8) bool {
@@ -89,6 +96,47 @@ fn sortedKeys(comptime V: type, allocator: Allocator, map: *const std.StringHash
 }
 
 /// An actor that must exist for an item (patching can't go on without it).
+/// The Ocarinas some chest holds, as their display actor (pickups.chestDisplayActor, already built for the chest) and
+/// the real Ocarina.
+fn ocarinasInChests(allocator: Allocator, world: *World, cloner: *pickups.PickupCloner, locs: []const world_mod.Location, placed: []const ?ItemId) PatchError![]const ocarina_handover.Ocarina {
+    var out: std.ArrayList(ocarina_handover.Ocarina) = .empty;
+    for (placed, 0..) |maybe, i| {
+        const item = maybe orelse continue;
+        if (locs[i].kind != .chest) continue;
+        const base = World.wornEquipmentBase(world.items.name(item)) orelse continue;
+        const display_actor = (try cloner.chestDisplayActor(base)) orelse continue;
+        const real_actor = (try world.actorFor(allocator, world.items.name(item), .event)) orelse continue;
+        var listed = false;
+        for (out.items) |o| if (std.mem.eql(u8, o.display_actor, display_actor)) {
+            listed = true;
+        };
+        if (!listed) out.append(allocator, .{ .display_actor = display_actor, .real_actor = real_actor }) catch return error.OutOfMemory;
+    }
+    return out.items;
+}
+
+/// Adds flow `rel` (now `data`) to `list` for storyskip.updateEventInfo, by its flow name ("Event/EventFlow/X.bfevfl.zs" -> X).
+fn rememberChangedFlow(allocator: Allocator, list: *std.ArrayList(storyskip.ChangedFlow), rel: []const u8, data: []const u8) PatchError!void {
+    const base = fsmod.basename(rel);
+    const name = if (std.mem.indexOfScalar(u8, base, '.')) |dot| base[0..dot] else base;
+    const doc = evfl.read(allocator, data) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidData => return error.NotAsExpected,
+    };
+    const flowchart = doc.flowchart orelse return error.NotAsExpected;
+    for (list.items) |*known| if (std.mem.eql(u8, known.name, name)) {
+        known.flowchart = flowchart;
+        return;
+    };
+    list.append(allocator, .{ .name = name, .flowchart = flowchart }) catch return error.OutOfMemory;
+}
+
+/// True when location `i` gets an item of the fill's choosing or a test placement: a shuffled location, or one a
+/// test placement took off the shuffled list (Plan.applyTestPlacements). Unshuffled vanilla locations are false.
+fn locationGetsPlacedItem(plan: *const fill.Plan, i: usize) bool {
+    return plan.is_shuffled[i] or plan.forced[i] != null;
+}
+
 fn requireActor(allocator: Allocator, world: *World, item: ItemId, context: World.Context, progress: *Progress) PatchError![]const u8 {
     return (try world.actorForId(allocator, item, context)) orelse
         progress.fail(error.NotAsExpected, "no actor for item {s} in {s} context", .{ world.items.name(item), @tagName(context) });
@@ -152,7 +200,18 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         for (loc.stage_refs) |r| try appendTo(StageEdit, &stage_edits, a, r.rel, .{ .hash = r.hash, .loc = i, .item = item });
         if (loc.event_refs.len > 0) {
             const actor = try requireActor(a, world, item, .event, progress);
-            for (loc.event_refs) |r| try appendTo(EventEdit, &event_edits, a, r.rel, .{ .offset = r.offset, .value = .{ .actor = actor } });
+            // Why: a hand-over call creates the named actor in Link's hands, and an Ocarina's Item_ actor is the
+            // equipment Link wears: the game crashed when a Business Scrub sold the Ocarina of Time (issue #5, seed
+            // LZ9S6JU9BS). The game's own scenes only ever add an Ocarina silently. Such a call gets the display actor
+            // chests already use (pickups.chestDisplayActor), which gives the real Ocarina; silent adds keep it.
+            const worn_base = World.wornEquipmentBase(items.name(item));
+            for (loc.event_refs) |r| {
+                const value: @FieldType(EventEdit, "value") = if (r.held_up and worn_base != null)
+                    .{ .held_up_ocarina = .{ .item_base = worn_base.?, .fallback = actor } }
+                else
+                    .{ .actor = actor };
+                try appendTo(EventEdit, &event_edits, a, r.rel, .{ .offset = r.offset, .value = value });
+            }
         }
     }
 
@@ -225,25 +284,46 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         patches.endStep();
     }
 
-    // Business Scrubs: the price of each shuffled scrub's purchase calls
-    for (plan.shuffled.items) |i| {
+    // Business Scrubs: the price of each shuffled scrub's purchase calls. A test placement takes its location off
+    // the shuffled list, so test-placed scrubs are included too (they kept the vanilla price and sale line before).
+    for (0..locs.len) |i| {
+        if (!locationGetsPlacedItem(plan, i)) continue;
         const price = plan.scrub_prices[i] orelse continue;
         for (locs[i].price_refs) |r| try appendTo(EventEdit, &event_edits, a, r.rel, .{ .offset = r.offset, .value = .{ .price = price } });
     }
+    // flows given an Ocarina's swap and tutorial (ocarina_handover.zig): their event info must list what they call
+    var ocarina_changed_flows: std.ArrayList(storyskip.ChangedFlow) = .empty;
     for (try sortedKeys(std.ArrayList(EventEdit), a, &event_edits)) |rel| {
         const orig = try patches.read(rel);
         var v = evfl_view.View.init(s, orig.data) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.InvalidData => return progress.fail(error.NotAsExpected, "{s} is not a readable event flow", .{rel}),
         };
+        var ocarina_hand_overs: std.ArrayList(ocarina_handover.HandOver) = .empty;
         for (event_edits.get(rel).?.items) |e| {
             switch (e.value) {
                 .price => |p| v.setIntParam(e.offset, @intCast(p)),
                 .actor => |actor| try v.setStringParam(e.offset, actor),
+                .held_up_ocarina => |o| {
+                    const display_actor = (try cloner.chestDisplayActor(o.item_base)) orelse o.fallback;
+                    try v.setStringParam(e.offset, display_actor);
+                    // the display actor gives no tutorial or button: swapped for the real Ocarina after (ocarina_handover.zig)
+                    if (!std.mem.eql(u8, display_actor, o.fallback)) ocarina_hand_overs.append(a, .{
+                        .item_offset = e.offset,
+                        .display_actor = display_actor,
+                        .real_actor = o.fallback,
+                    }) catch return error.OutOfMemory;
+                },
             }
         }
         v.check(s) catch return progress.fail(error.NotAsExpected, "{s}: the patched flow doesn't parse", .{rel});
-        try patches.emitZs(rel, orig, v.bytesView()); // emit keeps its own copy
+        if (ocarina_hand_overs.items.len > 0) {
+            const finished = try ocarina_handover.finishHandOvers(a, v.bytesView(), &v, ocarina_hand_overs.items, rel, progress);
+            try patches.emitZs(rel, orig, finished);
+            try rememberChangedFlow(a, &ocarina_changed_flows, rel, finished);
+        } else {
+            try patches.emitZs(rel, orig, v.bytesView()); // emit keeps its own copy
+        }
         patches.endStep();
     }
 
@@ -254,7 +334,8 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
 
     // Business Scrubs: a sale line of its own for each shuffled scrub, naming the item it sells
     var scrubs: std.ArrayList(textpatches.Scrub) = .empty;
-    for (plan.shuffled.items) |i| {
+    for (0..locs.len) |i| {
+        if (!locationGetsPlacedItem(plan, i)) continue;
         const loc = &locs[i];
         if (loc.category != .scrub) continue;
         const item = placed[i] orelse continue;
@@ -314,6 +395,31 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         };
         try patches.emitZs(fe.rel, orig, new);
         progress.log("{s}: {s} changed", .{ fe.what, fsmod.basename(fe.rel) });
+        patches.endStep();
+    }
+
+    // Ocarinas found in chests: after the chest scenes' item guide, the display actor is swapped for the real Ocarina
+    // and its tutorial shown (ocarina_handover.zig). After the flow edits, so Chests Without Cutscene is in place.
+    const chest_ocarinas = try ocarinasInChests(a, world, &cloner, locs, placed);
+    if (chest_ocarinas.len > 0) {
+        for (ocarina_handover.chest_flows) |rel| {
+            if (!world.files.exists(rel)) continue;
+            const orig = try patches.read(rel);
+            const finished = ocarina_handover.finishChestOpenings(a, orig.data, chest_ocarinas, rel, progress) catch |err| switch (err) {
+                error.NotAsExpected, error.InvalidData => {
+                    progress.log("warning: {s} not changed ({s}); an Ocarina from a chest comes without its tutorial", .{ fsmod.basename(rel), progress.failureMessage() });
+                    continue;
+                },
+                else => return err,
+            };
+            try patches.emitZs(rel, orig, finished);
+            try rememberChangedFlow(a, &ocarina_changed_flows, rel, finished);
+        }
+        patches.endStep();
+    }
+    if (ocarina_changed_flows.items.len > 0) {
+        const events = try storyskip.updateEventInfo(a, world, &patches, ocarina_changed_flows.items, progress);
+        progress.log("Ocarinas: swap and tutorial added to {d} flows (event info updated for {d} events)", .{ ocarina_changed_flows.items.len, events.len });
         patches.endStep();
     }
 

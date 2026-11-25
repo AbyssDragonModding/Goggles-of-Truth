@@ -1,6 +1,6 @@
 .{
     .name = .goggles_of_truth_rando,
-    .version = "0.7.6",
+    .version = "0.7.7",
     .fingerprint = 0xd02c8dea756c9ce2,
     .minimum_zig_version = "0.17.1",
     .dependencies = .{
