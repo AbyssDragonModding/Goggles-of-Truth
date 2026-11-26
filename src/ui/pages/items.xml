@@ -4,137 +4,104 @@
   against its setting in src/settings/table.zig (control, label, tooltip, options, badge).
 -->
 <ScrollBox Orientation="Vertical" Slot.Title="Items">
-  <VBox Spacing="14">
-    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
-      <VBox Spacing="10">
-        <Label Text="Quest Items" TextSize="16" Color="#F5CC61"/>
-        <HBox Spacing="12">
-          <Label Text="Shuffle Songs" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="Song Locations: every place that teaches a song (Impa, Malon, Saria, Sheik, the Royal Tomb, the&#10;windmill and the Ocarina of Time scene) teaches a random song instead.&#10;Anywhere: songs can be in any check: lying on the ground, in chests, dropped by Gold&#10;Skulltulas, on shop shelves or given by people. A song shows as a harp."/>
-          <ComboBox Name="set_shuffle_songs" OnChanged="set.shuffle_songs" Slot.Fill="0.9"
-                    Items="Vanilla|Song Locations|Anywhere"
-                    Tooltip="Song Locations: every place that teaches a song (Impa, Malon, Saria, Sheik, the Royal Tomb, the&#10;windmill and the Ocarina of Time scene) teaches a random song instead.&#10;Anywhere: songs can be in any check: lying on the ground, in chests, dropped by Gold&#10;Skulltulas, on shop shelves or given by people. A song shows as a harp."/>
-          <StableBadge Name="badge_shuffle_songs" LabelName="badgelab_shuffle_songs"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Label Text="Shuffle Spiritual Stones/Medallions" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="Dungeon Reward Locations: the Spiritual Stones and Medallions are swapped between the bosses.&#10;Anywhere: beating a boss gives a random item, and the stones and medallions can be in any check.&#10;The story still follows the dungeons you've beaten: the Door of Time opens after the three child&#10;dungeons, and the Light Arrows and Ganon's bridge come after the Shadow and Spirit Temples. With a&#10;closed Door of Time, all three Spiritual Stones can be found as child. The sage cutscenes play for&#10;the dungeon you beat."/>
-          <ComboBox Name="set_shuffle_rewards" OnChanged="set.shuffle_rewards" Slot.Fill="0.9"
-                    Items="Vanilla|Dungeon Reward Locations|Anywhere"
-                    Tooltip="Dungeon Reward Locations: the Spiritual Stones and Medallions are swapped between the bosses.&#10;Anywhere: beating a boss gives a random item, and the stones and medallions can be in any check.&#10;The story still follows the dungeons you've beaten: the Door of Time opens after the three child&#10;dungeons, and the Light Arrows and Ganon's bridge come after the Shadow and Spirit Temples. With a&#10;closed Door of Time, all three Spiritual Stones can be found as child. The sage cutscenes play for&#10;the dungeon you beat."/>
-          <StableBadge Name="badge_shuffle_rewards" LabelName="badgelab_shuffle_rewards"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_ocarinas" Style="Switch" Text="Shuffle Ocarinas" OnChanged="set.shuffle_ocarinas" Slot.Fill="1"
-                    Tooltip="The Fairy Ocarina and the Ocarina of Time are found in random checks. Saria doesn't hand you the&#10;Fairy Ocarina on the forest bridge, and Zelda's Ocarina of Time at the castle moat becomes a check.&#10;They are two Progressive Ocarinas: the first one you find is the Fairy Ocarina, the second the&#10;Ocarina of Time. Either ocarina plays every song and opens the Door of Time."/>
-          <StableBadge Name="badge_shuffle_ocarinas" LabelName="badgelab_shuffle_ocarinas"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_kokiri_sword" Style="Switch" Text="Shuffle Kokiri Sword" OnChanged="set.shuffle_kokiri_sword" Slot.Fill="1"
-                    Tooltip="The Kokiri Sword chest gives a random item, and the sword is found in another check.&#10;Off: the sword stays in its chest. It plays the sword's own scene, unless Skip Cutscenes is&#10;on: then the chest opens like any other and Link holds the sword up."/>
-          <StableBadge Name="badge_shuffle_kokiri_sword" LabelName="badgelab_shuffle_kokiri_sword"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_weird_egg" Style="Switch" Text="Shuffle Weird Egg" OnChanged="set.shuffle_weird_egg" Slot.Fill="1"
-                    Tooltip="Off: Malon at Hyrule Castle gives the Weird Egg as usual.&#10;On: her reward is random and the Weird Egg is in another check. It hatches into the Cucco on the&#10;game's usual timer once you have it. Needs NPC &amp; Minigame Rewards shuffled."/>
-          <StableBadge Name="badge_shuffle_weird_egg" LabelName="badgelab_shuffle_weird_egg"/>
-        </HBox>
-      </VBox>
-    </Border>
-    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
-      <VBox Spacing="10">
-        <Label Text="Shuffled Locations" TextSize="16" Color="#F5CC61"/>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_freestanding" Style="Switch" Text="Shuffle Freestanding Items" OnChanged="set.shuffle_freestanding" Slot.Fill="1"
-                    Tooltip="Items lying in the world become checks: the freestanding Pieces of Heart, the Fire Arrows at&#10;Lake Hylia and Ruto's Letter. Walk into a shuffled item to collect it (Pieces of Heart and Ruto's&#10;Letter still need A)."/>
-          <StableBadge Name="badge_shuffle_freestanding" LabelName="badgelab_shuffle_freestanding"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_rupees" Style="Switch" Text="Shuffle Freestanding Rupees" OnChanged="set.shuffle_rupees" Slot.Fill="1"
-                    Tooltip="The 109 green, blue, red and purple rupees lying around the world (Kokiri Forest, Hyrule Field,&#10;Zora's River/Domain/Fountain, Death Mountain, Graveyard) become checks. Walk into one to collect it,&#10;and each can only be collected once. Silver rupee puzzles are not changed."/>
-          <StableBadge Name="badge_shuffle_rupees" LabelName="badgelab_shuffle_rupees"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_heart_containers" Style="Switch" Text="Shuffle Boss Heart Containers" OnChanged="set.shuffle_heart_containers" Slot.Fill="1"
-                    Tooltip="The Heart Container each boss leaves behind becomes a random item."/>
-          <StableBadge Name="badge_shuffle_heart_containers" LabelName="badgelab_shuffle_heart_containers"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_npc" Style="Switch" Text="Character Gifts and Minigames" OnChanged="set.shuffle_npc" Slot.Fill="1"
-                    Tooltip="The rewards people and minigames give are random, as OotrR picks them: Darunia, the rolling Goron,&#10;the Lost Woods targets and Skull Kid, the Deku Theater (Skull Mask and Mask of Truth), both shooting&#10;galleries, Bombchu Bowling, horseback archery, the diving game, Anju, Talon, the Big Poe buyer,&#10;fishing, the lab dive, the frogs, Dampe, the man on the roof and the lost dog. Every branch of one&#10;reward (e.g. the Bigger or the Biggest bag) gives the same item; an upgrade gives the next one you&#10;don't have yet (progressive items).&#10;Never shuffled: the Gerudo Membership Card (the guards check the carpenter rescue, not the card) and&#10;the adult trade items (they share the Cucco's slot and would hide it)."/>
-          <TestingBadge Name="badge_shuffle_npc" LabelName="badgelab_shuffle_npc"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_quest" Style="Switch" Text="Shuffle Quest Rewards" OnChanged="set.shuffle_quest" Slot.Fill="1"
-                    Tooltip="Zelda's Letter, the Light Arrows (Temple of Time) and Biggoron's reward give random items.&#10;The ocarinas are Shuffle Ocarinas, Malon's egg is Shuffle Weird Egg."/>
-          <StableBadge Name="badge_shuffle_quest" LabelName="badgelab_shuffle_quest"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_scrubs" Style="Switch" Text="Business Scrubs" OnChanged="set.shuffle_scrubs" Slot.Fill="1"
-                    Tooltip="The Business Scrubs that sell one thing once sell a random item instead: the Deku Stick&#10;upgrade (Lost Woods bridge), the Deku Nut upgrade (Lost Woods), and the Pieces of Heart in Hyrule&#10;Field and Death Mountain Crater. The scrub names the item it sells. Refill scrubs are unchanged.&#10;Their price is set by Business Scrub Prices."/>
-          <StableBadge Name="badge_shuffle_scrubs" LabelName="badgelab_shuffle_scrubs"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Label Text="Business Scrub Prices" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="What the shuffled Business Scrubs charge. Game's Price is 40 rupees for the Lost Woods scrubs and&#10;100 for the heart scrubs. A price above 99 rupees needs the Adult's Wallet in the logic."/>
-          <ComboBox Name="set_scrub_prices" OnChanged="set.scrub_prices" Slot.Fill="0.9"
-                    Items="10 Rupees|Game's Price (40 / 100 Rupees)|Random (10-99 Rupees)|Random (10-200 Rupees)"
-                    Tooltip="What the shuffled Business Scrubs charge. Game's Price is 40 rupees for the Lost Woods scrubs and&#10;100 for the heart scrubs. A price above 99 rupees needs the Adult's Wallet in the logic."/>
-          <StableBadge Name="badge_scrub_prices" LabelName="badgelab_scrub_prices"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_fairies" Style="Switch" Text="Shuffle Great Fairy Rewards" OnChanged="set.shuffle_fairies" Slot.Fill="1"
-                    Tooltip="The six Great Fairies give random items instead of Din's Fire, Farore's Wind, Nayru's Love and&#10;their three blessings (magic, double magic, halved damage)."/>
-          <StableBadge Name="badge_shuffle_fairies" LabelName="badgelab_shuffle_fairies"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_shuffle_house" Style="Switch" Text="Shuffle Skulltula House Rewards" OnChanged="set.shuffle_house" Slot.Fill="1"
-                    Tooltip="The Skulltula House rewards for 10, 20, 30, 40 and 50 Gold Skulltula Tokens are random. Its two&#10;wallets are found as Progressive Wallets in chests and character gifts: the first one gives the&#10;Adult's Wallet, the second the Giant's Wallet."/>
-          <StableBadge Name="badge_shuffle_house" LabelName="badgelab_shuffle_house"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Label Text="Tokensanity" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="Gold Skulltulas drop a random item instead of a token. It floats where the Skulltula died, like a&#10;token, and you collect it by touching it, even while climbing a wall. A Skulltula only stays dead&#10;once you've collected its item; if you leave without it, the Skulltula comes back.&#10;Rupees, Deku Seeds, magic jars and other refills float and count the same way."/>
-          <ComboBox Name="set_tokensanity" OnChanged="set.tokensanity" Slot.Fill="0.9"
-                    Items="Off|Dungeons Only|Overworld Only|All Tokens"
-                    Tooltip="Gold Skulltulas drop a random item instead of a token. It floats where the Skulltula died, like a&#10;token, and you collect it by touching it, even while climbing a wall. A Skulltula only stays dead&#10;once you've collected its item; if you leave without it, the Skulltula comes back.&#10;Rupees, Deku Seeds, magic jars and other refills float and count the same way."/>
-          <StableBadge Name="badge_tokensanity" LabelName="badgelab_tokensanity"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Label Text="Items Shuffled Per Shop" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="Shelves in every shop sell random items: Kokiri, Goron and Zora shops, the Market's&#10;bazaar, potion shop and Bombchu shop, and Kakariko's bazaar and potion shop. Each can be bought&#10;once: a bought shelf is gone for good, also after reloading. One shelf of every purchase you&#10;need (Deku and Hylian Shields, tunics, Blue Fire, bugs, fish, fairies) stays on sale. Masks&#10;aren't shuffled. Each chosen shelf sells a real item (songs, equipment, spells, key items); it&#10;only keeps its normal goods if the seed has no item left that a shelf can sell once.&#10;Their price is set by Shop Prices."/>
-          <ComboBox Name="set_shopsanity" OnChanged="set.shopsanity" Slot.Fill="0.9"
-                    Items="Off|1 Item|2 Items|3 Items|4 Items|1 to 4 Items (Random)"
-                    Tooltip="Shelves in every shop sell random items: Kokiri, Goron and Zora shops, the Market's&#10;bazaar, potion shop and Bombchu shop, and Kakariko's bazaar and potion shop. Each can be bought&#10;once: a bought shelf is gone for good, also after reloading. One shelf of every purchase you&#10;need (Deku and Hylian Shields, tunics, Blue Fire, bugs, fish, fairies) stays on sale. Masks&#10;aren't shuffled. Each chosen shelf sells a real item (songs, equipment, spells, key items); it&#10;only keeps its normal goods if the seed has no item left that a shelf can sell once.&#10;Their price is set by Shop Prices."/>
-          <StableBadge Name="badge_shopsanity" LabelName="badgelab_shopsanity"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Label Text="Shop Prices" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="What the shuffled shop shelves charge. Random prices are rounded to 5 rupees. A price above 99&#10;rupees needs the Adult's Wallet in the logic."/>
-          <ComboBox Name="set_shop_prices" OnChanged="set.shop_prices" Slot.Fill="0.9"
-                    Items="10 Rupees|Random (10-99 Rupees)|Random (10-200 Rupees)"
-                    Tooltip="What the shuffled shop shelves charge. Random prices are rounded to 5 rupees. A price above 99&#10;rupees needs the Adult's Wallet in the logic."/>
-          <StableBadge Name="badge_shop_prices" LabelName="badgelab_shop_prices"/>
-        </HBox>
-      </VBox>
-    </Border>
-    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
-      <VBox Spacing="10">
-        <Label Text="Item Pool" TextSize="16" Color="#F5CC61"/>
-        <HBox Spacing="12">
-          <Label Text="Item Pool" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="Balanced: the same items as the original game.&#10;Scarce: half of the Pieces of Heart and Heart Containers become rupees.&#10;Minimal: all Pieces of Heart and Heart Containers become rupees."/>
-          <ComboBox Name="set_item_pool" OnChanged="set.item_pool" Slot.Fill="0.9"
-                    Items="Balanced|Scarce|Minimal"
-                    Tooltip="Balanced: the same items as the original game.&#10;Scarce: half of the Pieces of Heart and Heart Containers become rupees.&#10;Minimal: all Pieces of Heart and Heart Containers become rupees."/>
-          <StableBadge Name="badge_item_pool" LabelName="badgelab_item_pool"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Checkbox Name="set_refill_needs_item" Style="Switch" Text="Refills Need Their Item" OnChanged="set.refill_needs_item" Slot.Fill="1"
-                    Tooltip="A chest with arrows, bombs, Bombchus or Deku seeds gives a blue rupee instead until you own the&#10;Bow, a Bomb Bag (Bombchus go in the Bomb Bag in the remake) or the Slingshot. Deku Nuts and Deku&#10;Sticks work the same way: a bundle only counts once you have picked up a single nut or stick&#10;(that gives you their bag), so until then their chests give a blue rupee too. Refills placed&#10;anywhere other than a chest are always blue rupees."/>
-          <StableBadge Name="badge_refill_needs_item" LabelName="badgelab_refill_needs_item"/>
-        </HBox>
-      </VBox>
-    </Border>
-  </VBox>
+	<VBox Spacing="14">
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+			<VBox Spacing="10">
+				<Label Text="Quest Items" TextSize="16" Color="#F5CC61"/>
+				<HBox Spacing="12">
+					<Label Text="Shuffle Songs" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Song Locations: every place that teaches a song (Impa, Malon, Saria, Sheik, the Royal Tomb, the&#10;windmill and the Ocarina of Time scene) teaches a random song instead.&#10;Anywhere: songs can be in any check: lying on the ground, in chests, dropped by Gold&#10;Skulltulas, on shop shelves or given by people. A song shows as a harp."/>
+					<ComboBox Name="set_shuffle_songs" OnChanged="set.shuffle_songs" Slot.Fill="0.9" Items="Vanilla|Song Locations|Anywhere" Tooltip="Song Locations: every place that teaches a song (Impa, Malon, Saria, Sheik, the Royal Tomb, the&#10;windmill and the Ocarina of Time scene) teaches a random song instead.&#10;Anywhere: songs can be in any check: lying on the ground, in chests, dropped by Gold&#10;Skulltulas, on shop shelves or given by people. A song shows as a harp."/>
+					<StableBadge Name="badge_shuffle_songs" LabelName="badgelab_shuffle_songs"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Label Text="Shuffle Spiritual Stones/Medallions" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Dungeon Reward Locations: the Spiritual Stones and Medallions are swapped between the bosses.&#10;Anywhere: beating a boss gives a random item, and the stones and medallions can be in any check.&#10;The story still follows the dungeons you've beaten: the Door of Time opens after the three child&#10;dungeons, and the Light Arrows and Ganon's bridge come after the Shadow and Spirit Temples. With a&#10;closed Door of Time, all three Spiritual Stones can be found as child. The sage cutscenes play for&#10;the dungeon you beat."/>
+					<ComboBox Name="set_shuffle_rewards" OnChanged="set.shuffle_rewards" Slot.Fill="0.9" Items="Vanilla|Dungeon Reward Locations|Anywhere" Tooltip="Dungeon Reward Locations: the Spiritual Stones and Medallions are swapped between the bosses.&#10;Anywhere: beating a boss gives a random item, and the stones and medallions can be in any check.&#10;The story still follows the dungeons you've beaten: the Door of Time opens after the three child&#10;dungeons, and the Light Arrows and Ganon's bridge come after the Shadow and Spirit Temples. With a&#10;closed Door of Time, all three Spiritual Stones can be found as child. The sage cutscenes play for&#10;the dungeon you beat."/>
+					<StableBadge Name="badge_shuffle_rewards" LabelName="badgelab_shuffle_rewards"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_ocarinas" Style="Switch" Text="Shuffle Ocarinas" OnChanged="set.shuffle_ocarinas" Slot.Fill="1" Tooltip="The Fairy Ocarina and the Ocarina of Time are found in random checks. Saria doesn't hand you the&#10;Fairy Ocarina on the forest bridge, and Zelda's Ocarina of Time at the castle moat becomes a check.&#10;They are two Progressive Ocarinas: the first one you find is the Fairy Ocarina, the second the&#10;Ocarina of Time. Either ocarina plays every song and opens the Door of Time."/>
+					<StableBadge Name="badge_shuffle_ocarinas" LabelName="badgelab_shuffle_ocarinas"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_kokiri_sword" Style="Switch" Text="Shuffle Kokiri Sword" OnChanged="set.shuffle_kokiri_sword" Slot.Fill="1" Tooltip="The Kokiri Sword chest gives a random item, and the sword is found in another check.&#10;Off: the sword stays in its chest. It plays the sword's own scene, unless Skip Cutscenes is&#10;on: then the chest opens like any other and Link holds the sword up."/>
+					<StableBadge Name="badge_shuffle_kokiri_sword" LabelName="badgelab_shuffle_kokiri_sword"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_weird_egg" Style="Switch" Text="Shuffle Weird Egg" OnChanged="set.shuffle_weird_egg" Slot.Fill="1" Tooltip="Off: Malon at Hyrule Castle gives the Weird Egg as usual.&#10;On: her reward is random and the Weird Egg is in another check. It hatches into the Cucco on the&#10;game's usual timer once you have it. Needs NPC &amp; Minigame Rewards shuffled."/>
+					<StableBadge Name="badge_shuffle_weird_egg" LabelName="badgelab_shuffle_weird_egg"/>
+				</HBox>
+			</VBox>
+		</Border>
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+			<VBox Spacing="10">
+				<Label Text="Shuffled Locations" TextSize="16" Color="#F5CC61"/>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_freestanding" Style="Switch" Text="Shuffle Freestanding Items" OnChanged="set.shuffle_freestanding" Slot.Fill="1" Tooltip="Items lying in the world become checks: the freestanding Pieces of Heart, the Fire Arrows at&#10;Lake Hylia and Ruto's Letter. Walk into a shuffled item to collect it (Pieces of Heart and Ruto's&#10;Letter still need A)."/>
+					<StableBadge Name="badge_shuffle_freestanding" LabelName="badgelab_shuffle_freestanding"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_rupees" Style="Switch" Text="Shuffle Freestanding Rupees" OnChanged="set.shuffle_rupees" Slot.Fill="1" Tooltip="The 109 green, blue, red and purple rupees lying around the world (Kokiri Forest, Hyrule Field,&#10;Zora's River/Domain/Fountain, Death Mountain, Graveyard) become checks. Walk into one to collect it,&#10;and each can only be collected once. Silver rupee puzzles are not changed."/>
+					<StableBadge Name="badge_shuffle_rupees" LabelName="badgelab_shuffle_rupees"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_heart_containers" Style="Switch" Text="Shuffle Boss Heart Containers" OnChanged="set.shuffle_heart_containers" Slot.Fill="1" Tooltip="The Heart Container each boss leaves behind becomes a random item."/>
+					<StableBadge Name="badge_shuffle_heart_containers" LabelName="badgelab_shuffle_heart_containers"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_npc" Style="Switch" Text="Character Gifts and Minigames" OnChanged="set.shuffle_npc" Slot.Fill="1" Tooltip="The rewards people and minigames give are random, as OotrR picks them: Darunia, the rolling Goron,&#10;the Lost Woods targets and Skull Kid, the Deku Theater (Skull Mask and Mask of Truth), both shooting&#10;galleries, Bombchu Bowling, horseback archery, the diving game, Anju, Talon, the Big Poe buyer,&#10;fishing, the lab dive, the frogs, Dampe, the man on the roof and the lost dog. Every branch of one&#10;reward (e.g. the Bigger or the Biggest bag) gives the same item; an upgrade gives the next one you&#10;don't have yet (progressive items).&#10;Never shuffled: the Gerudo Membership Card (the guards check the carpenter rescue, not the card) and&#10;the adult trade items (they share the Cucco's slot and would hide it)."/>
+					<TestingBadge Name="badge_shuffle_npc" LabelName="badgelab_shuffle_npc"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_quest" Style="Switch" Text="Shuffle Quest Rewards" OnChanged="set.shuffle_quest" Slot.Fill="1" Tooltip="Zelda's Letter, the Light Arrows (Temple of Time) and Biggoron's reward give random items.&#10;The ocarinas are Shuffle Ocarinas, Malon's egg is Shuffle Weird Egg."/>
+					<StableBadge Name="badge_shuffle_quest" LabelName="badgelab_shuffle_quest"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_scrubs" Style="Switch" Text="Business Scrubs" OnChanged="set.shuffle_scrubs" Slot.Fill="1" Tooltip="The Business Scrubs that sell one thing once sell a random item instead: the Deku Stick&#10;upgrade (Lost Woods bridge), the Deku Nut upgrade (Lost Woods), and the Pieces of Heart in Hyrule&#10;Field and Death Mountain Crater. The scrub names the item it sells. Refill scrubs are unchanged.&#10;Their price is set by Business Scrub Prices."/>
+					<StableBadge Name="badge_shuffle_scrubs" LabelName="badgelab_shuffle_scrubs"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Label Text="Business Scrub Prices" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What the shuffled Business Scrubs charge. Game's Price is 40 rupees for the Lost Woods scrubs and&#10;100 for the heart scrubs. A price above 99 rupees needs the Adult's Wallet in the logic."/>
+					<ComboBox Name="set_scrub_prices" OnChanged="set.scrub_prices" Slot.Fill="0.9" Items="10 Rupees|Game's Price (40 / 100 Rupees)|Random (10-99 Rupees)|Random (10-200 Rupees)" Tooltip="What the shuffled Business Scrubs charge. Game's Price is 40 rupees for the Lost Woods scrubs and&#10;100 for the heart scrubs. A price above 99 rupees needs the Adult's Wallet in the logic."/>
+					<StableBadge Name="badge_scrub_prices" LabelName="badgelab_scrub_prices"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_fairies" Style="Switch" Text="Shuffle Great Fairy Rewards" OnChanged="set.shuffle_fairies" Slot.Fill="1" Tooltip="The six Great Fairies give random items instead of Din's Fire, Farore's Wind, Nayru's Love and&#10;their three blessings (magic, double magic, halved damage)."/>
+					<StableBadge Name="badge_shuffle_fairies" LabelName="badgelab_shuffle_fairies"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_shuffle_house" Style="Switch" Text="Shuffle Skulltula House Rewards" OnChanged="set.shuffle_house" Slot.Fill="1" Tooltip="The Skulltula House rewards for 10, 20, 30, 40 and 50 Gold Skulltula Tokens are random. Its two&#10;wallets are found as Progressive Wallets in chests and character gifts: the first one gives the&#10;Adult's Wallet, the second the Giant's Wallet."/>
+					<StableBadge Name="badge_shuffle_house" LabelName="badgelab_shuffle_house"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Label Text="Tokensanity" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Gold Skulltulas drop a random item instead of a token. It floats where the Skulltula died, like a&#10;token, and you collect it by touching it, even while climbing a wall. A Skulltula only stays dead&#10;once you've collected its item; if you leave without it, the Skulltula comes back.&#10;Rupees, Deku Seeds, magic jars and other refills float and count the same way."/>
+					<ComboBox Name="set_tokensanity" OnChanged="set.tokensanity" Slot.Fill="0.9" Items="Off|Dungeons Only|Overworld Only|All Tokens" Tooltip="Gold Skulltulas drop a random item instead of a token. It floats where the Skulltula died, like a&#10;token, and you collect it by touching it, even while climbing a wall. A Skulltula only stays dead&#10;once you've collected its item; if you leave without it, the Skulltula comes back.&#10;Rupees, Deku Seeds, magic jars and other refills float and count the same way."/>
+					<StableBadge Name="badge_tokensanity" LabelName="badgelab_tokensanity"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Label Text="Items Shuffled Per Shop" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Shelves in every shop sell random items: Kokiri, Goron and Zora shops, the Market's&#10;bazaar, potion shop and Bombchu shop, and Kakariko's bazaar and potion shop. Each can be bought&#10;once: a bought shelf is gone for good, also after reloading. One shelf of every purchase you&#10;need (Deku and Hylian Shields, tunics, Blue Fire, bugs, fish, fairies) stays on sale. Masks&#10;aren't shuffled. Each chosen shelf sells a real item (songs, equipment, spells, key items); it&#10;only keeps its normal goods if the seed has no item left that a shelf can sell once.&#10;Their price is set by Shop Prices."/>
+					<ComboBox Name="set_shopsanity" OnChanged="set.shopsanity" Slot.Fill="0.9" Items="Off|1 Item|2 Items|3 Items|4 Items|1 to 4 Items (Random)" Tooltip="Shelves in every shop sell random items: Kokiri, Goron and Zora shops, the Market's&#10;bazaar, potion shop and Bombchu shop, and Kakariko's bazaar and potion shop. Each can be bought&#10;once: a bought shelf is gone for good, also after reloading. One shelf of every purchase you&#10;need (Deku and Hylian Shields, tunics, Blue Fire, bugs, fish, fairies) stays on sale. Masks&#10;aren't shuffled. Each chosen shelf sells a real item (songs, equipment, spells, key items); it&#10;only keeps its normal goods if the seed has no item left that a shelf can sell once.&#10;Their price is set by Shop Prices."/>
+					<StableBadge Name="badge_shopsanity" LabelName="badgelab_shopsanity"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Label Text="Shop Prices" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What the shuffled shop shelves charge. Random prices are rounded to 5 rupees. A price above 99&#10;rupees needs the Adult's Wallet in the logic."/>
+					<ComboBox Name="set_shop_prices" OnChanged="set.shop_prices" Slot.Fill="0.9" Items="10 Rupees|Random (10-99 Rupees)|Random (10-200 Rupees)" Tooltip="What the shuffled shop shelves charge. Random prices are rounded to 5 rupees. A price above 99&#10;rupees needs the Adult's Wallet in the logic."/>
+					<StableBadge Name="badge_shop_prices" LabelName="badgelab_shop_prices"/>
+				</HBox>
+			</VBox>
+		</Border>
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+			<VBox Spacing="10">
+				<Label Text="Item Pool" TextSize="16" Color="#F5CC61"/>
+				<HBox Spacing="12">
+					<Label Text="Item Pool" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Balanced: the same items as the original game.&#10;Scarce: half of the Pieces of Heart and Heart Containers become rupees.&#10;Minimal: all Pieces of Heart and Heart Containers become rupees."/>
+					<ComboBox Name="set_item_pool" OnChanged="set.item_pool" Slot.Fill="0.9" Items="Balanced|Scarce|Minimal" Tooltip="Balanced: the same items as the original game.&#10;Scarce: half of the Pieces of Heart and Heart Containers become rupees.&#10;Minimal: all Pieces of Heart and Heart Containers become rupees."/>
+					<StableBadge Name="badge_item_pool" LabelName="badgelab_item_pool"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_refill_needs_item" Style="Switch" Text="Refills Need Their Item" OnChanged="set.refill_needs_item" Slot.Fill="1" Tooltip="A chest with arrows, bombs, Bombchus or Deku seeds gives a blue rupee instead until you own the&#10;Bow, a Bomb Bag (Bombchus go in the Bomb Bag in the remake) or the Slingshot. Deku Nuts and Deku&#10;Sticks work the same way: a bundle only counts once you have picked up a single nut or stick&#10;(that gives you their bag), so until then their chests give a blue rupee too. Refills placed&#10;anywhere other than a chest are always blue rupees."/>
+					<StableBadge Name="badge_refill_needs_item" LabelName="badgelab_refill_needs_item"/>
+				</HBox>
+			</VBox>
+		</Border>
+	</VBox>
 </ScrollBox>

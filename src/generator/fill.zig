@@ -246,6 +246,16 @@ pub const Plan = struct {
     is_shuffled: []bool,
     excluded: []bool,
     user_excluded: []bool,
+    /// Item Restrictions: the locations with at least one (a quick test before `restrictions` is searched)
+    restricted: []bool,
+    /// Item Restrictions, resolved: each forbidden item per location (a progressive line's item included when the
+    /// entry names one of its tiers and the pool holds the line)
+    restrictions: std.ArrayList(ResolvedRestriction),
+    /// Item Restrictions entries that do nothing (an unknown name, an unshuffled location), with why, for the log
+    restriction_problems: std.ArrayList([]const u8),
+    /// spots that need bombs or the Megaton Hammer to get at (a bombable rock or wall): the first Bomb Bag never goes
+    /// there (markSpotsBehindBombRocks)
+    behind_bomb_rock: []bool,
     start_locs: []bool,
     /// Barren Dungeons: shuffled spots in a barren dungeon, which hold rupees only (barrenRefuses)
     barren: []bool,
@@ -292,6 +302,10 @@ pub const Plan = struct {
             .is_shuffled = try boolArray(allocator, n),
             .excluded = try boolArray(allocator, n),
             .user_excluded = try boolArray(allocator, n),
+            .restricted = try boolArray(allocator, n),
+            .behind_bomb_rock = try boolArray(allocator, n),
+            .restrictions = .empty,
+            .restriction_problems = .empty,
             .start_locs = try boolArray(allocator, n),
             .barren = try boolArray(allocator, n),
             .pool = .empty,
@@ -378,8 +392,115 @@ pub const Plan = struct {
             }
         }
         @memcpy(self.user_excluded, self.excluded);
+        try self.resolveItemRestrictions();
+        try self.markSpotsBehindBombRocks();
         try self.chooseBarrenDungeons();
         return self;
+    }
+
+    pub const ResolvedRestriction = struct {
+        location_index: usize,
+        item: ItemId,
+    };
+
+    /// Item Restrictions: each "Location | Item" entry as location indexes and item ids. After the pool is built,
+    /// so a tier's name can also stand for its progressive line. An entry that matches nothing is only logged:
+    /// an old settings file or a typo must not stop a seed. Nothing happens without entries, so other seeds keep
+    /// their placements.
+    fn resolveItemRestrictions(self: *Self) FillError!void {
+        const entries = self.st.itemRestrictions();
+        if (entries.len == 0) return;
+        const allocator = self.allocator;
+        const world = self.world;
+        for (entries) |entry| {
+            const restriction = settings_mod.parseItemRestriction(entry) orelse {
+                try self.addRestrictionProblem("\"{s}\": not \"Location | Item\"", .{entry});
+                continue;
+            };
+            const location_index = for (world.locations.items, 0..) |*loc, i| {
+                if (std.mem.eql(u8, loc.name, restriction.location) or std.mem.eql(u8, loc.id, restriction.location)) break i;
+            } else {
+                try self.addRestrictionProblem("\"{s}\": no location of that name", .{entry});
+                continue;
+            };
+            if (!self.is_shuffled[location_index]) {
+                try self.addRestrictionProblem("\"{s}\": that location isn't shuffled with these settings", .{entry});
+                continue;
+            }
+            var matched = false;
+            // a Progressive line's name covers every tier, so one rule keeps "any Bomb Bag" away with Progressive
+            // Items on or off
+            for (&progressive.chains) |*chain| {
+                if (!std.mem.eql(u8, chain.key, restriction.item) and !std.mem.eql(u8, chain.display_name, restriction.item)) continue;
+                matched = true;
+                if (world.items.lookup(chain.key)) |line_item| try self.addRestriction(location_index, line_item);
+                for (chain.tiers) |tier| {
+                    if (world.items.lookup(tier.key)) |tier_item| try self.addRestriction(location_index, tier_item);
+                }
+            }
+            for (0..world.items.count()) |id_index| {
+                const id: ItemId = @intCast(id_index);
+                const key = world.items.name(id);
+                const display_name = world.itemNameById(allocator, id) catch return error.OutOfMemory;
+                if (!std.mem.eql(u8, key, restriction.item) and !std.mem.eql(u8, display_name, restriction.item)) continue;
+                matched = true;
+                try self.addRestriction(location_index, id);
+                // with Progressive Items the pool holds the line, not the tier: keep the line away too
+                if (progressive.chainOfTierItem(key)) |chain| {
+                    if (world.items.lookup(chain.key)) |line_item| {
+                        if (std.mem.indexOfScalar(ItemId, self.pool.items, line_item) != null) try self.addRestriction(location_index, line_item);
+                    }
+                }
+            }
+            if (!matched) try self.addRestrictionProblem("\"{s}\": no item of that name", .{entry});
+        }
+    }
+
+    /// The base rule "the first Bomb Bag is never behind a bombable rock": a shuffled spot is behind one when the
+    /// logic can't reach it with every item except the bomb bags and the Megaton Hammer (the logic's only other way
+    /// through a rock). Why a rule of its own, not only the logic: a logic mistake once let a seed hide its only Bomb
+    /// Bag under the Lost Woods scrub's rock (child Link's Hammer), and a second bag tier owned first could do the
+    /// same. Leaving the Hammer out keeps that kind of mistake from opening a rock here.
+    fn markSpotsBehindBombRocks(self: *Self) FillError!void {
+        const allocator = self.allocator;
+        var everything = logic.State.init(allocator, self.world.items.count(), &self.options) catch return error.OutOfMemory;
+        defer everything.deinit(allocator);
+        const rock_breakers = [_]logic.Item{ .BombBag_Small, .BombBag_Medium, .BombBag_Large, .Progressive_BombBag, .Hammer };
+        for (0..logic.item_count) |index| {
+            const item: logic.Item = @enumFromInt(index);
+            if (std.mem.indexOfScalar(logic.Item, &rock_breakers, item) != null) continue;
+            // enough copies for every tier and every token count
+            const copies: usize = if (item == .Token_Gold) 100 else 3;
+            for (0..copies) |_| everything.addKeepingCache(item.id());
+        }
+        everything.clearCache();
+        for (self.shuffled.items) |i| {
+            if (!logic.check(&everything, self.rules[i])) self.behind_bomb_rock[i] = true;
+        }
+    }
+
+    /// The first Bomb Bag: the first tier, or any copy of the Progressive Bomb Bag (whichever is found first is it).
+    fn isFirstBombBag(self: *const Self, item: ItemId) bool {
+        const name = self.itemName(item);
+        return std.mem.eql(u8, name, @tagName(logic.Item.BombBag_Small)) or std.mem.eql(u8, name, @tagName(logic.Item.Progressive_BombBag));
+    }
+
+    fn addRestriction(self: *Self, location_index: usize, item: ItemId) FillError!void {
+        for (self.restrictions.items) |r| if (r.location_index == location_index and r.item == item) return;
+        self.restrictions.append(self.allocator, .{ .location_index = location_index, .item = item }) catch return error.OutOfMemory;
+        self.restricted[location_index] = true;
+    }
+
+    fn addRestrictionProblem(self: *Self, comptime format: []const u8, args: anytype) FillError!void {
+        const text = std.fmt.allocPrint(self.allocator, format, args) catch return error.OutOfMemory;
+        self.restriction_problems.append(self.allocator, text) catch return error.OutOfMemory;
+    }
+
+    /// Does Item Restrictions keep `item` away from location `location_index`?
+    pub fn isRestricted(self: *const Self, location_index: usize, item: ItemId) bool {
+        if (!self.restricted[location_index]) return false;
+        for (self.restrictions.items) |r| if (r.location_index == location_index and r.item == item) return true;
+        return false;
     }
 
     /// Starting Age: Random is drawn from the seed with a stream of its own, so it never changes other choices.
@@ -544,6 +665,10 @@ pub const Plan = struct {
                 }
                 return std.fmt.allocPrint(allocator, "no \"{s}\" left in the item pool (use the name the spoiler log shows; each copy can be placed once)", .{request.item}) catch error.OutOfMemory;
             };
+            // why refused: a test plan that forbids and places the same pair contradicts itself
+            if (self.isRestricted(location_index, item)) {
+                return std.fmt.allocPrint(allocator, "\"{s}\" can't hold \"{s}\": Item Restrictions forbid it", .{ request.location, request.item }) catch error.OutOfMemory;
+            }
             const shuffled_position = std.mem.indexOfScalar(usize, self.shuffled.items, location_index).?;
             _ = self.shuffled.orderedRemove(shuffled_position);
             self.is_shuffled[location_index] = false;
@@ -983,6 +1108,8 @@ pub const Plan = struct {
         // excluded: never progression, keys or boss rewards (maps and compasses only show the map, so they may)
         if (self.excluded[i] and (logic.isProgression(item) or isReward(name) or dtype == .small_keys or dtype == .boss_keys)) return false;
         if (self.barren[i] and self.barrenRefuses(i, item)) return false;
+        if (self.isRestricted(i, item)) return false;
+        if (self.behind_bomb_rock[i] and self.isFirstBombBag(item)) return false;
         const own_dungeon = std.mem.indexOfScalar(u8, name, '@');
         // Skip Child Zelda's start checks take any item except own-dungeon items: one a save default can hold is set
         // in the new save, any other is handed over when the game starts (faststart.giveAtStart)

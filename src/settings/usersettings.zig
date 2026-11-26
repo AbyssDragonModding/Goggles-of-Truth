@@ -299,6 +299,7 @@ pub fn dumps(allocator: Allocator, st: *const Settings, paths: Paths, app: App) 
             .int => try out.print(allocator, "a whole number from {d} to {d}", .{ s.min, s.max }),
             .list => try out.appendSlice(allocator, switch (s.key) {
                 .starting_inventory => "a list of item keys, one per copy (\"Hookshot\" twice is the Longshot; items.txt from `goggles_cli test-catalog` names them)",
+                .item_restrictions => "a list of \"Location | Item\" pairs with the spoiler log's names: that item is never placed at that location",
                 else => "a list of location names as the Exclusions tab shows them",
             }),
         }

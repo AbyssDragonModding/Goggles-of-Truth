@@ -23,6 +23,7 @@ const ocarina_handover = @import("ocarina_handover.zig");
 const teststart = @import("teststart.zig");
 const npcdialogs = @import("npcdialogs.zig");
 const door = @import("door.zig");
+const pedestal = @import("pedestal.zig");
 const pickups = @import("pickups.zig");
 const flows = @import("flows.zig");
 const filecache = @import("filecache.zig");
@@ -593,7 +594,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         else => return err,
     };
     patches.endStep();
-    // Starting Age: Adult hands the gifts over after the sword pull (teststart.giveOnArrival), unless a test plan's
+    // Starting Age: Adult hands the gifts over when it arrives (teststart.giveOnArrival), unless a test plan's
     // own spawn replaces the adult one (then the normal opening hands them over)
     const test_spawn = if (inputs.test_start) |t| t.warp != null else false;
     const adult_arrival = start_adult and !test_spawn;
@@ -630,7 +631,9 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         opening_start.flags = &teststart.adult_start_flags;
         opening_start.equip = &teststart.adult_start_equip;
         opening_start.arrival = teststart.adult_start_arrival;
-        opening_start.arrival_boots_entry = arrival_gifts.len > 0;
+        // the arrival adds the Master Sword as adult (teststart.giveOnArrival), so it always boots its entry
+        opening_start.arrival_boots_entry = true;
+        opening_start.equip = &.{};
     }
     if (inputs.test_start) |test_start| {
         if (test_start.warp) |w| {
@@ -638,6 +641,8 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             opening_start.warp = w;
             opening_start.arrival = null;
             opening_start.arrival_boots_entry = false;
+            // no arrival: the opening adds the Master Sword
+            if (start_adult) opening_start.equip = &teststart.adult_start_equip;
         }
         opening_start.time_hour = test_start.time_hour;
     }
@@ -651,10 +656,10 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         };
         try patches.emitZs(teststart.opening_flow, orig, new.data);
         if (opening_start.arrival_boots_entry) {
-            // the start items' windows come after the sword pull, in the game's own first-arrival event
+            // the start items' windows come on arrival, in the game's own first-arrival event
             const arrival = teststart.adult_start_arrival;
             const arrival_orig = try patches.read(arrival.flow);
-            const arrival_new = teststart.giveOnArrival(s, arrival_orig.data, arrival, arrival_gifts, progress) catch |err| switch (err) {
+            const arrival_new = teststart.giveOnArrival(s, arrival_orig.data, arrival, &teststart.adult_start_equip, arrival_gifts, progress) catch |err| switch (err) {
                 error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: {s} is not as expected ({s}); start as child", .{ arrival.flow, progress.failureMessage() }),
                 else => return err,
             };
@@ -668,9 +673,9 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
                 error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: the event tables are not as expected ({s}); start as child", .{progress.failureMessage()}),
                 else => return err,
             };
-            progress.log("Start items handed over after the Master Sword pull: {s}", .{std.mem.join(a, ", ", arrival_gifts) catch return error.OutOfMemory});
+            progress.log("Adult start arrival: the Master Sword equipped{s}{s}", .{ if (arrival_gifts.len > 0) "; start items handed over: " else "", std.mem.join(a, ", ", arrival_gifts) catch return error.OutOfMemory });
         }
-        if (start_adult) progress.log("Starting Age: Adult (a new game starts in the Temple of Time with the Master Sword)", .{});
+        if (start_adult) progress.log("Starting Age: Adult (a new game starts in the Temple of Time, at the Prelude of Light spot, with the Master Sword)", .{});
     }
 
     if (st.flag(.saria_song_ocarina)) {
@@ -688,6 +693,11 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         if (start_adult) return progress.fail(error.SettingFailed, "Starting Age: Adult needs the Door of Time open, which could not be applied to this romfs; start as child", .{});
         return progress.fail(error.SettingFailed, "Door of Time: Open could not be applied to this romfs; set the Door of Time to Closed", .{});
     }
+    // every seed: the logic counts on changing age whenever Link has been adult (pedestal.zig)
+    if (!try pedestal.patchAdultPedestal(world, &patches, progress)) {
+        progress.log("warning: the adult Master Sword pedestal may only work after the Forest Temple in this seed", .{});
+    }
+    patches.endStep();
     if (!st.is(.shuffle_songs, "vanilla")) try qol.patchSongTeaching(world, &patches, progress);
     if (st.flag(.shuffle_weird_egg)) try qol.patchEggHatchGuard(&patches, progress);
     if (st.flag(.dodongo_bag_bombs) and !try qol.patchDodongoBagBombs(world, &patches, &restbl, progress)) {

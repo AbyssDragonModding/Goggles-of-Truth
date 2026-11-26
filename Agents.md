@@ -47,7 +47,8 @@ This document outlines the mandatory architecture, coding standards, performance
   - Invalidate caches cleanly when generation parameters change.
 
 - **Build Configuration:**
-  - Default build targets must always default to **Release** mode (`ReleaseFast` or `ReleaseSafe`) unless an active debug session is explicitly requested.
+  - Local builds default to **Debug** mode: a plain `zig build` is a debug build (it includes the window's Debug-only Test Seeds tab).
+  - Release builds (the ones published on GitHub) are always **Release** mode (`ReleaseFast`): the GitHub workflow passes `-Doptimize=ReleaseFast`, and `zig build --release` makes one locally.
 
 ---
 

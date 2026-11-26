@@ -255,15 +255,6 @@ fn cmdTest(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u8) !
         std.debug.print("error: the test plan {s} can't be read ({s})\n", .{ path, @errorName(err) });
         return error.Failed;
     };
-    var problem = engine.testplan.Problem{};
-    const plan = engine.testplan.parse(a, text, &problem) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        error.InvalidPlan => {
-            std.debug.print("error: {s}: {s}\n", .{ path, problem.message });
-            return error.Failed;
-        },
-    };
-
     const user = try engine.usersettings.load(a, env);
     if (game.len == 0) game = user.paths.game;
     if (out.len == 0) out = user.paths.output;
@@ -272,64 +263,20 @@ fn cmdTest(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u8) !
         return error.Failed;
     }
 
-    // settings: the plan's settings string, else the user's own; then the plan's preset and [settings] on top
-    var st = user.settings;
-    if (plan.settings_string.len > 0) {
-        st = engine.settings.fromString(a, plan.settings_string) catch {
-            std.debug.print("error: {s}: settings_string can't be read by this version\n", .{path});
+    // the plan's settings stand on the user's own (user_settings.toml); generator/testseed.zig is shared with the
+    // window's Test Seeds tab
+    var problem = engine.testseed.Problem{};
+    const prepared = engine.testseed.prepare(a, env.fs, text, user.settings, game, out, &problem) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidPlan => {
+            std.debug.print("error: {s}: {s}\n", .{ path, problem.message });
             return error.Failed;
-        };
-        st.set(.per_seed_saves, user.settings.get(.per_seed_saves));
-    }
-    if (plan.preset.len > 0) {
-        const preset = engine.settings.findPreset(plan.preset) orelse {
-            std.debug.print("error: {s}: no built-in preset named {s} (Beginner, Standard, Expert, Race)\n", .{ path, plan.preset });
-            return error.Failed;
-        };
-        st = engine.settings.applyPreset(st, preset);
-    }
-    var warnings: std.ArrayList([]const u8) = .empty;
-    st = try engine.usersettings.applyOverrides(a, st, plan.setting_overrides, &warnings, "");
-    if (warnings.items.len > 0) {
-        // a test only means something with the settings it names: a setting that didn't apply stops it
-        for (warnings.items) |w| std.debug.print("error: {s}: [settings] {s}\n", .{ path, w });
-        return error.Failed;
-    }
-
-    const mod_name = try std.fmt.allocPrint(a, "{s}{s}", .{ engine.longshot.mod_prefix, plan.name });
-    const folder = try std.fs.path.join(a, &.{ out, mod_name });
-    var seed: ?[]const u8 = if (plan.seed.len > 0) plan.seed else null;
-    var rebuild = false;
-    switch (try engine.generator.checkRebuild(a, env.fs, folder)) {
-        .not_a_seed => {},
-        .other_placements => |info| {
-            std.debug.print("note: {s} was made by {s}, whose placements differ; it is made anew\n", .{ mod_name, info.release });
         },
-        .ready => |info| {
-            if (seed == null) seed = info.seed;
-            const settings_string = try engine.settings.toString(a, &st);
-            const placements_text = try engine.seedinfo.formatTestPlacements(a, plan.placements);
-            rebuild = std.mem.eql(u8, seed.?, info.seed) and std.mem.eql(u8, settings_string, info.settings_string) and
-                std.mem.eql(u8, placements_text, info.test_placements);
-            if (rebuild) {
-                std.debug.print("{s} exists with the same seed, settings and placements: rebuilt, its saves kept (a changed start only shows in a new game)\n", .{mod_name});
-            } else {
-                std.debug.print("{s} exists with other settings or placements: made anew with its seed {s}\n", .{ mod_name, seed.? });
-            }
-        },
-    }
+    };
+    for (prepared.notes) |note| std.debug.print("{s}\n", .{note});
 
     var progress = engine.Progress.stderrPrinter();
-    const result = engine.generator.generate(gpa, a, env, .{
-        .game_path = game,
-        .out_dir = out,
-        .settings = st,
-        .seed = seed,
-        .mod_name = mod_name,
-        .test_placements = plan.placements,
-        .test_plan_text = text,
-        .rebuild = rebuild,
-    }, null, &progress) catch |err| {
+    const result = engine.generator.generate(gpa, a, env, prepared.request, null, &progress) catch |err| {
         std.debug.print("Generation failed: {s}\n", .{if (progress.failureMessage().len > 0) progress.failureMessage() else @errorName(err)});
         return error.Failed;
     };

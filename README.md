@@ -602,8 +602,8 @@ You need [Zig 0.17.1](https://ziglang.org/download/). Nothing else: zstd is comp
 0.3 comes with prebuilt libraries in `vendor/Raven/lib`.
 
 ```bash
-zig build                              # release build (ReleaseFast) of this system: zig-out/<system>
-zig build -Doptimize=Debug             # debug build, only when debugging
+zig build                              # debug build of this system: zig-out/<system> (has the Test Seeds tab)
+zig build --release                    # release build (ReleaseFast), as the GitHub releases are built
 zig build run                          # build and open the window
 zig build cli                          # only the command-line tool
 zig build test                         # unit tests

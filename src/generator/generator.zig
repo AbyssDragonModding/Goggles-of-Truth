@@ -178,6 +178,17 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     if (plan.start_inventory_unknown.len > 0) {
         progress.log("warning: Starting Inventory: not items of this game, left out: {s}", .{std.mem.join(a, ", ", plan.start_inventory_unknown) catch return error.OutOfMemory});
     }
+    if (st.itemRestrictions().len > 0) {
+        progress.log("Item Restrictions: {d} of {d} entries apply", .{ st.itemRestrictions().len - plan.restriction_problems.items.len, st.itemRestrictions().len });
+        for (plan.restriction_problems.items) |problem| progress.log("warning: Item Restrictions: {s} (ignored)", .{problem});
+    }
+    {
+        var behind_rocks: usize = 0;
+        for (plan.behind_bomb_rock) |behind| {
+            if (behind) behind_rocks += 1;
+        }
+        progress.log("Bomb Bag rule: {d} spots behind bombable rocks never get the first Bomb Bag", .{behind_rocks});
+    }
     const user_excluded = plan.countUserExcluded();
     if (user_excluded > 0) progress.log("Excluded locations: {d} of the shuffled locations only get junk", .{user_excluded});
 

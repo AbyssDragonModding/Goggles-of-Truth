@@ -1,6 +1,7 @@
 //! Test plans: one TOML file that describes a test seed (`goggles_cli test <plan.test.toml>`).
 //!
-//! A plan says which seed to make (name, seed, settings) and how a new game starts in it: items at chosen locations,
+//! A plan says which seed to make (name, seed, settings, items kept away from chosen locations) and how a new game
+//! starts in it: items at chosen locations,
 //! where Link appears (scene, start spot or coordinates, age, an event that plays on arrival), the time of day, the
 //! items he already owns, quest steps, save flags and which cutscenes count as seen. test_plans/TEMPLATE.test.toml
 //! explains every key; `goggles_cli test-catalog` lists the names the game accepts.
@@ -91,6 +92,9 @@ pub const TestPlan = struct {
     setting_overrides: []const toml.Entry = &.{},
     /// [place]: location = item
     placements: []const seedinfo.TestPlacement = &.{},
+    /// [forbid]: location = item or [items], as Item Restrictions entries ("Location | Item"), added to the
+    /// settings' own (settings.parseItemRestriction reads them)
+    item_restrictions: []const []const u8 = &.{},
     start: StartSetup = .{},
 };
 
@@ -109,9 +113,9 @@ pub fn parse(allocator: Allocator, text: []const u8, problem: *Problem) PlanErro
         error.OutOfMemory => return error.OutOfMemory,
         error.Syntax => return refuse(allocator, problem, "line {d} is not TOML this program reads (strings need quotes; tables are [name])", .{bad_line}),
     };
-    const known_tables = [_][]const u8{ "", "settings", "place", "start", "quests", "flags", "cutscenes" };
+    const known_tables = [_][]const u8{ "", "settings", "place", "forbid", "start", "quests", "flags", "cutscenes" };
     for (doc.tables.items) |t| {
-        if (!isListed(&known_tables, t.name)) return refuse(allocator, problem, "unknown table [{s}] (known: [settings], [place], [start], [quests], [flags], [cutscenes])", .{t.name});
+        if (!isListed(&known_tables, t.name)) return refuse(allocator, problem, "unknown table [{s}] (known: [settings], [place], [forbid], [start], [quests], [flags], [cutscenes])", .{t.name});
     }
 
     const top = doc.table("").?;
@@ -139,6 +143,8 @@ pub fn parse(allocator: Allocator, text: []const u8, problem: *Problem) PlanErro
         }
         plan.placements = placements;
     }
+
+    if (doc.table("forbid")) |t| plan.item_restrictions = try readForbidTable(allocator, problem, t);
 
     if (doc.table("start")) |t| try readStartTable(allocator, problem, t, &plan.start);
 
@@ -215,6 +221,29 @@ fn readStartTable(allocator: Allocator, problem: *Problem, t: *const toml.Table,
     start.items = try optionalStringList(allocator, problem, t, "start", "items");
 }
 
+/// [forbid]: "Location" = "Item" or ["Item", ...] -> one "Location | Item" entry per item (the Item Restrictions
+/// setting's form; '|' is its separator, so names can't hold one).
+fn readForbidTable(allocator: Allocator, problem: *Problem, t: *const toml.Table) PlanError![]const []const u8 {
+    var entries: std.ArrayList([]const u8) = .empty;
+    for (t.entries.items) |*entry| {
+        const items: []const toml.Value = switch (entry.value) {
+            .string => (&entry.value)[0..1],
+            .array => |a| a,
+            else => return refuse(allocator, problem, "[forbid] \"{s}\": give a quoted item name or a list of them", .{entry.key}),
+        };
+        if (items.len == 0) return refuse(allocator, problem, "[forbid] \"{s}\": the list is empty", .{entry.key});
+        for (items) |item| {
+            if (item != .string) return refuse(allocator, problem, "[forbid] \"{s}\": item names must be quoted", .{entry.key});
+            if (std.mem.indexOfScalar(u8, entry.key, '|') != null or std.mem.indexOfScalar(u8, item.string, '|') != null) {
+                return refuse(allocator, problem, "[forbid] \"{s}\": names can't contain '|'", .{entry.key});
+            }
+            const text = std.fmt.allocPrint(allocator, "{s} | {s}", .{ entry.key, item.string }) catch return error.OutOfMemory;
+            entries.append(allocator, text) catch return error.OutOfMemory;
+        }
+    }
+    return entries.items;
+}
+
 fn refuse(allocator: Allocator, problem: *Problem, comptime fmt: []const u8, args: anytype) PlanError {
     problem.message = std.fmt.allocPrint(allocator, fmt, args) catch return error.OutOfMemory;
     return error.InvalidPlan;
@@ -289,6 +318,9 @@ test "a full plan" {
         \\shuffle_ocarinas = true
         \\[place]
         \\"Kokiri Forest Chest 1" = "Hookshot"
+        \\[forbid]
+        \\"LW Deku Scrub Nut Upgrade" = ["Bomb Bag", "Progressive Bomb Bag"]
+        \\"KF Chest 1" = "Hookshot"
         \\[start]
         \\age = "adult"
         \\scene = "KakarikoVillage"
@@ -309,6 +341,8 @@ test "a full plan" {
     try std.testing.expectEqualStrings("HOOKSHOT1", plan.name);
     try std.testing.expectEqual(@as(usize, 1), plan.setting_overrides.len);
     try std.testing.expectEqualStrings("Hookshot", plan.placements[0].item);
+    try std.testing.expectEqual(@as(usize, 3), plan.item_restrictions.len);
+    try std.testing.expectEqualStrings("LW Deku Scrub Nut Upgrade | Progressive Bomb Bag", plan.item_restrictions[1]);
     try std.testing.expectEqual(Age.adult, plan.start.age.?);
     const spawn = plan.start.spawn.?;
     try std.testing.expectEqualStrings("KakarikoVillage", spawn.scene);
@@ -337,6 +371,7 @@ test "plans with mistakes are refused with a reason" {
         .{ .text = "name = \"A\"\n[start]\nspawn = \"X\"", .says = "unknown key spawn" },
         .{ .text = "name = \"A\"\n[teleport]", .says = "unknown table" },
         .{ .text = "name = \"A\"\n[place]\n\"L\" = \"I\"\n\"L\" = \"J\"", .says = "twice" },
+        .{ .text = "name = \"A\"\n[forbid]\n\"L\" = 3", .says = "quoted item name" },
         .{ .text = "name = \"A\"\n[cutscenes]\nseen = [\"X\"]\nunseen = [\"X\"]", .says = "both seen and unseen" },
         .{ .text = "name = \"A\"\n[flags]\n\"F\" = [1]", .says = "true/false" },
     };

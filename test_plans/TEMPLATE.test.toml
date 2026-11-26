@@ -38,6 +38,12 @@ name = "MYTEST1"                 # letters, digits, - and _ only; the seed folde
 # The location must be shuffled with these settings. Each item copy can be placed once.
 # "Kokiri Forest Chest 1" = "Hookshot"
 
+[forbid]
+# "location" = "item" or ["item", ...]: these items are never placed there (the seed puts them elsewhere).
+# Same names as [place]. Adds to the settings' own Item Restrictions (Exclusions tab). A Progressive item's name
+# covers every tier of it, with Progressive Items on or off. A name the game doesn't have is ignored (the log says so).
+# "LW Deku Scrub Nut Upgrade" = ["Progressive Bomb Bag", "Megaton Hammer"]
+
 # ------------------------------------------------------------------------------------------- the start
 [start]
 # age = "adult"                  # "child" or "adult"

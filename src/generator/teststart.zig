@@ -104,6 +104,7 @@ pub const OpeningStart = struct {
     /// actors added to the pouch and equipped (PouchSystemActor.EventTriggerAddOrRemovePouchContent, IsEquipDIrect)
     equip: []const []const u8 = &.{},
     /// the adult start's layout (see "Starting Age: Adult"): no child opening; the change boots `arrival.scene`
+    /// (none: the scene change fades in on its own)
     arrival: ?Arrival = null,
     /// the change boots `arrival.entry` instead (it has gifts to hand over after the scene: giveOnArrival)
     arrival_boots_entry: bool = false,
@@ -115,41 +116,49 @@ pub const OpeningStart = struct {
 
 // ------------------------------------------------------------------------------------- Starting Age: Adult
 // As OotrR does it (src/oot_rando/patching/adult_start.py, MIT License, Copyright (c) 2026 Mozencaz): the new game
-// still loads Kokiri Forest, then the opening moves the Sheik and Forest quests to Step01 (without AllSage past Ready
-// Sheik stands by the pedestal and blocks putting the sword back), marks the first trip to adult as made, and
-// changes to adult Castle Town with the game's own time-travel values (Market_Child_Field_ChildToAdult: the
-// platform in the Temple of Time, NextStartRot [0, 90, 0], white fade), starting Dm_TimeTemple_0085 (Link at the
-// pedestal). The Master Sword is added and equipped as the Door of Time flow does. The Door of Time is opened
-// (door.zig) and the save data has the rest (adultStartChanges).
+// still loads Kokiri Forest, then the opening moves the Sheik and Forest quests on (AllSage Step01: the first
+// arrival's Sheik scenes count as played), marks the first trip to adult as made, and changes to adult Castle Town.
+// The Master Sword is added and equipped as the Door of Time flow does. The Door of Time is opened (door.zig) and
+// the save data has the rest (adult_start_changes).
 //
-// So that a new game doesn't show child Link first (test report, FEAT_ADULT1: he appeared outside the Kokiri Shop,
-// got the start items' windows, then warped), the adult start (OpeningStart.arrival) also:
-// - leaves out Kokiri Forest's fade-in (Opening_LoadingKokiriForest's EventEventFadeIn), so the screen stays black;
+// Where adult Link appears: the Temple of Time's LightPrelude start spot (the hall, facing the pedestal room), where
+// the Prelude of Light scene puts him, with no scene. Before (0.8.0-dev, test report): the pedestal, with the sword
+// pull Dm_TimeTemple_0085; Sheik stood right behind it and the pedestal didn't take the sword back. Every seed now
+// moves Sheik aside and lets the pedestal turn Link back to child from his first trip to adult on (pedestal.zig).
+//
+// So that a new game doesn't show child Link for long (test report, FEAT_ADULT1: he appeared outside the Kokiri
+// Shop, got the start items' windows, then warped), the adult start (OpeningStart.arrival) also:
 // - cuts the opening's introduction after its Meet_DekuTree step, as OotrR does (its anchor, OpeningEvent:Event8):
-//   the start outside the shop, Navi, the camera and the fade-in don't play; the silent start items (ocarinas, the
-//   base bags) and the adult start's steps follow at once, then the scene change and the autosave;
-// - hands the start items that show an item window (Skip Child Zelda's checks, Rauru's check...) over after the
-//   sword pull instead. The change then boots AllSage:Market_Adult_AllSage_Start, the event the game itself boots
-//   on the first arrival as adult (DoorOfTime:Event96), so its RSDB rows already exist; giveOnArrival makes that
-//   entry play Dm_TimeTemple_0085 (the scene the change boots without gifts), fade in, hand the gifts over and
-//   autosave, and addArrivalScene lists the scene in its GameAnalyzedEventInfo row (patches.zig lists the gift
-//   flow). The adult start's save data has already made the native first-arrival scenes count as done, and
-//   nothing else boots that entry once the Door of Time's first pull is skipped (adult_start_changes).
+//   the start outside the shop, Navi, the camera and the opening's own fade-in don't play; the silent start items
+//   (ocarinas, the base bags) and the adult start's steps follow at once, then a fade-in, the scene change and the
+//   autosave. Why the fade-in: the introduction fades the screen out (UISystemActor.EventEventFadeOut, Event22) right
+//   before its Meet_DekuTree step and fades it in again only in the part that is cut. With the screen left faded
+//   out, the change to the Temple of Time stayed black (test reports, FEAT_ADULT1 with 0.8.0-dev f45e6fb and
+//   f52dca2, which also left out Kokiri Forest's loading fade-in: it plays again now). The version that played the
+//   whole introduction (e8f1d1c) changed scenes fine. Child Link shows for the moment the white fade takes;
+// - hands the start items that show an item window (Skip Child Zelda's checks, Rauru's check...) over on arrival.
+//   The change then boots AllSage:Market_Adult_AllSage_Start, the event the game itself boots on the first arrival
+//   as adult (DoorOfTime:Event96), so its RSDB rows already exist; giveOnArrival makes that entry add and equip the
+//   Master Sword (Link is adult by then), fade in, hand the gifts over and autosave. The adult start's save data has
+//   already made the native first-arrival scenes count as done, and nothing else boots that entry once the Door of
+//   Time's first pull is skipped (adult_start_changes). A test plan's own spawn has no arrival: the opening adds
+//   the sword then.
 //   Why not a new entry of OpeningEvent with new RSDB rows (0.8.0-dev f45e6fb): a new game stayed on a black
 //   screen (test report, FEAT_ADULT1); its scene had no fade-in after it (FadeInTypeEventEnd), and new event rows
 //   had never been tried in-game.
 pub const adult_start_warp = Warp{
     .scene = "Market_Adult",
-    .start_spot = "",
-    .position = .{ 137.2084, 106.1201, -34.0 },
+    .start_spot = "LightPrelude",
+    // the LightPrelude start spot (StartPos.byml), as `goggles_cli test-catalog` lists it
+    .position = .{ 84.751, 104.232, -34.0 },
     .facing_degrees = 90,
-    .boot_event = "Dm_TimeTemple_0085",
+    .boot_event = "",
     .childhood = false,
     .fade_pattern = 2,
 };
 pub const adult_start_quests = [_]QuestProgress{
     .{ .quest = "AllSage", .step = "Step01" },
-    .{ .quest = "SageOfForest", .step = "Step01" },
+    .{ .quest = "SageOfForest", .step = "Step02" },
 };
 pub const adult_start_flags = [_]FlagSet{.{ .name = "Market_Child_Firsttime_GotoAdult", .value = true }};
 pub const adult_start_equip = [_][]const u8{"Weapon_Sword_Master"};
@@ -157,7 +166,8 @@ pub const adult_start_arrival = Arrival{
     .flow = "Event/EventFlow/AllSage.bfevfl.zs",
     .flowchart = "AllSage",
     .entry = "Market_Adult_AllSage_Start",
-    .scene = "Dm_TimeTemple_0085",
+    // no scene: Link appears at the LightPrelude spot as he is
+    .scene = "",
 };
 /// the time travel's fade (white, FadePattern 2), as the native scene transitions after it end (AllSage:Event9)
 const arrival_fade_in_type: i32 = 2;
@@ -597,6 +607,16 @@ pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart,
         if (warp_boot.len > 0) params.append(allocator, .{ .name = "BootEventName", .value = .{ .string = warp_boot } }) catch return error.OutOfMemory;
         next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_Warp", change_aa, next, try Container.from(allocator, params.items)));
         if (w.childhood) |is_child| next = try setFlag(fc, allocator, "Age", childhood_flag, is_child, next, progress);
+        if (start.arrival != null) {
+            // the adult layout cuts the introduction after its fade-out: the screen is faded in again before the
+            // change (see "Starting Age: Adult"), as the introduction's own end would have
+            try flows.ensureSystemActor(fc, allocator, "UISystemActor", opening_flow, progress);
+            const fade_aa = try flows.requireAction(fc, allocator, "UISystemActor", "EventEventFadeIn", progress);
+            next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_FadeIn", fade_aa, next, try Container.from(allocator, &.{
+                .{ .name = "Length", .value = .{ .int = 1 } },
+                .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+            })));
+        }
     }
     var k = start.equip.len;
     while (k > 0) {
@@ -637,7 +657,7 @@ pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart,
         })));
     }
     if (start.arrival != null) {
-        try adultLayout(allocator, fc, next, progress);
+        try adultLayout(fc, next, progress);
         return .{ .data = try flows.writeBack(allocator, &doc, "OpeningEvent (adult start)", progress) };
     }
     fc.events.items[before[0]].nextPtr().?.* = next;
@@ -667,7 +687,7 @@ fn namedRun(fc: *evfl.Flowchart, prefix: []const u8) ?Run {
 }
 
 /// The adult layout (see "Starting Age: Adult"): `chain` is the adult start's steps up to the autosave.
-fn adultLayout(allocator: Allocator, fc: *evfl.Flowchart, chain: u16, progress: *Progress) PatchError!void {
+fn adultLayout(fc: *evfl.Flowchart, chain: u16, progress: *Progress) PatchError!void {
     // the introduction is cut after its Meet_DekuTree step (OotrR's anchor)
     var anchor: ?u16 = null;
     var anchors: usize = 0;
@@ -687,26 +707,15 @@ fn adultLayout(allocator: Allocator, fc: *evfl.Flowchart, chain: u16, progress: 
         head = items.first;
     }
     fc.events.items[anchor.?].nextPtr().?.* = head;
-
-    // Kokiri Forest isn't faded in: the screen stays black until the change
-    const loading = fc.entryPoint("Opening_LoadingKokiriForest") orelse return progress.fail(error.NotAsExpected, "no Opening_LoadingKokiriForest entry", .{});
-    const reached = try fc.reach(allocator, loading.main_event);
-    var fade: ?u16 = null;
-    for (reached, 0..) |r, i| {
-        if (r and fc.isAction(&fc.events.items[i], "UISystemActor", "EventEventFadeIn")) fade = @intCast(i);
-    }
-    const fade_in = fade orelse return progress.fail(error.NotAsExpected, "Kokiri Forest's fade-in is not in the opening", .{});
-    const after = fc.events.items[fade_in].next() orelse NONE;
-    for (try fc.predecessors(allocator, fade_in)) |p| {
-        const link = fc.events.items[p].nextPtr() orelse return progress.fail(error.NotAsExpected, "Kokiri Forest's fade-in is reached by a branch", .{});
-        link.* = after;
-    }
 }
 
-/// The arrival flow (`data`, Arrival.flow) with its entry now: play the scene, fade in, hand `gifts` over (one each,
-/// with their item window), autosave. The entry's native events stay in the file, unreached.
-pub fn giveOnArrival(allocator: Allocator, data: []const u8, arrival: Arrival, gifts: []const []const u8, progress: *Progress) PatchError![]u8 {
-    if (gifts.len == 0) return progress.fail(error.NotAsExpected, "no gifts to hand over on arrival", .{});
+/// The arrival flow (`data`, Arrival.flow) with its entry now: play the scene (if it has one), add and equip `equip`
+/// (adult Link's Master Sword), fade in, hand `gifts` over (one each, with their item window), autosave. The entry's
+/// native events stay in the file, unreached.
+///
+/// Why the sword here and not in the opening: added there, while Link is still a child, the adult start arrived
+/// without it (test report, ADULTPEDESTAL1: no Master Sword); the sword pull scene had given it before.
+pub fn giveOnArrival(allocator: Allocator, data: []const u8, arrival: Arrival, equip: []const []const u8, gifts: []const []const u8, progress: *Progress) PatchError![]u8 {
     var doc = try flows.readFlow(allocator, data, arrival.flowchart, progress);
     const fc = try flows.expectFlowchart(&doc, arrival.flowchart, progress);
     for (fc.events.items) |e| {
@@ -728,21 +737,37 @@ pub fn giveOnArrival(allocator: Allocator, data: []const u8, arrival: Arrival, g
         })));
         gift_events.append(allocator, next) catch return error.OutOfMemory;
     }
-    // the scene ends with the time travel's white fade-in; the fade-in after it is AllSage's own (Event97), so the
-    // item windows never show on a faded screen
+    // after the scene change (or the scene's own white fade-in) the screen is faded in, so the item windows never
+    // show on a faded screen (AllSage's own entry fades in the same way, Event97)
     try flows.ensureSystemActor(fc, allocator, "UISystemActor", arrival.flow, progress);
     const fade_aa = try flows.requireAction(fc, allocator, "UISystemActor", "EventEventFadeIn", progress);
     next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_FadeIn", fade_aa, next, try Container.from(allocator, &.{
         .{ .name = "Length", .value = .{ .int = 1 } },
         .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
     })));
-    const transition_aa = try flows.requireAction(fc, allocator, "EventSystemActor", "EventTransition", progress);
-    next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_Scene", transition_aa, next, try Container.from(allocator, &.{
-        .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
-        .{ .name = "SpecialEventActionType", .value = .{ .int = 1 } },
-        .{ .name = "EventName", .value = .{ .string = arrival.scene } },
-        .{ .name = "FadeInTypeEventEnd", .value = .{ .int = arrival_fade_in_type } },
-    })));
+    var k_equip = equip.len;
+    while (k_equip > 0) {
+        k_equip -= 1;
+        try flows.ensureSystemActor(fc, allocator, "PouchSystemActor", arrival.flow, progress);
+        const pouch_aa = try flows.requireAction(fc, allocator, "PouchSystemActor", "EventTriggerAddOrRemovePouchContent", progress);
+        const name = std.fmt.allocPrint(allocator, "{s}_Equip{d}", .{ arrival_prefix, k_equip }) catch return error.OutOfMemory;
+        // as DoorOfTime:Event115 adds the Master Sword
+        next = try fc.addEvent(allocator, evfl.makeAction(name, pouch_aa, next, try Container.from(allocator, &.{
+            .{ .name = "Num", .value = .{ .int = 1 } },
+            .{ .name = "IsSetMessageTargetActorName", .value = .{ .bool = true } },
+            .{ .name = "Actor", .value = .{ .string = equip[k_equip] } },
+            .{ .name = "IsEquipDIrect", .value = .{ .bool = true } },
+        })));
+    }
+    if (arrival.scene.len > 0) {
+        const transition_aa = try flows.requireAction(fc, allocator, "EventSystemActor", "EventTransition", progress);
+        next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_Scene", transition_aa, next, try Container.from(allocator, &.{
+            .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+            .{ .name = "SpecialEventActionType", .value = .{ .int = 1 } },
+            .{ .name = "EventName", .value = .{ .string = arrival.scene } },
+            .{ .name = "FadeInTypeEventEnd", .value = .{ .int = arrival_fade_in_type } },
+        })));
+    }
     entry.main_event = next;
     // the entry lists the gift calls it reaches (a missing one hung the game: flows.listReachedCalls)
     try flows.listReachedCalls(allocator, fc, gift_events.items);
@@ -753,6 +778,8 @@ pub fn giveOnArrival(allocator: Allocator, data: []const u8, arrival: Arrival, g
 /// The row is the game's own (Arrival.entry); the gift flow goes in its SubFlowList through
 /// storyskip.updateEventInfo, as for every changed flow.
 pub fn addArrivalScene(allocator: Allocator, world: *World, patches: *patchset.PatchSet, arrival: Arrival, progress: *Progress) PatchError!void {
+    // an arrival without a scene plays none
+    if (arrival.scene.len == 0) return;
     const rel = try world.find(allocator, "RSDB", "GameAnalyzedEventInfo.");
     const original = try patches.read(rel);
     const doc = byml.load(allocator, original.data) catch return error.InvalidData;
@@ -786,23 +813,219 @@ fn setFlag(fc: *evfl.Flowchart, allocator: Allocator, suffix: []const u8, name: 
 
 // ---------------------------------------------------------------------------------------------------- catalog
 
+/// The names a test plan can use, read from this game: the window's Test Seeds tab offers them in its pickers and
+/// `goggles_cli test-catalog` writes them out (writeCatalog). Every string is a copy in memory from the allocator,
+/// so the catalog outlives the scanned game (the window keeps it after opening another game).
+pub const Catalog = struct {
+    pub const Scene = struct {
+        name: []const u8,
+        /// the age Link takes in it, or null when he keeps the plan's
+        forced_age: ?testplan.Age,
+        spots: []const StartSpot,
+    };
+    pub const Quest = struct {
+        name: []const u8,
+        steps: []const []const u8,
+    };
+    pub const Item = struct {
+        /// as the spoiler log names it
+        name: []const u8,
+        key: []const u8,
+    };
+    /// A save flag a test plan can set ([flags]): true/false, a whole number, or one of an Enum's value names.
+    pub const Flag = struct {
+        name: []const u8,
+        kind: FlagKind,
+        /// an Enum flag's value names, in order (empty for the others)
+        values: []const []const u8,
+    };
+    pub const FlagKind = enum { boolean, integer, enumeration };
+
+    scenes: []const Scene,
+    /// boot_event candidates: every EventSetting row and its flow
+    events: []const EventRow,
+    quests: []const Quest,
+    /// the cutscenes (Dm_ events) the game remembers as played
+    cutscenes: []const EventRow,
+    locations: []const []const u8,
+    items: []const Item,
+    /// sorted by name (flagNames)
+    flags: []const Flag,
+};
+
+pub fn buildCatalog(allocator: Allocator, world: *World) PatchError!Catalog {
+    const scene_names = try sceneNames(allocator, world);
+    const spot_table = try startSpotTable(allocator, world);
+    const scenes = try allocator.alloc(Catalog.Scene, scene_names.len);
+    for (scene_names, 0..) |scene, i| {
+        const spots = try allocator.dupe(StartSpot, try spotsIn(allocator, spot_table, scene));
+        for (spots) |*spot| spot.name = try allocator.dupe(u8, spot.name);
+        scenes[i] = .{
+            .name = try allocator.dupe(u8, scene),
+            .forced_age = (try ageRule(allocator, world, scene)).forced,
+            .spots = spots,
+        };
+    }
+
+    const events = try allocator.dupe(EventRow, try eventRows(allocator, world));
+    for (events) |*row| row.* = .{ .id = try allocator.dupe(u8, row.id), .flow = try allocator.dupe(u8, row.flow) };
+    const probe = try gamedata.probeOf(world);
+    var quests: std.ArrayList(Catalog.Quest) = .empty;
+    for (try questNames(allocator, world)) |quest| {
+        const enum_name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ quest_enum_prefix, quest });
+        const values = probe.enumValueNames(enum_name) orelse continue;
+        var steps: std.ArrayList([]const u8) = .empty;
+        for (values) |v| try steps.append(allocator, try allocator.dupe(u8, v.asString() orelse continue));
+        try quests.append(allocator, .{ .name = try allocator.dupe(u8, quest), .steps = steps.items });
+    }
+
+    // the game keeps a "played" flag for nearly every event; the Dm_ ones are its cutscenes
+    var cutscenes: std.ArrayList(EventRow) = .empty;
+    var listed = std.StringHashMap(void).init(allocator);
+    for (events) |row| {
+        if (listed.contains(row.id) or !std.mem.startsWith(u8, row.id, "Dm_")) continue;
+        const flag = try std.fmt.allocPrint(allocator, "{s}{s}", .{ played_prefix, row.id });
+        if (probe.flagKind(flag) != .Bool) continue;
+        listed.put(row.id, {}) catch return error.OutOfMemory;
+        try cutscenes.append(allocator, row);
+    }
+
+    const locations = try allocator.alloc([]const u8, world.locations.items.len);
+    for (world.locations.items, 0..) |loc, i| locations[i] = try allocator.dupe(u8, loc.name);
+    const items = try allocator.alloc(Catalog.Item, world.items.count());
+    for (items, 0..) |*item, i| {
+        const id: ItemId = @intCast(i);
+        item.* = .{ .name = try allocator.dupe(u8, try world.itemNameById(allocator, id)), .key = try allocator.dupe(u8, world.items.name(id)) };
+    }
+    return .{
+        .scenes = scenes,
+        .events = events,
+        .quests = quests.items,
+        .cutscenes = cutscenes.items,
+        .locations = locations,
+        .items = items,
+        .flags = try settableFlags(allocator, world, events),
+    };
+}
+
+/// The folders whose files name save flags (most flags are named in event flows; the rest in logic modules,
+/// sequences, AI schedules and the scenes' area files). Each Banc scene folder is read too.
+const flag_name_folders = [_][]const u8{ "Event/EventFlow", "Logic", "Sequence", "Component/AIScheduleParam" };
+
+/// Every save flag a test plan can set, by name. Why read so many files: the save data keeps flags only by hash
+/// (murmur3), so names are found by hashing every name-like string in the game's files and keeping those the
+/// save data has, plus the names the game builds itself ("HavePlayedEvent.<event>", "IsGet.<actor>").
+fn settableFlags(allocator: Allocator, world: *World, events: []const EventRow) PatchError![]const Catalog.Flag {
+    const probe = try gamedata.probeOf(world);
+    var candidates = std.StringHashMap(void).init(allocator);
+    defer candidates.deinit();
+    var scratch = std.heap.ArenaAllocator.init(world.gpa);
+    defer scratch.deinit();
+
+    var folders: std.ArrayList([]const u8) = .empty;
+    try folders.appendSlice(allocator, &flag_name_folders);
+    const scene_folders = world.files.listDir(allocator, "Banc") catch &.{};
+    for (scene_folders) |scene| try folders.append(allocator, try std.fmt.allocPrint(allocator, "Banc/{s}", .{scene}));
+    // "Group.<scene>.Field" names (DungeonInfo.ForestTemple.SmallKeyNum): the game builds them for every scene, so
+    // each group and field seen in a file is tried with every scene
+    var scene_patterns = std.StringHashMap(void).init(allocator);
+    defer scene_patterns.deinit();
+
+    for (folders.items) |folder| {
+        // the listing in `allocator`, each file's data in `scratch` (reset for every file)
+        const kept = world.files.listDir(allocator, folder) catch continue;
+        for (kept) |name| {
+            if (!std.mem.endsWith(u8, name, ".zs")) continue;
+            _ = scratch.reset(.retain_capacity);
+            const rel = try std.fmt.allocPrint(scratch.allocator(), "{s}/{s}", .{ folder, name });
+            const data = world.readZs(scratch.allocator(), rel) catch continue;
+            try collectNameLikeStrings(allocator, data.data, &candidates, &scene_patterns, probe);
+        }
+    }
+    // a field no file writes out in full (DungeonInfo.<scene>.SmallKeyNum) isn't found: the Test Seeds tab and
+    // [flags] still take any name typed in
+    var buf: [256]u8 = undefined;
+    var patterns = scene_patterns.keyIterator();
+    while (patterns.next()) |pattern| {
+        const dot = std.mem.indexOfScalar(u8, pattern.*, '.').?;
+        for (scene_folders) |scene| {
+            const name = std.fmt.bufPrint(&buf, "{s}.{s}.{s}", .{ pattern.*[0..dot], scene, pattern.*[dot + 1 ..] }) catch continue;
+            try addCandidate(allocator, &candidates, probe, name);
+        }
+    }
+    for (events) |row| try addCandidate(allocator, &candidates, probe, try std.fmt.allocPrint(allocator, "{s}{s}", .{ played_prefix, row.id }));
+    var actors = world.actor_packs.keyIterator();
+    while (actors.next()) |actor| try addCandidate(allocator, &candidates, probe, try std.fmt.allocPrint(allocator, "IsGet.{s}", .{actor.*}));
+
+    var flags: std.ArrayList(Catalog.Flag) = .empty;
+    var it = candidates.keyIterator();
+    while (it.next()) |name| {
+        const kind: Catalog.FlagKind = switch (probe.flagKind(name.*) orelse continue) {
+            .Bool => .boolean,
+            .Int => .integer,
+            .Enum => .enumeration,
+            else => continue,
+        };
+        var values: std.ArrayList([]const u8) = .empty;
+        if (kind == .enumeration) {
+            for (probe.enumValueNames(name.*) orelse &.{}) |v| try values.append(allocator, try allocator.dupe(u8, v.asString() orelse continue));
+        }
+        try flags.append(allocator, .{ .name = name.*, .kind = kind, .values = values.items });
+    }
+    std.mem.sort(Catalog.Flag, flags.items, {}, struct {
+        fn less(_: void, x: Catalog.Flag, y: Catalog.Flag) bool {
+            return std.ascii.orderIgnoreCase(x.name, y.name) == .lt;
+        }
+    }.less);
+    return flags.items;
+}
+
+/// Adds every run of name characters (letters, digits, '_', '.', '$', '-') in `data` that the save data knows as a
+/// settable flag. Names are copied with `allocator`.
+/// A run "Group.Middle.Field" also adds "Group.Field" to `scene_patterns` (see settableFlags).
+fn collectNameLikeStrings(allocator: Allocator, data: []const u8, candidates: *std.StringHashMap(void), scene_patterns: *std.StringHashMap(void), probe: *gamedata.GameDataPatcher) PatchError!void {
+    var start: usize = 0;
+    var i: usize = 0;
+    while (i <= data.len) : (i += 1) {
+        const in_name = i < data.len and (std.ascii.isAlphanumeric(data[i]) or data[i] == '_' or data[i] == '.' or data[i] == '$' or data[i] == '-');
+        if (in_name) continue;
+        const run = data[start..i];
+        start = i + 1;
+        if (run.len < 4 or run.len > 120) continue;
+        if (std.mem.count(u8, run, ".") == 2) {
+            const first = std.mem.indexOfScalar(u8, run, '.').?;
+            const last = std.mem.lastIndexOfScalar(u8, run, '.').?;
+            if (first > 0 and last + 1 < run.len) {
+                var buf: [128]u8 = undefined;
+                const pattern = std.fmt.bufPrint(&buf, "{s}.{s}", .{ run[0..first], run[last + 1 ..] }) catch continue;
+                if (!scene_patterns.contains(pattern)) scene_patterns.put(try allocator.dupe(u8, pattern), {}) catch return error.OutOfMemory;
+            }
+        }
+        if (candidates.contains(run)) continue;
+        try addCandidate(allocator, candidates, probe, run);
+    }
+}
+
+fn addCandidate(allocator: Allocator, candidates: *std.StringHashMap(void), probe: *gamedata.GameDataPatcher, name: []const u8) PatchError!void {
+    const kind = probe.flagKind(name) orelse return;
+    if (kind != .Bool and kind != .Int and kind != .Enum) return;
+    if (candidates.contains(name)) return;
+    candidates.put(try allocator.dupe(u8, name), {}) catch return error.OutOfMemory;
+}
+
 /// Writes the names a test plan can use into `out_folder`: scenes.txt, start_spots.txt, boot_events.txt,
-/// quests.txt, cutscenes.txt, locations.txt and items.txt. Returns the files written.
+/// quests.txt, cutscenes.txt, locations.txt, items.txt and flags.txt. Returns the files written.
 pub fn writeCatalog(allocator: Allocator, world: *World, fs: fsmod.Fs, out_folder: []const u8) PatchError![]const []const u8 {
     fs.makePath(out_folder) catch return error.GameFiles;
     var written: std.ArrayList([]const u8) = .empty;
     const header = "# Made by goggles_cli test-catalog from this game. Names for test plans (test_plans/TEMPLATE.test.toml).\n";
-
-    const scenes = try sceneNames(allocator, world);
-    const spot_table = try startSpotTable(allocator, world);
+    const catalog = try buildCatalog(allocator, world);
     {
         var text: std.ArrayList(u8) = .empty;
         try text.appendSlice(allocator, header);
         try text.appendSlice(allocator, "# scene    age (\"either\": Link keeps the age the plan gives)    start spots\n\n");
-        for (scenes) |scene| {
-            const rule = try ageRule(allocator, world, scene);
-            const spots = try spotsIn(allocator, spot_table, scene);
-            try text.print(allocator, "{s}    {s}    {d}\n", .{ scene, if (rule.forced) |age| @tagName(age) else "either", spots.len });
+        for (catalog.scenes) |scene| {
+            try text.print(allocator, "{s}    {s}    {d}\n", .{ scene.name, if (scene.forced_age) |age| @tagName(age) else "either", scene.spots.len });
         }
         try writeCatalogFile(allocator, fs, out_folder, "scenes.txt", text.items, &written);
     }
@@ -810,11 +1033,10 @@ pub fn writeCatalog(allocator: Allocator, world: *World, fs: fsmod.Fs, out_folde
         var text: std.ArrayList(u8) = .empty;
         try text.appendSlice(allocator, header);
         try text.appendSlice(allocator, "# [scene]  start_spot    position [x, y, z]    facing (degrees)\n");
-        for (scenes) |scene| {
-            const spots = try spotsIn(allocator, spot_table, scene);
-            if (spots.len == 0) continue;
-            try text.print(allocator, "\n[{s}]\n", .{scene});
-            for (spots) |spot| {
+        for (catalog.scenes) |scene| {
+            if (scene.spots.len == 0) continue;
+            try text.print(allocator, "\n[{s}]\n", .{scene.name});
+            for (scene.spots) |spot| {
                 try text.print(allocator, "{s}    [{d:.3}, {d:.3}, {d:.3}]    {d:.1}\n", .{
                     if (spot.name.len > 0) spot.name else "(unnamed: use its position)",
                     spot.position[0],
@@ -826,58 +1048,53 @@ pub fn writeCatalog(allocator: Allocator, world: *World, fs: fsmod.Fs, out_folde
         }
         try writeCatalogFile(allocator, fs, out_folder, "start_spots.txt", text.items, &written);
     }
-    const events = try eventRows(allocator, world);
     {
         var text: std.ArrayList(u8) = .empty;
         try text.appendSlice(allocator, header);
         try text.appendSlice(allocator, "# boot_event    the event flow it is in\n\n");
-        for (events) |row| try text.print(allocator, "{s}    {s}\n", .{ row.id, row.flow });
+        for (catalog.events) |row| try text.print(allocator, "{s}    {s}\n", .{ row.id, row.flow });
         try writeCatalogFile(allocator, fs, out_folder, "boot_events.txt", text.items, &written);
     }
-    const probe = try gamedata.probeOf(world);
     {
         var text: std.ArrayList(u8) = .empty;
         try text.appendSlice(allocator, header);
         try text.appendSlice(allocator, "# [quests] quest = \"step\": a quest and its steps, in order\n\n");
-        for (try questNames(allocator, world)) |quest| {
-            const enum_name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ quest_enum_prefix, quest });
-            const steps = probe.enumValueNames(enum_name) orelse continue;
-            try text.print(allocator, "{s}    {s}\n", .{ quest, try joinValueNames(allocator, steps) });
-        }
+        for (catalog.quests) |quest| try text.print(allocator, "{s}    {s}\n", .{ quest.name, try std.mem.join(allocator, ", ", quest.steps) });
         try writeCatalogFile(allocator, fs, out_folder, "quests.txt", text.items, &written);
     }
     {
         var text: std.ArrayList(u8) = .empty;
         try text.appendSlice(allocator, header);
-        // the game keeps a "played" flag for nearly every event; the Dm_ ones are its cutscenes
         try text.appendSlice(allocator, "# [cutscenes] seen / unseen: the cutscenes (Dm_ events) the game remembers as played\n");
         try text.appendSlice(allocator, "# (most other events in boot_events.txt have a played flag too and can be listed the same way)\n\n");
-        var listed = std.StringHashMap(void).init(allocator);
-        for (events) |row| {
-            if (listed.contains(row.id) or !std.mem.startsWith(u8, row.id, "Dm_")) continue;
-            const flag = try std.fmt.allocPrint(allocator, "{s}{s}", .{ played_prefix, row.id });
-            if (probe.flagKind(flag) != .Bool) continue;
-            listed.put(row.id, {}) catch return error.OutOfMemory;
-            try text.print(allocator, "{s}    {s}\n", .{ row.id, row.flow });
-        }
+        for (catalog.cutscenes) |row| try text.print(allocator, "{s}    {s}\n", .{ row.id, row.flow });
         try writeCatalogFile(allocator, fs, out_folder, "cutscenes.txt", text.items, &written);
     }
     {
         var text: std.ArrayList(u8) = .empty;
         try text.appendSlice(allocator, header);
         try text.appendSlice(allocator, "# [place] \"location\" = \"item\": every location (whether it is shuffled depends on the settings)\n\n");
-        for (world.locations.items) |loc| try text.print(allocator, "{s}\n", .{loc.name});
+        for (catalog.locations) |name| try text.print(allocator, "{s}\n", .{name});
         try writeCatalogFile(allocator, fs, out_folder, "locations.txt", text.items, &written);
     }
     {
         var text: std.ArrayList(u8) = .empty;
         try text.appendSlice(allocator, header);
         try text.appendSlice(allocator, "# item name (for [place] and [start] items)    its key (also accepted)\n\n");
-        for (0..world.items.count()) |i| {
-            const id: ItemId = @intCast(i);
-            try text.print(allocator, "{s}    {s}\n", .{ try world.itemNameById(allocator, id), world.items.name(id) });
-        }
+        for (catalog.items) |item| try text.print(allocator, "{s}    {s}\n", .{ item.name, item.key });
         try writeCatalogFile(allocator, fs, out_folder, "items.txt", text.items, &written);
+    }
+    {
+        var text: std.ArrayList(u8) = .empty;
+        try text.appendSlice(allocator, header);
+        try text.appendSlice(allocator, "# [flags] \"flag\" = value: the save flags whose names were found in the game's files\n");
+        try text.appendSlice(allocator, "# flag    true/false, a whole number, or one of the listed value names\n\n");
+        for (catalog.flags) |flag| switch (flag.kind) {
+            .boolean => try text.print(allocator, "{s}    true/false\n", .{flag.name}),
+            .integer => try text.print(allocator, "{s}    a whole number\n", .{flag.name}),
+            .enumeration => try text.print(allocator, "{s}    {s}\n", .{ flag.name, try std.mem.join(allocator, ", ", flag.values) }),
+        };
+        try writeCatalogFile(allocator, fs, out_folder, "flags.txt", text.items, &written);
     }
     return written.items;
 }

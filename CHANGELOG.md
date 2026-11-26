@@ -24,9 +24,9 @@ with the version that made them, and your saves are safe. Make a new seed to get
 - **Test seeds from a plan file**, first released early in 0.7.8, now with the parts that needed 0.8.0: a test
   start can give items already owned, and placing a single upgrade with Progressive Items on says which progressive
   item to place instead.
-- **Starting Age**: Child, Adult or Random. As an adult, a new game goes straight to Link pulling the Master Sword
-  in the Temple of Time; your start items are handed over right after. Rauru's item is already yours, and the Door
-  of Time is open. Put the sword back to become a child. Random picks one for the seed, and the spoiler log says
+- **Starting Age**: Child, Adult or Random. As an adult, a new game starts in the Temple of Time's main hall,
+  facing the Master Sword room, with your start items handed over right away. Rauru's item is already yours, and the
+  Door of Time is open. Put the sword back to become a child. Random picks one for the seed, and the spoiler log says
   which. Not tested in-game yet.
 - **Barren Dungeons**: 1 to 5 dungeons, or a random number, hold nothing but rupees (plus their own keys when keys
   stay in their dungeons). The Medallion or Stone you'd get for beating a barren dungeon, its boss's Heart
@@ -39,6 +39,9 @@ with the version that made them, and your saves are safe. Make a new seed to get
 - **Skip NPC Dialogs**: characters skip their long story talks and go straight to their short line, for example
   Saria after the Deku Tree. Talks that give an item or move a quest on still play. A setting of its own while it's
   being tested; it will become part of Skip Cutscenes. Not tested in-game yet.
+- **Item Restrictions** on the Exclusions tab: keep a chosen item away from a chosen location, and the seed puts
+  it somewhere else. Pick a location in the list, pick an item, then click Forbid. A Progressive item covers every
+  tier (Progressive Bomb Bag means any bomb bag). Test plans can set them too.
 - Settings new in 0.8.0 carry a purple **0.8.0 Feature** badge in the window while they're being tested.
 
 ### Changed
@@ -49,6 +52,18 @@ with the version that made them, and your saves are safe. Make a new seed to get
   anywhere it's allowed.
 - **Boss Keys is back in the main Dungeon Items card** on the Dungeon Items tab, above the Key Ring Dungeons.
 - **The Not Supported tab is gone.**
+
+### Fixed
+- **A seed could hide your only Bomb Bag behind a rock that needs bombs.** The logic thought young Link could break
+  the rocks over the Lost Woods and Hyrule Field scrub grottos with the Megaton Hammer, which only adult Link can
+  use. Seeds no longer count on that.
+- **Your first Bomb Bag is never behind a bombable rock or wall** (or anything else that needs bombs or the Megaton
+  Hammer to get at), even if the logic could reach that spot another way. A new base rule, always on.
+- **You can put the Master Sword back as soon as you've been an adult**, not only after the Forest Temple, so a
+  seed never needs the Forest Temple before you can be a child again. Sheik now waits by the door of the sword room
+  instead of behind the pedestal. The Forest Temple and the Prelude of Light play as before. Not tested in-game yet.
+- **The Hyrule Field scrub's Piece of Heart** now waits until you can reach that area as an adult (to learn his
+  password) and as a child with bombs. Not tested in-game yet.
 
 ## 0.7.8 - 2026-11-25
 

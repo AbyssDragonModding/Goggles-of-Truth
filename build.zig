@@ -1,11 +1,12 @@
 //! Build script for the Goggles of Truth Randomizer.
 //!
-//!   zig build                         a release build (ReleaseFast) of the window and the command-line tool in
-//!                                     zig-out/<system>, with the Raven library beside them
+//!   zig build                         a debug build of the window and the command-line tool in zig-out/<system>,
+//!                                     with the Raven library beside them (the window has the Test Seeds tab)
+//!   zig build --release               a release build (ReleaseFast), as the GitHub builds are made
+//!                                     (-Doptimize=ReleaseFast); no Test Seeds tab
 //!   zig build cli                     the command-line tool only (no window, no Raven needed)
 //!   zig build run                     build and start the window
 //!   zig build test                    unit tests of the engine (no game files needed)
-//!   zig build -Doptimize=Debug        a debug build (only when debugging; every other build is a release build)
 //!   zig build -Dtarget=x86_64-linux   cross-compile (x86_64/aarch64 for windows, linux and macos; the window needs a
 //!                                     prebuilt Raven library, so aarch64 windows/linux get the command-line tool only)
 //!
@@ -21,14 +22,17 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    // Agents.md: a plain `zig build` makes a release build (ReleaseFast). A debug build is only made when asked for:
-    // `zig build -Doptimize=Debug`. `--release=safe` / `--release=small` still choose those modes.
+    // A plain `zig build` makes a debug build: local builds are debug builds (asked for by the project's owner,
+    // 2026-11-26; they have the window's Test Seeds tab). The released programs are release builds: the GitHub
+    // workflow builds with -Doptimize=ReleaseFast. `--release` (= fast), `--release=safe` / `--release=small` choose
+    // those modes.
     const optimize: std.builtin.Optimize = b.option(
         std.builtin.Optimize,
         "optimize",
-        "Debug, ReleaseSafe, ReleaseFast (the default) or ReleaseSmall",
+        "Debug (the default), ReleaseSafe, ReleaseFast or ReleaseSmall",
     ) orelse switch (b.graph.release_mode) {
-        .off, .any, .fast => .fast,
+        .off => .debug,
+        .any, .fast => .fast,
         .safe => .safe,
         .small => .small,
     };

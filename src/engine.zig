@@ -43,6 +43,7 @@ pub const patchset = @import("generator/patchset.zig");
 pub const fill = @import("generator/fill.zig");
 pub const generator = @import("generator/generator.zig");
 pub const teststart = @import("generator/teststart.zig");
+pub const testseed = @import("generator/testseed.zig");
 pub const filecache = @import("generator/filecache.zig");
 pub const compressor = @import("generator/compressor.zig");
 
@@ -57,6 +58,7 @@ test {
     _ = threads;
     _ = seedinfo;
     _ = testplan;
+    _ = testseed;
     _ = host;
     _ = hash;
     _ = fs;

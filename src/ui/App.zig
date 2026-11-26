@@ -8,6 +8,10 @@ const std = @import("std");
 const r = @import("raven");
 const engine = @import("engine");
 const layout = @import("layout.zig");
+const TestSeedsTab = @import("TestSeedsTab.zig");
+const SearchPicker = @import("SearchPicker.zig");
+/// Debug builds (local builds) have the Test Seeds tab; release builds (the GitHub ones) don't (layout.zig).
+pub const debug_build = layout.debug_build;
 const wallpaper = @import("wallpaper.zig");
 const Allocator = std.mem.Allocator;
 const settings = engine.settings;
@@ -47,14 +51,23 @@ const dependents = [_]Dependent{
 
 // ------------------------------------------------------------------------------------------ the worker's queue
 
-const MessageKind = enum { log, locations, done, failed, idle };
+const MessageKind = enum { log, locations, items, catalog, done, failed, idle };
 
 const Message = struct {
     kind: MessageKind,
     /// owned by the queue's allocator
     text: []u8 = &.{},
-    /// "locations": the location names; "done": seed, mod root, settings string
+    /// "locations": the location names; "items": the item names (Item Restrictions); "done": seed, mod root, settings
+    /// string
     list: [][]u8 = &.{},
+    /// "catalog" (debug builds): the Test Seeds tab's names from the scanned game
+    catalog: ?*CatalogBox = null,
+};
+
+/// The Test Seeds tab's catalog and the arena that holds it, on its way from the worker.
+const CatalogBox = struct {
+    arena: std.heap.ArenaAllocator,
+    catalog: engine.teststart.Catalog,
 };
 
 const Queue = struct {
@@ -86,6 +99,10 @@ const Queue = struct {
         self.allocator.free(m.text);
         for (m.list) |s| self.allocator.free(s);
         self.allocator.free(m.list);
+        if (m.catalog) |box| {
+            box.arena.deinit();
+            self.allocator.destroy(box);
+        }
     }
 };
 
@@ -114,16 +131,27 @@ name_in: r.TextInput,
 seed_in: r.TextInput,
 hash_lab: r.Label,
 game_lab: r.Label,
-filter_in: r.TextInput,
 excl_count: r.Label,
 excl_list: r.ListView,
-start_items_list: r.ListView,
+/// the location to exclude, and the location and item of a new Item Restrictions rule (SearchPicker)
+excl_picker: SearchPicker,
+restrict_loc_picker: SearchPicker,
+restrict_item_picker: SearchPicker,
+restrict_list: r.ListView,
+restrict_count: r.Label,
+/// the Starting Inventory's item picker (SearchPicker): picking an entry adds a copy
+start_item_picker: SearchPicker,
 start_chosen_list: r.ListView,
 start_count: r.Label,
 sstr_in: r.TextInput,
 progress_bar: r.ProgressBar,
 log: r.ListView,
-preset_in: r.ComboBox,
+/// the Seed preset picker: "Custom", the built-in presets, then the saved ones (SearchPicker)
+preset_picker: SearchPicker,
+/// the popup every SearchPicker of the window opens (made once from widgets.xml's SearchPopup)
+search_popup: SearchPicker.Popup,
+/// the location and item pickers' labels (zero-terminated copies of `locations` and `item_names`)
+picker_arena: std.heap.ArenaAllocator,
 preset_lab: r.Label,
 preset_name_in: r.TextInput,
 saves_lab: r.Label,
@@ -143,11 +171,17 @@ custom_preset_settings: std.ArrayList(Settings) = .empty,
 custom_preset_arena: std.heap.ArenaAllocator,
 /// the excluded location names (owned)
 excluded: std.array_hash_map.String(void) = .empty,
+/// Item Restrictions: "Location | Item" entries, in the order they were added (owned; kept here like the excluded
+/// locations, so the setting's list never points into a freed arena)
+restrictions: std.ArrayList([]u8) = .empty,
+/// the item drop-down's names, index for index (owned; from the last scan)
+item_names: [][]u8 = &.{},
+/// the Test Seeds tab (debug builds only)
+test_tab: if (debug_build) TestSeedsTab else void,
 /// Starting Inventory: copies per entry of settings/startinventory.zig (kept here, like the excluded locations, so
 /// the setting's list never points into a freed arena; currentSettings puts it back)
 start_counts: startinventory.Counts = @splat(0),
-/// the entry each row of the two Starting Inventory lists shows (null: a section heading)
-start_item_rows: [startinventory.entries.len + start_group_count]?usize = @splat(null),
+/// the entry each row of the starting items list shows
 start_chosen_rows: [startinventory.entries.len]usize = @splat(0),
 start_chosen_count: usize = 0,
 /// owned copies of the text fields' paths
@@ -179,8 +213,6 @@ world: ?*engine.world.World = null,
 world_path: []u8 = &.{},
 /// all location names from the scan, and the ones the filter shows
 locations: [][]u8 = &.{},
-visible: std.ArrayList(usize) = .empty,
-filter: []u8 = &.{},
 seed_rows: std.ArrayList([]u8) = .empty,
 
 queue: Queue,
@@ -189,12 +221,23 @@ worker: ?std.Thread = null,
 // ---------------------------------------------------------------------------------------------- helpers
 
 /// `text` zero-terminated for Raven (valid until the next timer tick).
-fn z(self: *App, text: []const u8) [:0]const u8 {
+pub fn z(self: *App, text: []const u8) [:0]const u8 {
     return self.frame.allocator().dupeSentinel(u8, text, 0) catch "";
 }
 
-fn fmtZ(self: *App, comptime format: []const u8, args: anytype) [:0]const u8 {
+pub fn fmtZ(self: *App, comptime format: []const u8, args: anytype) [:0]const u8 {
     return std.fmt.allocPrintSentinel(self.frame.allocator(), format, args, 0) catch "";
+}
+
+/// The frame arena (strings for Raven, valid until the next timer tick).
+pub fn frameAllocator(self: *App) Allocator {
+    return self.frame.allocator();
+}
+
+/// The window's settings as a settings string, allocated with `allocator`.
+pub fn settingsString(self: *App, allocator: Allocator) error{OutOfMemory}![]const u8 {
+    const st = try self.currentSettings(allocator);
+    return settings.toString(allocator, &st);
 }
 
 /// Replaces an owned string.
@@ -215,7 +258,7 @@ pub fn write(self: *App, line: []const u8) void {
     self.log.scrollToItem(n - 1);
 }
 
-fn writeFmt(self: *App, comptime format: []const u8, args: anytype) void {
+pub fn writeFmt(self: *App, comptime format: []const u8, args: anytype) void {
     self.write(self.fmtZ(format, args));
 }
 
@@ -227,7 +270,12 @@ fn color(rgba: [4]f32) r.Color {
     return r.Color.rgba(rgba[0], rgba[1], rgba[2], rgba[3]);
 }
 
-fn find(root: r.Widget, comptime T: type, name: [:0]const u8) AppError!T {
+/// A SearchPicker of widgets.xml: its field is `base`, the text in it `base`_label.
+fn searchPicker(gpa: Allocator, root: r.Widget, comptime base: [:0]const u8, placeholder: [:0]const u8) AppError!SearchPicker {
+    return SearchPicker.init(gpa, try find(root, r.Widget, base), try find(root, r.Label, base ++ "_label"), placeholder, null, false);
+}
+
+pub fn find(root: r.Widget, comptime T: type, name: [:0]const u8) AppError!T {
     const w = root.find(name) orelse return fail("src/ui/main.xml has no widget named {s}", .{name});
     if (T == r.Widget) return w;
     return w.as(T) orelse fail("the widget {s} in src/ui/main.xml is not a {s}", .{ name, @typeName(T) });
@@ -237,7 +285,7 @@ var fail_text: [1024]u8 = undefined;
 var fail_len: usize = 0;
 
 /// Keeps the reason a window step failed (shown in a message box by `run`).
-fn fail(comptime format: []const u8, args: anytype) AppError {
+pub fn fail(comptime format: []const u8, args: anytype) AppError {
     const text = std.fmt.bufPrint(&fail_text, format, args) catch fail_text[0..];
     fail_len = text.len;
     return error.WindowFailed;
@@ -254,10 +302,11 @@ fn ravenError() []const u8 {
 pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
     r.init(.vulkan) catch return fail("Raven could not start (a Vulkan driver is required).", .{});
     defer r.shutdown();
-    r.lookSet(.raven_glass_dark);
     r.themeSetDark(true);
+    r.themeSetMaterial(.solid);
     r.themeSetAccent(accent[0], accent[1], accent[2]);
-    r.themeSetMaterial(.frosted_glass);
+    r.themeSetStyleMetric("Button", "", .corner_radius, 32.0);
+
     if (wallpaper.png(gpa, 640, 420)) |png| {
         defer gpa.free(png);
         if (r.Texture.create(png)) |tex| r.themeSetWallpaper(tex) else |_| {}
@@ -297,21 +346,28 @@ pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
         .seed_in = try find(root, r.TextInput, "seed_in"),
         .hash_lab = try find(root, r.Label, "hash_lab"),
         .game_lab = try find(root, r.Label, "game_lab"),
-        .filter_in = try find(root, r.TextInput, "filter_in"),
         .excl_count = try find(root, r.Label, "excl_count"),
         .excl_list = try find(root, r.ListView, "excl_list"),
-        .start_items_list = try find(root, r.ListView, "start_items_list"),
+        .excl_picker = try searchPicker(gpa, root, "excl_loc", "Pick a location to exclude..."),
+        .restrict_loc_picker = try searchPicker(gpa, root, "restrict_loc", "Pick a location..."),
+        .restrict_item_picker = try searchPicker(gpa, root, "restrict_item", "Pick an item..."),
+        .restrict_list = try find(root, r.ListView, "restrict_list"),
+        .restrict_count = try find(root, r.Label, "restrict_count"),
+        .start_item_picker = try searchPicker(gpa, root, "start_item_pick", "Pick an item to add..."),
         .start_chosen_list = try find(root, r.ListView, "start_chosen_list"),
         .start_count = try find(root, r.Label, "start_count"),
         .sstr_in = try find(root, r.TextInput, "sstr_in"),
         .progress_bar = try find(root, r.ProgressBar, "progress"),
         .log = try find(root, r.ListView, "log"),
-        .preset_in = try find(root, r.ComboBox, "preset_in"),
+        .preset_picker = try searchPicker(gpa, root, "preset_in", "Custom"),
+        .search_popup = SearchPicker.Popup.init(gpa, window) catch return fail("widgets.xml's SearchPopup couldn't be made", .{}),
+        .picker_arena = std.heap.ArenaAllocator.init(gpa),
         .preset_lab = try find(root, r.Label, "preset_lab"),
         .preset_name_in = try find(root, r.TextInput, "preset_name_in"),
         .saves_lab = try find(root, r.Label, "saves_lab"),
         .seeds_list = try find(root, r.ListView, "seeds_list"),
         .gen_btn = try find(root, r.Widget, "generate"),
+        .test_tab = if (debug_build) try TestSeedsTab.init(gpa, root) else {},
         .badge_styles = layout.badgeStyles(),
         .st = Settings.defaults(),
         .custom_presets = engine.custompresets.CustomPresetList.init(gpa),
@@ -331,6 +387,10 @@ fn deinit(self: *App) void {
     var it = self.excluded.iterator();
     while (it.next()) |e| self.gpa.free(e.key_ptr.*);
     self.excluded.deinit(self.gpa);
+    self.clearRestrictions();
+    self.restrictions.deinit(self.gpa);
+    if (debug_build) self.test_tab.deinit();
+    self.freeItemNames();
     self.gpa.free(self.game_path);
     self.gpa.free(self.out_path);
     self.gpa.free(self.longshot_path);
@@ -340,9 +400,10 @@ fn deinit(self: *App) void {
     self.gpa.free(self.last_seed);
     self.gpa.free(self.check_key);
     self.gpa.free(self.world_path);
-    self.gpa.free(self.filter);
     self.freeLocations();
-    self.visible.deinit(self.gpa);
+    for ([_]*SearchPicker{ &self.excl_picker, &self.restrict_loc_picker, &self.restrict_item_picker, &self.preset_picker, &self.start_item_picker }) |p| p.deinit();
+    self.search_popup.deinit();
+    self.picker_arena.deinit();
     for (self.seed_rows.items) |s| self.gpa.free(s);
     self.seed_rows.deinit(self.gpa);
     if (self.world) |w| w.deinit();
@@ -377,6 +438,7 @@ fn bind(self: *App) AppError!void {
     self.st = loaded.settings;
     for (loaded.settings.excluded()) |n| self.addExcluded(n);
     self.st.set(.excluded_locations, .{ .list = &.{} });
+    self.takeRestrictions(&loaded.settings);
     self.takeStartingInventory(&loaded.settings);
     self.setOwned(&self.game_path, loaded.paths.game);
     self.setOwned(&self.out_path, loaded.paths.output);
@@ -420,36 +482,45 @@ fn bind(self: *App) AppError!void {
         .{ .name = "rando.path.out", .f = onPathChanged },
         .{ .name = "rando.path.name", .f = onPathChanged },
         .{ .name = "rando.path.seed", .f = onPathChanged },
-        .{ .name = "rando.preset", .f = onPreset },
         .{ .name = "rando.save_preset", .f = onSavePreset },
         .{ .name = "rando.delete_preset", .f = onDeletePreset },
-        .{ .name = "rando.filter", .f = onFilter },
         .{ .name = "rando.refresh_seeds", .f = onRefreshSeeds },
         .{ .name = "rando.play_selected", .f = onPlaySelected },
         .{ .name = "rando.rebuild_selected", .f = onRebuildSelected },
         .{ .name = "rando.play_seed", .f = onPlaySeed },
         .{ .name = "rando.toggle_excluded", .f = onToggleExcluded },
-        .{ .name = "rando.start_add", .f = onStartAdd },
+        .{ .name = "rando.restrict_add", .f = onRestrictAdd },
+        .{ .name = "rando.restrict_remove", .f = onRestrictRemove },
+        .{ .name = "rando.restrict_clear", .f = onRestrictClear },
         .{ .name = "rando.start_remove", .f = onStartRemove },
         .{ .name = "rando.start_clear", .f = onStartClear },
     };
     inline for (actions) |action| r.actionBind(action.name, self, action.f);
+    self.search_popup.bind();
+    self.excl_picker.bind(&self.search_popup, self, onExcludePicked);
+    self.restrict_loc_picker.bind(&self.search_popup, self, null);
+    self.restrict_item_picker.bind(&self.search_popup, self, null);
+    self.preset_picker.bind(&self.search_popup, self, onPresetPicked);
+    self.start_item_picker.bind(&self.search_popup, self, onStartItemPicked);
+    self.start_item_picker.setItems(&start_picker_labels, &start_picker_values);
+    if (debug_build) TestSeedsTab.bindActions(self);
 
     for (&settings.specs) |*s| {
         if (s.kind == .list) continue;
         const key = @tagName(s.key);
         const name = self.fmtZ("set_{s}", .{key});
         const w = self.root.find(name) orelse return fail("src/ui/main.xml has no widget named {s}", .{name});
-        self.controls[@intFromEnum(s.key)] = w;
+        self.controls[@backingInt(s.key)] = w;
         const border = try find(self.root, r.Border, self.fmtZ("badge_{s}", .{key}));
         const label = try find(self.root, r.Label, self.fmtZ("badgelab_{s}", .{key}));
-        self.badges[@intFromEnum(s.key)] = .{ .border = border, .label = label };
+        self.badges[@backingInt(s.key)] = .{ .border = border, .label = label };
         // one function for every setting: the action's name says which (set.<key>)
         r.actionBind(self.fmtZ("set.{s}", .{key}), self, onSetting);
         try self.showSetting(s);
     }
     self.updateDependent();
     self.updateExcludedCount();
+    self.fillRestrictions();
     self.fillStartingInventory();
     self.loaded = true;
     self.refreshString();
@@ -473,7 +544,7 @@ fn bind(self: *App) AppError!void {
 
 /// Shows a setting's value in its control.
 fn showSetting(self: *App, s: *const settings.Spec) AppError!void {
-    const w = self.controls[@intFromEnum(s.key)] orelse return;
+    const w = self.controls[@backingInt(s.key)] orelse return;
     switch (s.kind) {
         .boolean => (w.as(r.Checkbox) orelse return fail("set_{s} is not a switch", .{@tagName(s.key)})).setChecked(self.st.flag(s.key)),
         .int => {
@@ -519,7 +590,7 @@ fn onSetting(self: *App, sender: ?r.Widget, action: [:0]const u8) void {
 
 fn updateDependent(self: *App) void {
     for (dependents) |d| {
-        const w = self.controls[@intFromEnum(d.key)] orelse continue;
+        const w = self.controls[@backingInt(d.key)] orelse continue;
         w.setEnabled(self.st.is(d.other, d.value));
     }
 }
@@ -527,8 +598,8 @@ fn updateDependent(self: *App) void {
 /// A choice setting's badge follows its chosen option ("Scarce" is Experimental, "Balanced" Stable).
 fn updateBadge(self: *App, key: Key) void {
     if (settings.spec(key).kind != .choice) return;
-    const badge = self.badges[@intFromEnum(key)] orelse return;
-    const style = self.badge_styles[@intFromEnum(settings.settingStatus(key, self.st.choice(key)))];
+    const badge = self.badges[@backingInt(key)] orelse return;
+    const style = self.badge_styles[@backingInt(settings.settingStatus(key, self.st.choice(key)))];
     const bg = layout.rgba(style.background);
     const fg = layout.rgba(style.foreground);
     badge.border.setBackground(r.Color.rgba(bg[0], bg[1], bg[2], 1.0));
@@ -547,6 +618,9 @@ fn currentSettings(self: *App, allocator: Allocator) error{OutOfMemory}!Settings
         }
     }.less);
     st.set(.excluded_locations, .{ .list = names });
+    const restrictions = try allocator.alloc([]const u8, self.restrictions.items.len);
+    for (self.restrictions.items, 0..) |entry, i| restrictions[i] = try allocator.dupe(u8, entry);
+    st.set(.item_restrictions, .{ .list = restrictions });
     st.set(.starting_inventory, .{ .list = try startinventory.listOf(allocator, &self.start_counts) });
     return st;
 }
@@ -556,10 +630,12 @@ fn applySettings(self: *App, st: Settings) void {
     self.clearExcluded();
     for (st.excluded()) |n| self.addExcluded(n);
     self.st.set(.excluded_locations, .{ .list = &.{} });
+    self.takeRestrictions(&st);
     self.takeStartingInventory(&st);
     for (&settings.specs) |*s| self.showSetting(s) catch {};
     self.updateDependent();
     self.fillExclusions();
+    self.fillRestrictions();
     self.fillStartingInventory();
     self.refreshString();
 }
@@ -578,7 +654,7 @@ fn refreshString(self: *App) void {
 fn settingsChanged(self: *App, st: *const Settings) void {
     if (!self.loaded) return;
     self.syncing = true;
-    self.preset_in.setSelected(@intCast(self.presetIndexFor(st)));
+    self.preset_picker.pick(self.presetIndexFor(st));
     self.syncing = false;
     self.preset_lab.setText(if (self.save()) "Saved to user_settings.toml" else "Couldn't save user_settings.toml");
 }
@@ -590,15 +666,21 @@ fn fillPresetCombo(self: *App) void {
     self.custom_preset_settings.clearRetainingCapacity();
     self.syncing = true;
     defer self.syncing = false;
-    self.preset_in.clearItems();
-    for (layout.preset_items) |name| _ = self.preset_in.addItem(self.z(name));
+    const a = self.custom_preset_arena.allocator();
+    const count = layout.preset_items.len + self.custom_presets.presets.items.len;
+    const labels = a.alloc([:0]const u8, count) catch return;
+    for (layout.preset_items, 0..) |name, i| labels[i] = a.dupeSentinel(u8, name, 0) catch return;
+    var shown: usize = layout.preset_items.len;
     for (self.custom_presets.presets.items) |preset| {
         // custompresets.load and onSavePreset only keep settings strings that read, so the fallback is never used
-        const saved_settings = settings.fromString(self.custom_preset_arena.allocator(), preset.settings_string) catch Settings.defaults();
-        // why: the drop-down's items and this list must stay index for index, so stop adding both at once
-        self.custom_preset_settings.append(self.gpa, saved_settings) catch return;
-        _ = self.preset_in.addItem(self.fmtZ("\u{2605} {s}", .{preset.name}));
+        const saved_settings = settings.fromString(a, preset.settings_string) catch Settings.defaults();
+        // why: the picker's rows and this list must stay index for index, so stop adding both at once
+        self.custom_preset_settings.append(self.gpa, saved_settings) catch break;
+        labels[shown] = std.fmt.allocPrintSentinel(a, "\u{2605} {s}", .{preset.name}, 0) catch break;
+        shown += 1;
     }
+    self.preset_picker.setItems(labels[0..shown], labels[0..shown]);
+    self.preset_picker.pick(0);
 }
 
 /// The drop-down index for `st`: a built-in preset it matches, else a saved one, else 0 ("Custom").
@@ -616,21 +698,21 @@ fn presetIndexFor(self: *App, st: *const Settings) usize {
 
 /// The saved preset chosen in the drop-down, or null (Custom or a built-in preset).
 fn selectedCustomPresetIndex(self: *App) ?usize {
-    const index = self.preset_in.getSelected();
+    const index = self.preset_picker.chosenIndex() orelse return null;
     if (index < layout.preset_items.len) return null;
-    const custom_index: usize = @as(usize, @intCast(index)) - layout.preset_items.len;
+    const custom_index: usize = index - layout.preset_items.len;
     if (custom_index >= self.custom_preset_settings.items.len) return null;
     return custom_index;
 }
 
-fn onPreset(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
-    const combo = (sender orelse return).as(r.ComboBox) orelse return;
-    const index = combo.getSelected();
+fn onPresetPicked(context: *anyopaque) void {
+    const self: *App = @ptrCast(@alignCast(context));
+    const index = self.preset_picker.chosenIndex() orelse return;
     // "Custom", or set from code
-    if (self.syncing or index <= 0) return;
+    if (self.syncing or index == 0) return;
     const st = self.currentSettings(self.frame.allocator()) catch return;
     if (index < layout.preset_items.len) {
-        const name = layout.preset_items[@intCast(index)];
+        const name = layout.preset_items[index];
         const preset = settings.findPreset(name) orelse return;
         self.applySettings(settings.applyPreset(st, preset));
         self.writeFmt("Preset {s} applied.", .{name});
@@ -756,37 +838,33 @@ fn clearExcluded(self: *App) void {
     self.excluded.clearRetainingCapacity();
 }
 
-fn onFilter(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
-    const input = (sender orelse return).as(r.TextInput) orelse return;
-    const lower = std.ascii.allocLowerString(self.gpa, input.getText()) catch return;
-    self.gpa.free(self.filter);
-    self.filter = lower;
-    self.fillExclusions();
-}
-
-fn excludedText(self: *App, name: []const u8) [:0]const u8 {
-    return self.fmtZ("{s}{s}", .{ if (self.excluded.contains(name)) "\u{2716}  " else "      ", name });
-}
-
+/// The excluded locations, in the order they were excluded (double-click one to include it again).
 fn fillExclusions(self: *App) void {
-    self.visible.clearRetainingCapacity();
     self.excl_list.clearItems();
-    for (self.locations, 0..) |n, i| {
-        if (self.filter.len > 0 and std.ascii.findIgnoreCase(n, self.filter) == null) continue;
-        self.visible.append(self.gpa, i) catch return;
-        _ = self.excl_list.addItem(self.excludedText(n));
-    }
+    for (self.excluded.keys()) |name| _ = self.excl_list.addItem(self.z(name));
     self.updateExcludedCount();
+}
+
+/// Picking a location excludes it; the picker is cleared for the next one.
+fn onExcludePicked(context: *anyopaque) void {
+    const self: *App = @ptrCast(@alignCast(context));
+    const name = self.excl_picker.selected() orelse return;
+    if (self.excluded.contains(name)) {
+        self.writeFmt("{s} is already excluded.", .{name});
+    } else {
+        self.addExcluded(name);
+        self.fillExclusions();
+        self.refreshString();
+    }
+    self.excl_picker.clear();
 }
 
 fn onToggleExcluded(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
     const list = (sender orelse return).as(r.ListView) orelse return;
     const index = list.getSelected();
-    if (index < 0 or index >= self.visible.items.len) return;
-    const name = self.locations[self.visible.items[@intCast(index)]];
-    if (self.excluded.contains(name)) self.removeExcluded(name) else self.addExcluded(name);
-    self.excl_list.setItemText(index, self.excludedText(name));
-    self.updateExcludedCount();
+    if (index < 0 or index >= self.excluded.count()) return;
+    self.removeExcluded(self.excluded.keys()[@intCast(index)]);
+    self.fillExclusions();
     self.refreshString();
 }
 
@@ -800,9 +878,88 @@ fn updateExcludedCount(self: *App) void {
     self.excl_count.setText(self.fmtZ("{d} excluded", .{self.excluded.count()}));
 }
 
-// ------------------------------------------------------------------------------------- starting inventory
+// ------------------------------------------------------------------------------------- item restrictions
 
-const start_group_count = std.meta.tags(startinventory.Group).len;
+/// Moves the Item Restrictions of `st` into `restrictions` (the setting itself stays empty in `self.st`).
+fn takeRestrictions(self: *App, st: *const Settings) void {
+    self.clearRestrictions();
+    for (st.itemRestrictions()) |entry| self.addRestriction(entry);
+    self.st.set(.item_restrictions, .{ .list = &.{} });
+}
+
+fn addRestriction(self: *App, entry: []const u8) void {
+    for (self.restrictions.items) |existing| if (std.mem.eql(u8, existing, entry)) return;
+    const copy = self.gpa.dupe(u8, entry) catch return;
+    self.restrictions.append(self.gpa, copy) catch self.gpa.free(copy);
+}
+
+fn clearRestrictions(self: *App) void {
+    for (self.restrictions.items) |entry| self.gpa.free(entry);
+    self.restrictions.clearRetainingCapacity();
+}
+
+fn freeItemNames(self: *App) void {
+    for (self.item_names) |n| self.gpa.free(n);
+    self.gpa.free(self.item_names);
+    self.item_names = &.{};
+}
+
+fn fillRestrictions(self: *App) void {
+    self.restrict_list.clearItems();
+    for (self.restrictions.items) |entry| _ = self.restrict_list.addItem(self.z(entry));
+    const n = self.restrictions.items.len;
+    self.restrict_count.setText(if (n == 0) self.z("No rules") else self.fmtZ("{d} rule{s}", .{ n, if (n == 1) "" else "s" }));
+}
+
+/// The location and item pickers from the last scan's names.
+fn fillLocationPickers(self: *App) void {
+    const a = self.picker_arena.allocator();
+    const labels = a.alloc([:0]const u8, self.locations.len) catch return;
+    for (self.locations, 0..) |name, i| labels[i] = a.dupeSentinel(u8, name, 0) catch return;
+    self.excl_picker.setItems(labels, @ptrCast(self.locations));
+    self.restrict_loc_picker.setItems(labels, @ptrCast(self.locations));
+}
+
+fn fillRestrictionItems(self: *App) void {
+    const a = self.picker_arena.allocator();
+    const labels = a.alloc([:0]const u8, self.item_names.len) catch return;
+    for (self.item_names, 0..) |name, i| labels[i] = a.dupeSentinel(u8, name, 0) catch return;
+    self.restrict_item_picker.setItems(labels, @ptrCast(self.item_names));
+}
+
+/// Forbid: the picked item at the picked location.
+fn onRestrictAdd(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    const location = self.restrict_loc_picker.selected() orelse {
+        self.write("Item restrictions: pick a location first (scan the game on the ROM Options tab to fill the list).");
+        return;
+    };
+    const item = self.restrict_item_picker.selected() orelse {
+        self.write("Item restrictions: pick an item first.");
+        return;
+    };
+    const restriction = settings.ItemRestriction{ .location = location, .item = item };
+    const entry = settings.formatItemRestriction(self.frame.allocator(), restriction) catch return;
+    self.addRestriction(entry);
+    self.fillRestrictions();
+    self.refreshString();
+}
+
+fn onRestrictRemove(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
+    const list = (sender orelse return).as(r.ListView) orelse return;
+    const index = list.getSelected();
+    if (index < 0 or index >= self.restrictions.items.len) return;
+    self.gpa.free(self.restrictions.orderedRemove(@intCast(index)));
+    self.fillRestrictions();
+    self.refreshString();
+}
+
+fn onRestrictClear(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    self.clearRestrictions();
+    self.fillRestrictions();
+    self.refreshString();
+}
+
+// ------------------------------------------------------------------------------------- starting inventory
 
 fn startGroupHeading(group: startinventory.Group) []const u8 {
     return switch (group) {
@@ -821,17 +978,16 @@ fn takeStartingInventory(self: *App, st: *const Settings) void {
 }
 
 /// "Hookshot / Longshot  (1 of 2: Hookshot)" for a tiered entry, "Empty Bottle  x2" for a repeated one.
-fn startEntryText(self: *App, entry_index: usize, chosen_list: bool) [:0]const u8 {
+fn startEntryText(self: *App, entry_index: usize) [:0]const u8 {
     const entry = &startinventory.entries[entry_index];
     const n = self.start_counts[entry_index];
     if (n == 0) return self.fmtZ("      {s}", .{entry.label});
-    const mark = if (chosen_list) "" else "\u{2714}  ";
     if (entry.tiers.len > 1) {
         const tier = tierLabel(entry, n - 1);
-        return self.fmtZ("{s}{s}  ({d} of {d}: {s})", .{ mark, entry.label, n, entry.max, tier });
+        return self.fmtZ("{s}  ({d} of {d}: {s})", .{ entry.label, n, entry.max, tier });
     }
-    if (entry.max > 1) return self.fmtZ("{s}{s}  x{d}", .{ mark, entry.label, n });
-    return self.fmtZ("{s}{s}", .{ mark, entry.label });
+    if (entry.max > 1) return self.fmtZ("{s}  x{d}", .{ entry.label, n });
+    return self.z(entry.label);
 }
 
 /// Tier `tier_index` of a tiered entry as the window names it: that part of the entry's label, which names the
@@ -845,20 +1001,21 @@ fn tierLabel(entry: *const startinventory.Entry, tier_index: usize) []const u8 {
     return entry.itemOfCopy(tier_index);
 }
 
+/// The item picker's rows: every Starting Inventory entry with its group, so typing "songs" finds the songs.
+const start_picker_labels = blk: {
+    @setEvalBranchQuota(20000);
+    var labels: [startinventory.entries.len][:0]const u8 = undefined;
+    for (startinventory.entries, 0..) |e, i| labels[i] = e.label ++ "   (" ++ startGroupHeading(e.group) ++ ")";
+    break :blk labels;
+};
+const start_picker_values = blk: {
+    var values: [startinventory.entries.len][]const u8 = undefined;
+    for (start_picker_labels, 0..) |label, i| values[i] = label;
+    break :blk values;
+};
+
+/// The starting items list (what is chosen) and its count.
 fn fillStartingInventory(self: *App) void {
-    self.start_items_list.clearItems();
-    var row: usize = 0;
-    for (std.meta.tags(startinventory.Group)) |group| {
-        self.start_item_rows[row] = null;
-        _ = self.start_items_list.addItem(self.fmtZ("\u{2014}  {s}", .{startGroupHeading(group)}));
-        row += 1;
-        for (&startinventory.entries, 0..) |*e, i| {
-            if (e.group != group) continue;
-            self.start_item_rows[row] = i;
-            _ = self.start_items_list.addItem(self.startEntryText(i, false));
-            row += 1;
-        }
-    }
     self.start_chosen_list.clearItems();
     self.start_chosen_count = 0;
     var copies: usize = 0;
@@ -867,20 +1024,23 @@ fn fillStartingInventory(self: *App) void {
         copies += n;
         self.start_chosen_rows[self.start_chosen_count] = i;
         self.start_chosen_count += 1;
-        _ = self.start_chosen_list.addItem(self.startEntryText(i, true));
+        _ = self.start_chosen_list.addItem(self.startEntryText(i));
     }
     self.start_count.setText(if (copies == 0) "Nothing chosen" else self.fmtZ("{d} item{s} at the start", .{ copies, if (copies == 1) "" else "s" }));
 }
 
-fn onStartAdd(self: *App, sender: ?r.Widget, _: [:0]const u8) void {
-    const list = (sender orelse return).as(r.ListView) orelse return;
-    const row = list.getSelected();
-    if (row < 0 or row >= self.start_item_rows.len) return;
-    const entry_index = self.start_item_rows[@intCast(row)] orelse return;
-    if (self.start_counts[entry_index] >= startinventory.entries[entry_index].max) return;
+/// Picking an item adds a copy (a tiered item its next tier); the picker is cleared for the next one.
+fn onStartItemPicked(context: *anyopaque) void {
+    const self: *App = @ptrCast(@alignCast(context));
+    const entry_index = self.start_item_picker.chosenIndex() orelse return;
+    self.start_item_picker.clear();
+    const entry = &startinventory.entries[entry_index];
+    if (self.start_counts[entry_index] >= entry.max) {
+        self.writeFmt("Starting Inventory: {s} is already at its most ({d}).", .{ entry.label, entry.max });
+        return;
+    }
     self.start_counts[entry_index] += 1;
     self.fillStartingInventory();
-    self.start_items_list.setSelected(row);
     self.refreshString();
 }
 
@@ -1200,12 +1360,31 @@ fn checkPaths(self: *App, need_out: bool) ?CheckedPaths {
 const Job = struct {
     app: *App,
     arena: std.heap.ArenaAllocator,
-    kind: enum { scan, generate },
+    kind: enum { scan, generate, test_seed },
     game: []const u8,
     request: engine.generator.Request,
+    /// test_seed: the plan's text (in the job's arena); `request` then holds the base settings and the folders
+    plan_text: []const u8 = "",
 };
 
+/// The Test Seeds tab's Generate Test Seed: the plan made into GogglesOfTruth_<name> on the worker, with the
+/// window's settings standing in for a plan without a settings string (generator/testseed.zig, as `goggles_cli
+/// test` does with user_settings.toml).
+pub fn startTestSeed(self: *App, plan_text: []const u8) void {
+    const paths = self.checkPaths(true) orelse return;
+    if (!self.requireGame()) return;
+    const st = self.currentSettings(self.frame.allocator()) catch return;
+    self.setOwned(&self.game_path, paths.game);
+    self.setOwned(&self.out_path, paths.out);
+    _ = self.save();
+    self.startJobWithPlan(.test_seed, paths.game, .{ .game_path = paths.game, .out_dir = paths.out, .settings = st }, plan_text);
+}
+
 fn startJob(self: *App, kind: @FieldType(Job, "kind"), game: []const u8, request: ?engine.generator.Request) void {
+    self.startJobWithPlan(kind, game, request, "");
+}
+
+fn startJobWithPlan(self: *App, kind: @FieldType(Job, "kind"), game: []const u8, request: ?engine.generator.Request, plan_text: []const u8) void {
     if (self.busy) return;
     if (self.worker) |t| {
         t.join();
@@ -1215,6 +1394,7 @@ fn startJob(self: *App, kind: @FieldType(Job, "kind"), game: []const u8, request
     job.* = .{ .app = self, .arena = std.heap.ArenaAllocator.init(self.gpa), .kind = kind, .game = "", .request = undefined };
     const a = job.arena.allocator();
     job.game = a.dupe(u8, game) catch return self.jobFailed(job);
+    job.plan_text = a.dupe(u8, plan_text) catch return self.jobFailed(job);
     if (request) |req| {
         var copy = req;
         copy.game_path = job.game;
@@ -1225,6 +1405,9 @@ fn startJob(self: *App, kind: @FieldType(Job, "kind"), game: []const u8, request
         const names = a.alloc([]const u8, req.settings.excluded().len) catch return self.jobFailed(job);
         for (req.settings.excluded(), 0..) |n, i| names[i] = a.dupe(u8, n) catch return self.jobFailed(job);
         copy.settings.set(.excluded_locations, .{ .list = names });
+        const restrictions = a.alloc([]const u8, req.settings.itemRestrictions().len) catch return self.jobFailed(job);
+        for (req.settings.itemRestrictions(), 0..) |entry, i| restrictions[i] = a.dupe(u8, entry) catch return self.jobFailed(job);
+        copy.settings.set(.item_restrictions, .{ .list = restrictions });
         // a rebuilt test seed's chosen placements, too
         const placements = a.alloc(engine.seedinfo.TestPlacement, req.test_placements.len) catch return self.jobFailed(job);
         for (req.test_placements, 0..) |placement, i| placements[i] = .{
@@ -1236,9 +1419,11 @@ fn startJob(self: *App, kind: @FieldType(Job, "kind"), game: []const u8, request
     }
     self.busy = true;
     self.gen_btn.setEnabled(false);
+    if (debug_build) self.test_tab.setBusy(true);
     self.worker = std.Thread.spawn(.{}, workerMain, .{job}) catch {
         self.busy = false;
         self.gen_btn.setEnabled(true);
+        if (debug_build) self.test_tab.setBusy(false);
         self.write("ERROR: the worker thread could not be started");
         return self.jobFailed(job);
     };
@@ -1275,8 +1460,52 @@ fn ensureWorld(self: *App, game: []const u8, progress: *engine.Progress) bool {
         }
     }.less);
     self.queue.push(.{ .kind = .locations, .list = names });
+    if (itemNamesForRestrictions(self.gpa, w)) |item_names| self.queue.push(.{ .kind = .items, .list = item_names }) else |_| {}
+    if (debug_build) {
+        // the Test Seeds tab's drop-downs: every string copied, so they outlive this game (teststart.buildCatalog)
+        const box = self.gpa.create(CatalogBox) catch return true;
+        box.arena = std.heap.ArenaAllocator.init(self.gpa);
+        if (engine.teststart.buildCatalog(box.arena.allocator(), w)) |catalog| {
+            box.catalog = catalog;
+            self.queue.push(.{ .kind = .catalog, .catalog = box });
+        } else |err| {
+            box.arena.deinit();
+            self.gpa.destroy(box);
+            self.queue.pushText(.log, self.fmtWorker("Test Seeds: the game's names couldn't be read ({s})", .{@errorName(err)}));
+        }
+    }
     self.queue.pushText(.log, self.fmtWorker("Found {d} item locations.", .{w.locations.items.len}));
     return true;
+}
+
+/// The drop-down's items for Item Restrictions: every check's own item except junk, and the Progressive lines, by
+/// the names the spoiler log uses, sorted, each once. Allocated with `allocator`.
+fn itemNamesForRestrictions(allocator: Allocator, w: *engine.world.World) error{OutOfMemory}![][]u8 {
+    var names: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (names.items) |n| allocator.free(n);
+        names.deinit(allocator);
+    }
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    var seen: std.StringHashMapUnmanaged(void) = .empty;
+    for (w.locations.items) |l| {
+        const key = w.items.name(l.vanilla);
+        if (engine.world.isJunkName(key)) continue;
+        const display_name = try w.itemNameById(arena.allocator(), l.vanilla);
+        if ((try seen.getOrPut(arena.allocator(), display_name)).found_existing) continue;
+        try names.append(allocator, try allocator.dupe(u8, display_name));
+    }
+    for (engine.progressive.chains) |chain| {
+        if ((try seen.getOrPut(arena.allocator(), chain.display_name)).found_existing) continue;
+        try names.append(allocator, try allocator.dupe(u8, chain.display_name));
+    }
+    std.mem.sort([]u8, names.items, {}, struct {
+        fn less(_: void, x: []u8, y: []u8) bool {
+            return std.ascii.orderIgnoreCase(x, y) == .lt;
+        }
+    }.less);
+    return names.toOwnedSlice(allocator);
 }
 
 var worker_text: [512]u8 = undefined;
@@ -1297,6 +1526,25 @@ fn workerMain(job: *Job) void {
     if (!self.ensureWorld(job.game, &progress)) return;
     switch (job.kind) {
         .scan => self.queue.pushText(.log, "Scan complete."),
+        .test_seed => {
+            const a = job.arena.allocator();
+            var problem = engine.testseed.Problem{};
+            const prepared = engine.testseed.prepare(a, self.env.fs, job.plan_text, job.request.settings, job.request.game_path, job.request.out_dir, &problem) catch |err| {
+                self.queue.pushText(.failed, if (err == error.InvalidPlan) self.fmtWorker("test plan: {s}", .{problem.message}) else @errorName(err));
+                return;
+            };
+            for (prepared.notes) |note| self.queue.pushText(.log, note);
+            const result = engine.generator.generate(self.gpa, a, &self.env, prepared.request, self.world, &progress) catch |err| {
+                self.queue.pushText(.failed, if (progress.failureMessage().len > 0) progress.failureMessage() else @errorName(err));
+                return;
+            };
+            self.queue.pushText(.log, self.fmtWorker("Test seed {s} written to {s}. Start a NEW game in it to get the test start.", .{ result.seed, result.mod_root }));
+            const list = self.gpa.alloc([]u8, 3) catch return;
+            list[0] = self.gpa.dupe(u8, result.seed) catch &.{};
+            list[1] = self.gpa.dupe(u8, result.mod_root) catch &.{};
+            list[2] = self.gpa.dupe(u8, result.settings_string) catch &.{};
+            self.queue.push(.{ .kind = .done, .list = list });
+        },
         .generate => {
             const result = engine.generator.generate(self.gpa, job.arena.allocator(), &self.env, job.request, self.world, &progress) catch |err| {
                 self.queue.pushText(.failed, if (progress.failureMessage().len > 0) progress.failureMessage() else @errorName(err));
@@ -1362,11 +1610,32 @@ fn poll(self: *App, _: r.Timer) void {
         switch (m.kind) {
             .log => self.write(m.text),
             .locations => {
+                // the pickers drop their rows first: the old names and labels go
+                self.excl_picker.setItems(&.{}, &.{});
+                self.restrict_loc_picker.setItems(&.{}, &.{});
+                self.restrict_item_picker.setItems(&.{}, &.{});
+                _ = self.picker_arena.reset(.retain_capacity);
                 self.freeLocations();
                 self.locations = self.gpa.dupe([]u8, m.list) catch &.{};
                 // the names now belong to the window: the message must not free them
                 for (m.list) |*n| n.* = &.{};
+                self.fillLocationPickers();
+                self.fillRestrictionItems();
                 self.fillExclusions();
+            },
+            .catalog => if (debug_build) {
+                if (m.catalog) |box| {
+                    self.test_tab.takeCatalog(self, box.arena, box.catalog);
+                    // the arena now belongs to the tab: the message frees an empty one in its place
+                    box.arena = std.heap.ArenaAllocator.init(self.gpa);
+                }
+            },
+            .items => {
+                self.freeItemNames();
+                self.item_names = self.gpa.dupe([]u8, m.list) catch &.{};
+                // the names now belong to the window: the message must not free them
+                for (m.list) |*n| n.* = &.{};
+                self.fillRestrictionItems();
             },
             .done => {
                 const seed = m.list[0];
@@ -1387,6 +1656,7 @@ fn poll(self: *App, _: r.Timer) void {
             .idle => {
                 self.busy = false;
                 self.gen_btn.setEnabled(true);
+                if (debug_build) self.test_tab.setBusy(false);
             },
         }
     }

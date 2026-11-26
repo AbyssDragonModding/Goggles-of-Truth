@@ -1,0 +1,9 @@
+# Item Restrictions ([forbid]): the Bomb Bags never go to the Lost Woods Deku Scrub under the bombable rock
+# (the softlock report: a seed's only reachable Bomb Bag was there). The log lists how many rules apply.
+name = "FORBID1"
+
+[settings]
+shuffle_scrubs = true
+
+[forbid]
+"LW Deku Scrub Nut Upgrade" = "Progressive Bomb Bag"   # every Bomb Bag tier

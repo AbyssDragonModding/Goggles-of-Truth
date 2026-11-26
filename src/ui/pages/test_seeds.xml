@@ -1,0 +1,138 @@
+<!--
+  The "Test Seeds" page of the randomizer window (Raven XML), in debug builds only: src/ui/layout.zig puts it into
+  main.xml's TabView at the page marker of the same name, and leaves the marker empty in release builds.
+  Everything a test plan can say (test_plans/TEMPLATE.test.toml), as a form: src/ui/TestSeedsTab.zig writes the plan
+  from it (shown under "Plan"), loads and saves .test.toml files, and makes the seed the way `goggles_cli test` does.
+  The drop-downs (locations, items, scenes, start spots, boot events, quests, cutscenes) are filled after a game scan.
+-->
+<VBox Spacing="12" Slot.Title="Test Seeds">
+	<ScrollBox Slot.Fill="1">
+		<VBox Spacing="12">
+			<!-- The seed and its settings -->
+			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+				<VBox Spacing="10">
+					<HBox Spacing="12">
+						<Label Text="Test seed" TextSize="16" Color="#F5CC61" Slot.Fill="1" Slot.VAlign="Center"/>
+						<ExperimentalBadge/>
+					</HBox>
+					<Label TextSize="13" Color="#C7D1DBD9" Wrap="true" Text="Debug builds only. Everything a test plan can say, as a form: the plan below follows it, and Generate Test Seed makes it into GogglesOfTruth_&lt;name&gt; in the output folder, as goggles_cli test does. Scan the game on the ROM Options tab to fill the drop-downs; click one and type to search its list. Double-click a row of any list to remove it."/>
+					<HBox Spacing="10">
+						<Label Text="Name" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
+						<TextInput Name="ts_name" Placeholder="HOOKSHOT1 (letters, digits, - and _)" OnChanged="ts.changed" Slot.Fill="0.42"/>
+						<Label Text="Seed" TextSize="14" Slot.Fill="0.1" Slot.VAlign="Center"/>
+						<TextInput Name="ts_seed" Placeholder="random (kept when the folder exists)" OnChanged="ts.changed" Slot.Fill="0.3"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Settings" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
+						<ComboBox Name="ts_base" Items="This window's settings|Settings string below|Preset: Beginner|Preset: Standard|Preset: Expert|Preset: Race" OnChanged="ts.changed" Slot.Fill="0.42" Tooltip="This window's settings: the plan carries their settings string, so the seed is made the same from the command line.&#10;A preset is applied on top of the settings string below (or the window's settings when it's empty)."/>
+						<TextInput Name="ts_settings_string" Placeholder="settings string (optional)" OnChanged="ts.changed" Slot.Fill="0.4"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Change settings" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center" Tooltip="[settings]: user_settings.toml lines on top of the settings above, e.g. shuffle_scrubs = true"/>
+						<TextInput Name="ts_override_in" Placeholder="shuffle_scrubs = true" Slot.Fill="0.62"/>
+						<Button Text="Add" OnClicked="ts.override_add" Slot.Fill="0.2"/>
+					</HBox>
+					<ListView Name="ts_override_list" OnActivated="ts.override_remove" Slot.Auto="true" MinHeight="70"/>
+				</VBox>
+			</Border>
+
+			<!-- Items at chosen locations, items kept away -->
+			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+				<VBox Spacing="10">
+					<Label Text="Place and forbid items" TextSize="16" Color="#F5CC61"/>
+					<HBox Spacing="10">
+						<Label Text="Location" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
+						<SearchPicker FaceName="ts_loc" LabelName="ts_loc_label" Placeholder="Pick a location..." Slot.Fill="0.82"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Item" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
+						<SearchPicker FaceName="ts_item" LabelName="ts_item_label" Placeholder="Pick an item..." Slot.Fill="0.82"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Button Text="Place item there" OnClicked="ts.place_add" Slot.Fill="0.5" Tooltip="[place]: the location holds the item (the location must be shuffled with these settings)"/>
+						<Button Text="Forbid item there" OnClicked="ts.forbid_add" Slot.Fill="0.5" Tooltip="[forbid]: the item never goes to the location (a Progressive item covers every tier)"/>
+					</HBox>
+					<ListView Name="ts_item_list" OnActivated="ts.item_remove" Slot.Auto="true" MinHeight="90"/>
+				</VBox>
+			</Border>
+
+			<!-- Where and how a new game starts -->
+			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+				<VBox Spacing="10">
+					<Label Text="Start" TextSize="16" Color="#F5CC61"/>
+					<HBox Spacing="10">
+						<Label Text="Age" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
+						<ComboBox Name="ts_age" Items="As the settings say|Child|Adult" OnChanged="ts.changed" Slot.Fill="0.32"/>
+						<Label Text="Time" TextSize="14" Slot.Fill="0.1" Slot.VAlign="Center"/>
+						<ComboBox Name="ts_time" Items="The game's own|0:00|1:00|2:00|3:00|4:00|5:00|6:00|7:00|8:00|9:00|10:00|11:00|12:00|13:00|14:00|15:00|16:00|17:00|18:00|19:00|20:00|21:00|22:00|23:00" OnChanged="ts.changed" Slot.Fill="0.4"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Scene" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center" Tooltip="Where Link appears. A scene with a child and an adult version takes the one for the age."/>
+						<SearchPicker FaceName="ts_scene" LabelName="ts_scene_label" Placeholder="Pick a scene..." Slot.Fill="0.82"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Start spot" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center" Tooltip="A start spot of the scene, its entrance, or the exact position below. Picking a spot also fills in its position."/>
+						<SearchPicker FaceName="ts_spot" LabelName="ts_spot_label" Placeholder="Pick a start spot..." Slot.Fill="0.82"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Position" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
+						<TextInput Name="ts_pos_x" Placeholder="x" OnChanged="ts.changed" Slot.Fill="0.2"/>
+						<TextInput Name="ts_pos_y" Placeholder="y" OnChanged="ts.changed" Slot.Fill="0.2"/>
+						<TextInput Name="ts_pos_z" Placeholder="z" OnChanged="ts.changed" Slot.Fill="0.2"/>
+						<TextInput Name="ts_facing" Placeholder="facing (degrees)" OnChanged="ts.changed" Slot.Fill="0.22"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Boot event" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center" Tooltip="An event that starts as soon as the scene is loaded (needs a scene)."/>
+						<SearchPicker FaceName="ts_boot" LabelName="ts_boot_label" Placeholder="Pick a boot event..." Slot.Fill="0.82"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Start item" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center" Tooltip="Items owned from the start."/>
+						<SearchPicker FaceName="ts_start_item" LabelName="ts_start_item_label" Placeholder="Pick an item..." Slot.Fill="0.62"/>
+						<Button Text="Add" OnClicked="ts.start_item_add" Slot.Fill="0.2"/>
+					</HBox>
+					<ListView Name="ts_start_item_list" OnActivated="ts.start_item_remove" Slot.Auto="true" MinHeight="70"/>
+				</VBox>
+			</Border>
+
+			<!-- Quests, flags and cutscenes -->
+			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
+				<VBox Spacing="10">
+					<Label Text="Story" TextSize="16" Color="#F5CC61"/>
+					<HBox Spacing="10">
+						<Label Text="Quest" TextSize="14" Slot.Fill="0.12" Slot.VAlign="Center"/>
+						<SearchPicker FaceName="ts_quest" LabelName="ts_quest_label" Placeholder="Pick a quest..." Slot.Fill="0.38"/>
+						<SearchPicker FaceName="ts_step" LabelName="ts_step_label" Placeholder="Its step..." Slot.Fill="0.3"/>
+						<Button Text="Set" OnClicked="ts.quest_add" Slot.Fill="0.2"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Flag" TextSize="14" Slot.Fill="0.12" Slot.VAlign="Center" Tooltip="A save flag of the game's save data. The list holds the flags whose names were found in the game's files; to set another, type its name in the search and press Enter."/>
+						<SearchPicker FaceName="ts_flag" LabelName="ts_flag_label" Placeholder="Pick a flag (or type any name and press Enter)..." Slot.Fill="0.38"/>
+						<SearchPicker FaceName="ts_flag_value" LabelName="ts_flag_value_label" Placeholder="Its value (or type a number)..." Slot.Fill="0.3"/>
+						<Button Text="Set" OnClicked="ts.flag_add" Slot.Fill="0.2"/>
+					</HBox>
+					<HBox Spacing="10">
+						<Label Text="Cutscene" TextSize="14" Slot.Fill="0.12" Slot.VAlign="Center"/>
+						<SearchPicker FaceName="ts_cut" LabelName="ts_cut_label" Placeholder="Pick a cutscene..." Slot.Fill="0.5"/>
+						<Button Text="Seen" OnClicked="ts.cut_seen" Slot.Fill="0.19"/>
+						<Button Text="Unseen" OnClicked="ts.cut_unseen" Slot.Fill="0.19"/>
+					</HBox>
+					<ListView Name="ts_story_list" OnActivated="ts.story_remove" Slot.Auto="true" MinHeight="90"/>
+				</VBox>
+			</Border>
+
+			<!-- The plan the form makes -->
+			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,10">
+				<VBox Spacing="10">
+					<HBox Spacing="10">
+						<Label Text="Plan" TextSize="16" Color="#F5CC61" Slot.Fill="1" Slot.VAlign="Center"/>
+						<Button Text="Load Plan..." Style="Flat" OnClicked="ts.load" Slot.Auto="true"/>
+						<Button Text="Save Plan..." Style="Flat" OnClicked="ts.save" Slot.Auto="true"/>
+						<Button Text="Clear" Style="Flat" OnClicked="ts.clear" Slot.Auto="true"/>
+						<Button Name="ts_generate" Text="  Generate Test Seed  " Style="Primary" OnClicked="ts.generate" Slot.Auto="true"/>
+					</HBox>
+					<ListView Name="ts_plan_list" Slot.Auto="true" MinHeight="220"/>
+				</VBox>
+			</Border>
+		</VBox>
+	</ScrollBox>
+</VBox>

@@ -70,6 +70,7 @@ pub const Key = enum {
     anju_one_cucco,
     big_poe_one,
     excluded_locations,
+    item_restrictions,
     create_spoiler,
     per_seed_saves,
 };
@@ -1072,6 +1073,21 @@ pub const specs = [_]Spec{
             \\A song or boss reward spot that can only hold a song or reward with your settings stays included
             \\(the log says which). Excluding a great many checks can leave too little room for the required
             \\items; generation then fails and says to exclude fewer.
+        ,
+    },
+    .{
+        .key = .item_restrictions,
+        .tab = "Exclusions",
+        .group = "Item Restrictions",
+        .label = "Item Restrictions (0.8.0 feature)",
+        .kind = .list,
+        .default = .{ .list = &.{} },
+        .tip =
+            \\Items that may never be placed at a chosen check, as "Location | Item" with the names the spoiler log
+            \\shows (for example "LW Deku Scrub Nut Upgrade | Bomb Bag"). The item still goes somewhere else.
+            \\A Progressive item's name ("Progressive Bomb Bag") covers every tier of it, with Progressive Items on
+            \\or off; a single tier's name also covers its Progressive item.
+            \\A name this game doesn't have is ignored (the log says which).
         ,
     },
     .{

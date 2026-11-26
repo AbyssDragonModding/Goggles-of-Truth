@@ -201,11 +201,55 @@ pub const Settings = struct {
         };
     }
 
+    /// Item Restrictions: "Location | Item" entries (parseItemRestriction reads one)
+    pub fn itemRestrictions(self: *const Self) []const []const u8 {
+        return switch (self.get(.item_restrictions)) {
+            .list => |l| l,
+            else => &.{},
+        };
+    }
+
     pub fn isExcluded(self: *const Self, name: []const u8) bool {
         for (self.excluded()) |n| if (std.mem.eql(u8, n, name)) return true;
         return false;
     }
 };
+
+/// One Item Restrictions entry: `item` is never placed at `location` (both as the spoiler log names them).
+pub const ItemRestriction = struct {
+    location: []const u8,
+    item: []const u8,
+};
+
+/// The separator of an Item Restrictions entry ("LW Deku Scrub Nut Upgrade | Bomb Bag"). Why '|': no location or
+/// item name uses it, while '@' is in own-dungeon item keys and '=' separates test placements.
+pub const item_restriction_separator = '|';
+
+/// "Location | Item" -> its two names (trimmed, pointing into `entry`), or null when either is missing.
+pub fn parseItemRestriction(entry: []const u8) ?ItemRestriction {
+    const at = std.mem.indexOfScalar(u8, entry, item_restriction_separator) orelse return null;
+    const location = std.mem.trim(u8, entry[0..at], " \t");
+    const item = std.mem.trim(u8, entry[at + 1 ..], " \t");
+    if (location.len == 0 or item.len == 0 or std.mem.indexOfScalar(u8, item, item_restriction_separator) != null) return null;
+    return .{ .location = location, .item = item };
+}
+
+/// The entry text of a restriction, allocated with `allocator`.
+pub fn formatItemRestriction(allocator: Allocator, restriction: ItemRestriction) error{OutOfMemory}![]u8 {
+    return std.fmt.allocPrint(allocator, "{s} {c} {s}", .{ restriction.location, item_restriction_separator, restriction.item });
+}
+
+test "item restriction entries" {
+    const r = parseItemRestriction("  LW Deku Scrub Nut Upgrade |Bomb Bag ").?;
+    try std.testing.expectEqualStrings("LW Deku Scrub Nut Upgrade", r.location);
+    try std.testing.expectEqualStrings("Bomb Bag", r.item);
+    try std.testing.expect(parseItemRestriction("no separator") == null);
+    try std.testing.expect(parseItemRestriction(" | Bomb Bag") == null);
+    try std.testing.expect(parseItemRestriction("A | B | C") == null);
+    const text = try formatItemRestriction(std.testing.allocator, r);
+    defer std.testing.allocator.free(text);
+    try std.testing.expectEqualStrings("LW Deku Scrub Nut Upgrade | Bomb Bag", text);
+}
 
 // ------------------------------------------------------------------------------------- values from outside
 
@@ -266,7 +310,8 @@ pub fn findPreset(name: []const u8) ?*const Preset {
     return null;
 }
 
-/// `st` with preset `name` applied (Excluded Locations, Create Spoiler Log and Per-Seed Saves are kept).
+/// `st` with preset `name` applied (Excluded Locations, Item Restrictions, Create Spoiler Log and Per-Seed Saves are
+/// kept).
 pub fn applyPreset(st: Settings, preset: *const Preset) Settings {
     var out = st;
     for (preset.values) |kv| out.set(kv.key, kv.value);
@@ -275,7 +320,7 @@ pub fn applyPreset(st: Settings, preset: *const Preset) Settings {
 
 /// The settings a preset leaves alone: they decide what is excluded and where and how things are written, not how
 /// the seed plays.
-pub const non_gameplay_keys = [_]Key{ .excluded_locations, .create_spoiler, .per_seed_saves };
+pub const non_gameplay_keys = [_]Key{ .excluded_locations, .item_restrictions, .create_spoiler, .per_seed_saves };
 
 pub fn isGameplayKey(key: Key) bool {
     for (non_gameplay_keys) |k| if (k == key) return false;
@@ -330,7 +375,7 @@ comptime {
             }
             count += 1;
         }
-        // the three that aren't gameplay: Excluded Locations, Create Spoiler Log, Per-Seed Saves
+        // the ones that aren't gameplay: Excluded Locations, Item Restrictions, Create Spoiler Log, Per-Seed Saves
         for (p.values) |kv| {
             for (non_gameplay_keys) |k| if (k == kv.key) @compileError("preset " ++ p.name ++ " sets " ++ @tagName(k));
         }

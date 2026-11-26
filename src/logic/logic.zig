@@ -592,7 +592,8 @@ pub fn regionExtra(s: *State, region: Region, age: Age) bool {
         .ZoraRiver => bombs(s) and (child or s.has(.HoverBoot)),
         .ZoraFountain => if (child) scale(s) else s.has(.HeavyBoot),
         .GerudoValley => bombs(s) and (if (child) scale(s) else (s.has(.Hammer) and hookshot(s))),
-        .GerudoFortress => hookshot(s) and s.is(.card),
+        // the fortress's spots are adult Link's (the Hookshot); child Link has none there
+        .GerudoFortress => !child and hookshot(s) and s.is(.card),
         .DesertColossus => bombs(s) and (child or longshot(s)),
     };
 }
@@ -749,8 +750,13 @@ pub fn special(s: *State, key: Special) bool {
         .theater_truth => s.is(.hf_child) and maskShop(s) and song(s, .Melody_SariaSong),
         // one-time Business Scrubs (the generator adds the wallet when the price is above the child wallet)
         .scrub_lw_bridge => true,
-        .scrub_lw_nuts => bombs(s) or s.has(.Hammer),
-        .scrub_hf => (s.is(.hf_child) or s.is(.adult)) and (bombs(s) or s.has(.Hammer)),
+        // Both grottos are under a cracked rock: bombs, or the Megaton Hammer, which only adult Link can swing (a
+        // child-reachable Hammer once let a seed hide its only Bomb Bag under the Lost Woods rock)
+        .scrub_lw_nuts => bombs(s) or (s.is(.adult) and s.has(.Hammer)),
+        // The remake's Hyrule Field scrub only sells for a password (Enemy_Scrub_Business_Common: HaveReadHrlField_Note07,
+        // Enemy_Scrub_Business_Secret_*), written on a Fairy Thought outside that adult Link reads; then child Link
+        // buys it (guides). Not confirmed which ages can buy, so the rule asks for both, which works either way.
+        .scrub_hf => s.is(.adult) and s.is(.hf_child) and bombs(s),
         // child crater only
         .scrub_dmc => s.is(.dmc_child),
         .rutos_letter => s.is(.hf_child) and scale(s),
@@ -871,6 +877,102 @@ test "an empty state can't win, the derived cache works" {
     s.add(Item.Range_SlingShot.id());
     try std.testing.expect(s.is(.deku_done));
     try std.testing.expect(s.is(.hf_child));
+}
+
+test "the Megaton Hammer only breaks the scrub grottos' rocks as adult" {
+    var options = Options{};
+    var s = try State.init(std.testing.allocator, item_count, &options);
+    defer s.deinit(std.testing.allocator);
+    // softlock report: a child-reachable Hammer let a seed hide its only Bomb Bag under the Lost Woods rock
+    s.add(Item.Sword_Kokiri.id());
+    s.add(Item.Range_SlingShot.id());
+    s.add(Item.Hammer.id());
+    try std.testing.expect(!s.is(.adult));
+    try std.testing.expect(!special(&s, .scrub_lw_nuts));
+    try std.testing.expect(!special(&s, .scrub_hf));
+    options.start_adult = true;
+    s.clearCache();
+    try std.testing.expect(special(&s, .scrub_lw_nuts));
+    // the Hyrule Field scrub's password: adult reads it, child (with bombs for the rock) buys
+    try std.testing.expect(!special(&s, .scrub_hf));
+    s.add(Item.BombBag_Small.id());
+    s.clearCache();
+    try std.testing.expect(special(&s, .scrub_hf));
+}
+
+/// Items only adult Link can use, and only child Link (for the age tests below).
+const adult_only_items = [_]Item{
+    .Hookshot,     .Longshot,       .Progressive_Hookshot, .Range_Bow,    .Hammer,      .HeavyBoot,      .HoverBoot,
+    .Gauntlet_Silver, .Gauntlet_Gold, .Arrow_Fire,          .Arrow_Light,  .Shield_Mirror,
+};
+const child_only_items = [_]Item{ .Range_SlingShot, .Boomerang, .Sword_Kokiri };
+
+/// A state with every item (enough copies for every tier and count) except those in `left_out`. The Strength line is
+/// given as the Goron Bracelet alone when the Gauntlets are left out (child Link wears the bracelet).
+fn stateWithout(allocator: std.mem.Allocator, options: *const Options, left_out: []const Item) !State {
+    var s = try State.init(allocator, item_count, options);
+    for (0..item_count) |index| {
+        const item: Item = @enumFromInt(index);
+        if (std.mem.indexOfScalar(Item, left_out, item) != null) continue;
+        if (item == .Progressive_Strength and std.mem.indexOfScalar(Item, left_out, .Gauntlet_Silver) != null) continue;
+        const copies: usize = if (item == .Token_Gold) 100 else 3;
+        for (0..copies) |_| s.addKeepingCache(item.id());
+    }
+    s.clearCache();
+    return s;
+}
+
+test "child spots never need an adult item, adult spots never a child item" {
+    const allocator = std.testing.allocator;
+    var options = Options{};
+    var everything = try stateWithout(allocator, &options, &.{});
+    defer everything.deinit(allocator);
+    var no_adult_items = try stateWithout(allocator, &options, &adult_only_items);
+    defer no_adult_items.deinit(allocator);
+    // the adult side starts as adult: going adult otherwise needs the Deku Tree, which needs the child items
+    var adult_start = Options{ .start_adult = true };
+    var adult_everything = try stateWithout(allocator, &adult_start, &.{});
+    defer adult_everything.deinit(allocator);
+    var no_child_items = try stateWithout(allocator, &adult_start, &child_only_items);
+    defer no_child_items.deinit(allocator);
+
+    // every region's grottos and hidden spots, at each age
+    for (std.meta.tags(Region)) |region| {
+        if (regionExtra(&everything, region, .child) != regionExtra(&no_adult_items, region, .child)) {
+            std.debug.print("child Link needs an adult item for {s}'s spots\n", .{@tagName(region)});
+            return error.TestUnexpectedResult;
+        }
+        if (regionExtra(&adult_everything, region, .adult) != regionExtra(&no_child_items, region, .adult)) {
+            std.debug.print("adult Link needs a child item for {s}'s spots\n", .{@tagName(region)});
+            return error.TestUnexpectedResult;
+        }
+    }
+    // the checks only child Link can get
+    const child_checks = [_]Special{
+        .song_malon,     .song_saria,     .song_tomb,     .fairy_hc,       .fairy_zf,    .fairy_colossus, .hc_child,
+        .darunia,        .zd_child,       .rolling_goron, .lw_target,      .market_gallery, .bowling,     .kak_child,
+        .llr_child,      .fishing_child,  .graveyard_child, .skull_kid,    .memory_game, .market_child,   .tokens10,
+        .tokens50,       .shop_bombchu,   .shop_market,   .theater_skull,  .theater_truth, .scrub_dmc,   .rutos_letter,
+        .lab_dive,       .frogs,
+    };
+    for (child_checks) |key| {
+        if (special(&everything, key) != special(&no_adult_items, key)) {
+            std.debug.print("the child-only check {s} needs an adult item\n", .{@tagName(key)});
+            return error.TestUnexpectedResult;
+        }
+    }
+    // the checks only adult Link can get (not the Light Arrows: they need the Spirit Temple, whose child half needs
+    // the Boomerang)
+    const adult_checks = [_]Special{
+        .song_windmill, .song_bolero, .fairy_dmc, .fairy_ogc, .kak_gallery, .gerudo_card, .biggoron, .big_poes,
+        .fishing_adult, .graveyard_adult, .kak_adult_hook, .hba, .fire_arrows, .shop_kakariko,
+    };
+    for (adult_checks) |key| {
+        if (special(&adult_everything, key) != special(&no_child_items, key)) {
+            std.debug.print("the adult-only check {s} needs a child item\n", .{@tagName(key)});
+            return error.TestUnexpectedResult;
+        }
+    }
 }
 
 test "progressive copies count as the line's first tiers" {

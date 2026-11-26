@@ -11,6 +11,8 @@ const settings = engine.settings;
 const Allocator = std.mem.Allocator;
 
 pub const main_xml = @embedFile("main.xml");
+/// Debug builds (the local ones) have the Test Seeds tab; release builds (the GitHub ones) leave its marker empty.
+pub const debug_build = @import("builtin").mode == .debug;
 pub const widgets_xml = @embedFile("widgets.xml");
 
 /// Why the window's layout could not be put together.
@@ -39,6 +41,7 @@ pub const page_definitions = [_]PageDefinition{
     .{ .marker_name = "hints", .xml = @embedFile("pages/hints.xml") },
     .{ .marker_name = "quality_of_life", .xml = @embedFile("pages/quality_of_life.xml") },
     .{ .marker_name = "exclusions", .xml = @embedFile("pages/exclusions.xml") },
+    .{ .marker_name = "test_seeds", .xml = if (debug_build) @embedFile("pages/test_seeds.xml") else "" },
 };
 
 /// main.xml with every page file put in at its marker. A page whose marker is missing is an error (the window

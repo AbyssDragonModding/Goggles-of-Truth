@@ -4,27 +4,21 @@
   against its setting in src/settings/table.zig (control, label, tooltip, options, badge).
 -->
 <ScrollBox Orientation="Vertical" Slot.Title="Hints">
-  <VBox Spacing="14">
-    <Border Material="FrostedGlass" CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
-      <VBox Spacing="10">
-        <Label Text="Gossip Stones" TextSize="16" Color="#F5CC61"/>
-        <HBox Spacing="12">
-          <Label Text="Hint Distribution" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="What the Gossip Stones say. No Hints: their normal rumors.&#10;Balanced: a mix of clues: areas on the Way of the Hero (holding something you can't finish without),&#10;areas that are a waste of time, where some major items are, and what some locations hold.&#10;Strong: more Way of the Hero and waste-of-time clues, fewer item clues, no joke lines.&#10;Useless: every stone tells a joke.&#10;A clue that names a location is only put on a stone you can read without that location's item.&#10;Hints are listed in the spoiler log."/>
-          <ComboBox Name="set_hint_distribution" OnChanged="set.hint_distribution" Slot.Fill="0.9"
-                    Items="No Hints|Balanced|Strong|Useless"
-                    Tooltip="What the Gossip Stones say. No Hints: their normal rumors.&#10;Balanced: a mix of clues: areas on the Way of the Hero (holding something you can't finish without),&#10;areas that are a waste of time, where some major items are, and what some locations hold.&#10;Strong: more Way of the Hero and waste-of-time clues, fewer item clues, no joke lines.&#10;Useless: every stone tells a joke.&#10;A clue that names a location is only put on a stone you can read without that location's item.&#10;Hints are listed in the spoiler log."/>
-          <StableBadge Name="badge_hint_distribution" LabelName="badgelab_hint_distribution"/>
-        </HBox>
-        <HBox Spacing="12">
-          <Label Text="Gossip Stones" TextSize="14" Slot.Fill="1" Slot.VAlign="Center"
-                 Tooltip="Mask of Truth Required: as in the original game, a stone only speaks to child Link wearing the&#10;Mask of Truth; otherwise Navi comments on it. Hints then never name something you need to get the mask.&#10;No Mask of Truth: every stone speaks to anyone, at any age, with or without the mask."/>
-          <ComboBox Name="set_gossip_stones" OnChanged="set.gossip_stones" Slot.Fill="0.9"
-                    Items="Mask of Truth Required|No Mask of Truth"
-                    Tooltip="Mask of Truth Required: as in the original game, a stone only speaks to child Link wearing the&#10;Mask of Truth; otherwise Navi comments on it. Hints then never name something you need to get the mask.&#10;No Mask of Truth: every stone speaks to anyone, at any age, with or without the mask."/>
-          <StableBadge Name="badge_gossip_stones" LabelName="badgelab_gossip_stones"/>
-        </HBox>
-      </VBox>
-    </Border>
-  </VBox>
+	<VBox Spacing="14">
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+			<VBox Spacing="10">
+				<Label Text="Gossip Stones" TextSize="16" Color="#F5CC61"/>
+				<HBox Spacing="12">
+					<Label Text="Hint Distribution" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What the Gossip Stones say. No Hints: their normal rumors.&#10;Balanced: a mix of clues: areas on the Way of the Hero (holding something you can't finish without),&#10;areas that are a waste of time, where some major items are, and what some locations hold.&#10;Strong: more Way of the Hero and waste-of-time clues, fewer item clues, no joke lines.&#10;Useless: every stone tells a joke.&#10;A clue that names a location is only put on a stone you can read without that location's item.&#10;Hints are listed in the spoiler log."/>
+					<ComboBox Name="set_hint_distribution" OnChanged="set.hint_distribution" Slot.Fill="0.9" Items="No Hints|Balanced|Strong|Useless" Tooltip="What the Gossip Stones say. No Hints: their normal rumors.&#10;Balanced: a mix of clues: areas on the Way of the Hero (holding something you can't finish without),&#10;areas that are a waste of time, where some major items are, and what some locations hold.&#10;Strong: more Way of the Hero and waste-of-time clues, fewer item clues, no joke lines.&#10;Useless: every stone tells a joke.&#10;A clue that names a location is only put on a stone you can read without that location's item.&#10;Hints are listed in the spoiler log."/>
+					<StableBadge Name="badge_hint_distribution" LabelName="badgelab_hint_distribution"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Label Text="Gossip Stones" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Mask of Truth Required: as in the original game, a stone only speaks to child Link wearing the&#10;Mask of Truth; otherwise Navi comments on it. Hints then never name something you need to get the mask.&#10;No Mask of Truth: every stone speaks to anyone, at any age, with or without the mask."/>
+					<ComboBox Name="set_gossip_stones" OnChanged="set.gossip_stones" Slot.Fill="0.9" Items="Mask of Truth Required|No Mask of Truth" Tooltip="Mask of Truth Required: as in the original game, a stone only speaks to child Link wearing the&#10;Mask of Truth; otherwise Navi comments on it. Hints then never name something you need to get the mask.&#10;No Mask of Truth: every stone speaks to anyone, at any age, with or without the mask."/>
+					<StableBadge Name="badge_gossip_stones" LabelName="badgelab_gossip_stones"/>
+				</HBox>
+			</VBox>
+		</Border>
+	</VBox>
 </ScrollBox>
