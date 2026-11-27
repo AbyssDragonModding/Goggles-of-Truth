@@ -47,7 +47,6 @@ name_in: r.TextInput,
 seed_in: r.TextInput,
 base_in: r.ComboBox,
 settings_string_in: r.TextInput,
-override_in: r.TextInput,
 override_list: r.ListView,
 item_list: r.ListView,
 age_in: r.ComboBox,
@@ -73,6 +72,12 @@ flags: SearchPicker,
 /// the picked flag's values (true/false, or an Enum's value names); a number is typed in
 flag_values: SearchPicker,
 cutscenes: SearchPicker,
+/// Change settings: every setting of the randomizer (setting_labels), then the picked one's values (setting_values;
+/// a number can be typed in)
+settings_picker: SearchPicker,
+setting_values: SearchPicker,
+/// setting_values' rows (rebuilt when another setting is picked)
+setting_value_arena: std.heap.ArenaAllocator,
 
 // the lists (owned)
 overrides: std.ArrayList([]u8) = .empty,
@@ -99,7 +104,6 @@ pub fn init(gpa: Allocator, root: r.Widget) App.AppError!TestSeedsTab {
         .seed_in = try App.find(root, r.TextInput, "ts_seed"),
         .base_in = try App.find(root, r.ComboBox, "ts_base"),
         .settings_string_in = try App.find(root, r.TextInput, "ts_settings_string"),
-        .override_in = try App.find(root, r.TextInput, "ts_override_in"),
         .override_list = try App.find(root, r.ListView, "ts_override_list"),
         .item_list = try App.find(root, r.ListView, "ts_item_list"),
         .age_in = try App.find(root, r.ComboBox, "ts_age"),
@@ -125,13 +129,36 @@ pub fn init(gpa: Allocator, root: r.Widget) App.AppError!TestSeedsTab {
         .flags = try picker(gpa, root, "ts_flag", "Pick a flag (or type any name and press Enter)...", null, true),
         .flag_values = try picker(gpa, root, "ts_flag_value", "Its value (or type a number)...", null, true),
         .cutscenes = try picker(gpa, root, "ts_cut", "Pick a cutscene...", null, false),
+        .settings_picker = try picker(gpa, root, "ts_setting", "Pick a setting...", null, false),
+        .setting_values = try picker(gpa, root, "ts_setting_value", "Its value (or type a number)...", null, true),
+        .setting_value_arena = std.heap.ArenaAllocator.init(gpa),
         .catalog_arena = std.heap.ArenaAllocator.init(gpa),
     };
 }
 
-pub fn allPickers(self: *TestSeedsTab) [11]*SearchPicker {
-    return .{ &self.locations, &self.items, &self.scenes_picker, &self.spots_picker, &self.boots, &self.start_items, &self.quests_picker, &self.steps_picker, &self.flags, &self.flag_values, &self.cutscenes };
+pub fn allPickers(self: *TestSeedsTab) [13]*SearchPicker {
+    return .{ &self.locations, &self.items, &self.scenes_picker, &self.spots_picker, &self.boots, &self.start_items, &self.quests_picker, &self.steps_picker, &self.flags, &self.flag_values, &self.cutscenes, &self.settings_picker, &self.setting_values };
 }
+
+/// The settings a test plan's [settings] can change (every one but the lists: their own parts of the form, or a
+/// user_settings.toml line typed into a plan by hand), as "<tab>: <label>" and their keys.
+const changeable_settings = blk: {
+    var count: usize = 0;
+    for (engine.settings.specs) |sp| if (sp.kind != .list) {
+        count += 1;
+    };
+    var labels: [count][:0]const u8 = undefined;
+    var keys: [count][]const u8 = undefined;
+    var i: usize = 0;
+    for (engine.settings.specs) |sp| if (sp.kind != .list) {
+        labels[i] = sp.tab ++ ": " ++ sp.label;
+        keys[i] = @tagName(sp.key);
+        i += 1;
+    };
+    const final_labels = labels;
+    const final_keys = keys;
+    break :blk .{ .labels = &final_labels, .keys = &final_keys };
+};
 
 pub fn deinit(self: *TestSeedsTab) void {
     self.clearLists();
@@ -140,6 +167,7 @@ pub fn deinit(self: *TestSeedsTab) void {
     self.start_item_rows.deinit(self.gpa);
     self.story_rows.deinit(self.gpa);
     for (self.allPickers()) |p| p.deinit();
+    self.setting_value_arena.deinit();
     self.catalog_arena.deinit();
 }
 
@@ -181,6 +209,10 @@ pub fn bindActions(app: *App) void {
     self.flags.bind(popup, app, onFlagPicked);
     self.flag_values.bind(popup, app, null);
     self.cutscenes.bind(popup, app, null);
+    self.settings_picker.bind(popup, app, onSettingPicked);
+    self.setting_values.bind(popup, app, null);
+    self.settings_picker.setItems(changeable_settings.labels, changeable_settings.keys);
+    self.fillSettingValues();
     self.fillSpots(app);
     self.refreshPlan(app);
 }
@@ -348,6 +380,49 @@ fn onFlagPicked(context: *anyopaque) void {
     tab(appOf(context)).fillFlagValues();
 }
 
+fn onSettingPicked(context: *anyopaque) void {
+    tab(appOf(context)).fillSettingValues();
+}
+
+/// The picked setting (Change settings), or null.
+fn pickedSetting(self: *const TestSeedsTab) ?*const engine.settings.Spec {
+    const key_name = self.settings_picker.selected() orelse return null;
+    const key = engine.settings.keyByName(key_name) orelse return null;
+    return &engine.settings.specs[@backingInt(key)];
+}
+
+/// setting_values: the picked setting's values as [settings] writes them (On / Off, its options, its numbers).
+fn fillSettingValues(self: *TestSeedsTab) void {
+    _ = self.setting_value_arena.reset(.retain_capacity);
+    const a = self.setting_value_arena.allocator();
+    const sp = self.pickedSetting() orelse {
+        self.setting_values.setItems(&.{}, &.{});
+        return;
+    };
+    var labels: std.ArrayList([:0]const u8) = .empty;
+    var values: std.ArrayList([]const u8) = .empty;
+    switch (sp.kind) {
+        .boolean => {
+            labels.appendSlice(a, &.{ "On (true)", "Off (false)" }) catch return;
+            values.appendSlice(a, &.{ "true", "false" }) catch return;
+        },
+        .choice => for (sp.options) |o| {
+            labels.append(a, std.fmt.allocPrintSentinel(a, "{s}   ({s})", .{ o.label, o.value }, 0) catch return) catch return;
+            values.append(a, quoted(a, o.value) catch return) catch return;
+        },
+        .int => {
+            var n = sp.min;
+            while (n <= sp.max) : (n += 1) {
+                const text = std.fmt.allocPrint(a, "{d}", .{n}) catch return;
+                labels.append(a, a.dupeSentinel(u8, text, 0) catch return) catch return;
+                values.append(a, text) catch return;
+            }
+        },
+        .list => {},
+    }
+    self.setting_values.setItems(labels.items, values.items);
+}
+
 // ------------------------------------------------------------------------------------------------- the handlers
 
 fn onChanged(app: *App, _: ?r.Widget, _: [:0]const u8) void {
@@ -356,13 +431,28 @@ fn onChanged(app: *App, _: ?r.Widget, _: [:0]const u8) void {
 
 fn onOverrideAdd(app: *App, _: ?r.Widget, _: [:0]const u8) void {
     const self = tab(app);
-    const line = std.mem.trim(u8, self.override_in.getText(), " \t");
-    if (std.mem.indexOfScalar(u8, line, '=') == null) {
-        app.write("Test Seeds: a setting change is a user_settings.toml line, such as shuffle_scrubs = true");
+    const sp = self.pickedSetting() orelse {
+        app.write("Test Seeds: pick a setting to change, then its value");
         return;
+    };
+    const typed = self.setting_values.typedText();
+    const value = self.setting_values.selected() orelse if (typed.len > 0) typed else {
+        app.write("Test Seeds: pick the setting's value (or type a number)");
+        return;
+    };
+    const line = std.fmt.allocPrint(self.gpa, "{s} = {s}", .{ @tagName(sp.key), value }) catch return;
+    defer self.gpa.free(line);
+    // a setting changed again: its newer line replaces the older one
+    const prefix = std.fmt.allocPrint(self.gpa, "{s} =", .{@tagName(sp.key)}) catch return;
+    defer self.gpa.free(prefix);
+    var k: usize = 0;
+    while (k < self.overrides.items.len) {
+        if (std.mem.startsWith(u8, self.overrides.items[k], prefix)) {
+            self.gpa.free(self.overrides.orderedRemove(k));
+        } else k += 1;
     }
     appendOwned(self.gpa, &self.overrides, line);
-    self.override_in.setText("");
+    self.setting_values.clear();
     self.refreshLists(app);
 }
 
@@ -560,7 +650,7 @@ fn clearForm(self: *TestSeedsTab, app: *App) void {
     self.filling = true;
     defer self.filling = false;
     self.clearLists();
-    for ([_]r.TextInput{ self.name_in, self.seed_in, self.settings_string_in, self.override_in, self.facing_in, self.pos_in[0], self.pos_in[1], self.pos_in[2] }) |input| input.setText("");
+    for ([_]r.TextInput{ self.name_in, self.seed_in, self.settings_string_in, self.facing_in, self.pos_in[0], self.pos_in[1], self.pos_in[2] }) |input| input.setText("");
     self.base_in.setSelected(@intFromEnum(Base.window));
     self.age_in.setSelected(0);
     self.time_in.setSelected(0);
@@ -568,6 +658,7 @@ fn clearForm(self: *TestSeedsTab, app: *App) void {
     self.fillSpots(app);
     self.fillSteps();
     self.fillFlagValues();
+    self.fillSettingValues();
 }
 
 fn clearLists(self: *TestSeedsTab) void {

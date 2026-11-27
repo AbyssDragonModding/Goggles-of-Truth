@@ -5,9 +5,16 @@
 -->
 <ScrollBox Orientation="Vertical" Slot.Title="Quality of Life">
 	<VBox Spacing="14">
-		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+		<HBox Spacing="12" Slot.Auto="true" Slot.Padding="6,10,6,0">
+			<Label Text="" Slot.Fill="1"/>
+			<Button Text="  Randomize This Tab  " OnClicked="rando.randomize.tab.Quality of Life" Slot.Auto="true" Tooltip="Random values for every setting on this tab (Stable and In Testing options only; Logic Rules stays as it is)."/>
+		</HBox>
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Cutscenes" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Cutscenes" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.Quality of Life/Cutscenes" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Checkbox Name="set_skip_cutscenes" Style="Switch" Text="Make All Cutscenes Skippable" OnChanged="set.skip_cutscenes" Slot.Fill="1" Tooltip="Every cutscene can be skipped with the skip button, including the opening, the staff credits and&#10;the title-screen demos that normally can't be. Cutscenes still start: items and story progress&#10;are given inside them."/>
 					<StableBadge Name="badge_skip_cutscenes" LabelName="badgelab_skip_cutscenes"/>
@@ -40,7 +47,10 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Gameplay" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Gameplay" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.Quality of Life/Gameplay" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Checkbox Name="set_bag_bombs_no_bracelet" Style="Switch" Text="Bag Bombs without Goron Bracelet" OnChanged="set.bag_bombs_no_bracelet" Slot.Fill="1" Tooltip="Bombs from the bag can be pulled out and thrown as soon as you have a Bomb Bag. In the remake they&#10;normally need the Goron Bracelet, which the original always gave you first. Bomb Flowers still&#10;need the bracelet. Off: the logic expects the Goron Bracelet before bombs."/>
 					<StableBadge Name="badge_bag_bombs_no_bracelet" LabelName="badgelab_bag_bombs_no_bracelet"/>
@@ -65,7 +75,10 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Minigames &amp; NPCs" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Minigames &amp; NPCs" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.Quality of Life/Minigames &amp; NPCs" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Checkbox Name="set_anju_one_cucco" Style="Switch" Text="Anju Needs Only 1 Cucco" OnChanged="set.anju_one_cucco" Slot.Fill="1" Tooltip="Return a single cucco to Anju's pen in Kakariko to finish her minigame and get the reward."/>
 					<StableBadge Name="badge_anju_one_cucco" LabelName="badgelab_anju_one_cucco"/>

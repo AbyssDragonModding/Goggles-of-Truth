@@ -69,6 +69,8 @@ const StageEdit = struct {
     hash: u64,
     loc: usize,
     item: ItemId,
+    /// Chest Size Matches Contents: only the chest's size changes (its item stays the game's)
+    resize_only: bool = false,
 };
 
 const EventEdit = struct {
@@ -209,18 +211,23 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             if (l.kind == .chest and items.is(l.vanilla, "Sword_Kokiri")) quick_vanilla[i] = true;
         }
     }
+    // locations whose stage actors are edited below (Chest Size Matches Contents resizes the others)
+    const stage_edited = a.alloc(bool, locs.len) catch return error.OutOfMemory;
+    @memset(stage_edited, false);
     for (locs, 0..) |l, i| {
         if (!quick_vanilla[i] or placed[i] != null) continue;
         const item = plan.fixed[i] orelse l.vanilla;
         for (l.stage_refs) |r| try appendTo(StageEdit, &stage_edits, a, r.rel, .{ .hash = r.hash, .loc = i, .item = item });
+        stage_edited[i] = true;
     }
     for (placed, 0..) |maybe, i| {
         const item = maybe orelse continue;
         const loc = &locs[i];
-        const needs = if (refills and loc.can_check_owned) fill.refillContainer(items.name(item)) else null;
+        const needs = if (refills and world_mod.chestCanCheckOwned(loc, st.flag(.chest_size_matches))) fill.refillContainer(items.name(item)) else null;
         if (item == loc.vanilla and !loc.conditional and needs == null and !quick_vanilla[i]) continue;
         if (loc.kind == .shop and items.isJunk(item)) continue; // junk on a shelf: the shelf keeps its normal goods
         for (loc.stage_refs) |r| try appendTo(StageEdit, &stage_edits, a, r.rel, .{ .hash = r.hash, .loc = i, .item = item });
+        if (loc.stage_refs.len > 0) stage_edited[i] = true;
         if (loc.event_refs.len > 0) {
             const actor = try requireActor(a, world, item, .event, progress);
             // Why: a hand-over call creates the named actor in Link's hands, and an Ocarina's Item_ actor is the
@@ -238,6 +245,16 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
                     .{ .actor = actor };
                 try appendTo(EventEdit, &event_edits, a, r.rel, .{ .offset = r.offset, .value = value });
             }
+        }
+    }
+    // Chest Size Matches Contents: every other small or big chest (its own item kept, the unshuffled ones too)
+    // takes the size its item asks for
+    if (st.flag(.chest_size_matches)) {
+        for (locs, 0..) |l, i| {
+            if (l.kind != .chest or l.chest_size == .none or stage_edited[i]) continue;
+            const item = placed[i] orelse plan.fixed[i] orelse l.vanilla;
+            if (chestSizeFor(plan, item) == l.chest_size) continue;
+            for (l.stage_refs) |r| try appendTo(StageEdit, &stage_edits, a, r.rel, .{ .hash = r.hash, .loc = i, .item = item, .resize_only = true });
         }
     }
 
@@ -258,6 +275,9 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     patches.endStep();
     if (key_items > 0) progress.log("Dungeon keys: {d} key rings / boss keys made", .{key_items});
 
+    // Chest Size Matches Contents: where each chest of the patched stage files is and its size, for its keep-away
+    // area (matchKeepAwayAreasToChests)
+    var chest_spots: std.ArrayList(ChestSpot) = .empty;
     for (try sortedKeys(std.ArrayList(StageEdit), a, &stage_edits)) |rel| {
         const edits = stage_edits.get(rel).?.items;
         // one stage file at a time: its tree (often tens of MB) is freed before the next one is parsed
@@ -276,9 +296,15 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
                 }
             }
             try hideBoardsOfSoldShelves(s, actors, edits, world, shop_presences.items);
+            if (st.flag(.chest_size_matches)) try rememberChestSpots(a, &chest_spots, rel, actors);
         }
         if (hits != edits.len) return progress.fail(error.NotAsExpected, "{s}: expected {d} actors, patched {d}", .{ rel, edits.len, hits });
         try patches.emitZs(rel, orig, try byml.dumpDefault(s, .{ .dict = root }));
+        patches.endStep();
+    }
+    if (chest_spots.items.len > 0) {
+        const moved = try matchKeepAwayAreasToChests(a, &patches, world, chest_spots.items);
+        if (moved > 0) progress.log("Chest Size Matches Contents: {d} keep-away areas follow their chest's size", .{moved});
         patches.endStep();
     }
 
@@ -818,6 +844,130 @@ fn presenceEql(x: gamedata.ShopPresence, y: gamedata.ShopPresence) bool {
     return std.mem.eql(u8, x.name, y.name) and std.mem.eql(u8, x.condition, y.condition) and x.negated == y.negated and std.mem.eql(u8, x.owned, y.owned);
 }
 
+/// A chest of a patched stage file: its stage folder, where it stands and its size now.
+const ChestSpot = struct { folder: []const u8, spot: [3]f64, size: world_mod.ChestSize };
+
+/// Adds the chests of stage file `rel` (patched, `actors`) to `spots`. `allocator` outlives the file's tree.
+fn rememberChestSpots(allocator: Allocator, spots: *std.ArrayList(ChestSpot), rel: []const u8, actors: *const byml.Array) PatchError!void {
+    const folder = stageFolderOf(rel) orelse return;
+    for (actors.items.items) |chest_value| {
+        const chest = chest_value.asDict() orelse continue;
+        const chest_actor = chest.getString("Gyaml") orelse continue;
+        const size: world_mod.ChestSize = if (std.mem.endsWith(u8, chest_actor, pickups.big_tier_chest_suffix)) .big else world_mod.chestSizeOf(chest_actor);
+        if (size == .none) continue;
+        const spot = spotOf(chest) orelse continue;
+        spots.append(allocator, .{ .folder = folder, .spot = spot, .size = size }) catch return error.OutOfMemory;
+    }
+}
+
+/// Chest Size Matches Contents: each chest's keep-away area (DropKeepAwayArea_TBox_A_01 / _A_02, at the same spot
+/// as its chest, dump: Banc/KokiriForest) takes the size of the chest now there, so the space a big chest needs is
+/// kept clear as it is for the game's own big chests. Why every file of the chest's stage folder: the area can be
+/// in another of its files than the chest (Kokiri Forest's Deku Shield chest is in _Child_Static, its area in
+/// _Child_Dynamic). Returns how many areas changed.
+/// `keep` outlives the steps (each folder is one, its files' trees freed after it).
+fn matchKeepAwayAreasToChests(keep: Allocator, patches: *patchset.PatchSet, world: *World, spots: []const ChestSpot) PatchError!usize {
+    const a = patches.allocator;
+    var folders: std.ArrayList([]const u8) = .empty;
+    for (spots) |sp| {
+        for (folders.items) |f| {
+            if (std.mem.eql(u8, f, sp.folder)) break;
+        } else folders.append(keep, sp.folder) catch return error.OutOfMemory;
+    }
+    var moved: usize = 0;
+    for (folders.items) |folder| {
+        const dir = std.fmt.allocPrint(a, "Banc/{s}", .{folder}) catch return error.OutOfMemory;
+        const names = world.files.listDir(a, dir) catch continue;
+        for (names) |name| {
+            if (!std.mem.endsWith(u8, name, ".bcett.byml.zs") or std.mem.startsWith(u8, name, "Demo_")) continue;
+            const rel = std.fmt.allocPrint(a, "{s}/{s}", .{ dir, name }) catch return error.OutOfMemory;
+            const orig = try patches.read(rel);
+            const doc = try byml.load(a, orig.data);
+            const root = (doc.root orelse continue).asDict() orelse continue;
+            const actors = root.getArray("Actors") orelse continue;
+            var changed: usize = 0;
+            for (actors.items.items) |area_value| {
+                const area = area_value.asDict() orelse continue;
+                const current = area.getString("Gyaml") orelse continue;
+                if (!std.mem.eql(u8, current, keep_away_small) and !std.mem.eql(u8, current, keep_away_big)) continue;
+                const area_spot = spotOf(area) orelse continue;
+                for (spots) |sp| {
+                    if (!std.mem.eql(u8, sp.folder, folder) or !sameSpot(sp.spot, area_spot)) continue;
+                    const wanted = if (sp.size == .big) keep_away_big else keep_away_small;
+                    if (!std.mem.eql(u8, current, wanted)) {
+                        try area.put(a, "Gyaml", .{ .string = wanted });
+                        changed += 1;
+                    }
+                    break;
+                }
+            }
+            if (changed > 0) try patches.emitZs(rel, orig, try byml.dumpDefault(a, .{ .dict = root }));
+            moved += changed;
+        }
+        patches.endStep();
+    }
+    return moved;
+}
+
+/// "Banc/KokiriForest/KokiriForest_Child_Dynamic.bcett.byml.zs" -> "KokiriForest"
+fn stageFolderOf(rel: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, rel, "Banc/")) return null;
+    const rest = rel["Banc/".len..];
+    const slash = std.mem.indexOfScalar(u8, rest, '/') orelse return null;
+    return rest[0..slash];
+}
+
+fn spotOf(actor: *const byml.Dict) ?[3]f64 {
+    const t = actor.getArray("Translate") orelse return null;
+    if (t.items.items.len != 3) return null;
+    var out: [3]f64 = undefined;
+    for (t.items.items, 0..) |v, i| out[i] = v.asFloat() orelse return null;
+    return out;
+}
+
+const keep_away_small = "DropKeepAwayArea_TBox_A_01";
+const keep_away_big = "DropKeepAwayArea_TBox_A_02";
+
+fn sameSpot(x: [3]f64, y: [3]f64) bool {
+    for (x, y) |xf, yf| if (@abs(xf - yf) > 0.01) return false;
+    return true;
+}
+
+/// Chest Size Matches Contents: big for a key item (isChestKeyItem), small for anything else.
+fn chestSizeFor(plan: *fill.Plan, item: ItemId) world_mod.ChestSize {
+    return if (isChestKeyItem(plan, item)) .big else .small;
+}
+
+/// A key item for Chest Size Matches Contents, as the classic randomizer's chest sizes: what the logic can need
+/// (logic.isProgression: weapons, tools, songs, Spiritual Stones, bottles, progressive upgrades, key rings and boss
+/// keys of their own) but the Gold Skulltula Tokens, the Medallions, and every Small Key and Boss Key.
+fn isChestKeyItem(plan: *fill.Plan, item: ItemId) bool {
+    const name = plan.itemName(item);
+    if (std.mem.eql(u8, name, @tagName(logic.Item.Token_Gold))) return false;
+    if (logic.isProgression(item)) return true;
+    if (fill.isReward(name)) return true;
+    if (fill.dungeonItemType(name)) |kind| return kind == .small_keys or kind == .boss_keys;
+    return false;
+}
+
+/// The chest of size `size` that checks what the player owns, in place of `original_chest`, or null when there is
+/// none: the game's small one (world.conditionalChestActor); a big one only with Chest Size Matches Contents
+/// (pickups.bigTierChest), and the small one when that can't be made. A chest without sizes (an invisible chest)
+/// keeps its own answer.
+fn checkingChestOf(cloner: *pickups.PickupCloner, original_chest: []const u8, size: world_mod.ChestSize, size_matches: bool, progress: *Progress) PatchError!?[]const u8 {
+    switch (size) {
+        .none => return world_mod.conditionalChestActor(original_chest),
+        .small => return world_mod.conditionalChestActor(world_mod.chestOfSize(original_chest, .small) orelse original_chest),
+        .big => {
+            if (!size_matches) return null;
+            const big_chest = world_mod.chestOfSize(original_chest, .big) orelse return null;
+            if (try cloner.bigTierChest(big_chest)) |made| return made;
+            progress.log("warning: no big chest that checks what you own; {s} stays small for a progressive item", .{original_chest});
+            return world_mod.conditionalChestActor(world_mod.chestOfSize(original_chest, .small) orelse original_chest);
+        },
+    }
+}
+
 /// The edit of one placement: a chest's drop, a shelf's actor, a Skulltula's drop or a world pickup. `a` is the stage
 /// file's scratch memory (the actor tree's edits); `keep` holds the shop flag names, which outlive the stage file.
 fn patchActor(
@@ -838,6 +988,15 @@ fn patchActor(
     const name = world.items.name(item);
     switch (loc.kind) {
         .chest => {
+            const original_chest = actor.getString("Gyaml") orelse "";
+            // Chest Size Matches Contents: the size the item asks for; otherwise the chest's own
+            const own_size = world_mod.chestSizeOf(original_chest);
+            const size_matches = plan.st.flag(.chest_size_matches);
+            const wanted_size = if (size_matches and own_size != .none) chestSizeFor(plan, item) else own_size;
+            if (edit.resize_only) {
+                if (world_mod.chestOfSize(original_chest, wanted_size)) |sized| try actor.put(a, "Gyaml", .{ .string = sized });
+                return;
+            }
             const dyn = try actor.ensureDict(a, "Dynamic");
             if (dyn.getString("GetEventName")) |ev| {
                 if (flows.contains(&item_get_events, ev) and (item != loc.vanilla or quick_vanilla)) {
@@ -846,9 +1005,9 @@ fn patchActor(
                     _ = dyn.remove("GetEventName");
                 }
             }
-            // the game's conditional chest in this chest's place, for a check of what the player owns: the other
-            // chests ignore Drop__CheckActor (world.conditionalChestActor)
-            const conditional_actor = world_mod.conditionalChestActor(actor.getString("Gyaml") orelse "");
+            // the chest that checks what the player owns, of the wanted size, in this chest's place: the other chests
+            // ignore Drop__CheckActor (world.conditionalChestActor, pickups.bigTierChest)
+            const conditional_actor = try checkingChestOf(cloner, original_chest, wanted_size, size_matches, progress);
             if (fill.progressiveChainOf(plan, item)) |chain| {
                 const chest_actor = conditional_actor orelse
                     return progress.fail(error.NotAsExpected, "{s} can't choose a tier of {s} (no conditional version of its chest)", .{ loc.name, name });
@@ -874,6 +1033,9 @@ fn patchActor(
                     try dyn.put(a, "Drop__DropActor_Substitute", .{ .string = try requireActor(a, world, item, .chest, progress) });
                     return;
                 }
+            }
+            if (world_mod.chestOfSize(original_chest, wanted_size)) |sized| {
+                if (!std.mem.eql(u8, sized, original_chest)) try actor.put(a, "Gyaml", .{ .string = sized });
             }
             try dyn.put(a, "Drop__DropActor", .{ .string = try chestShownActorOf(a, world, plan, cloner, name, progress) });
             _ = dyn.remove("Drop__CheckActor");

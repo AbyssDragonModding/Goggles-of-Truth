@@ -62,7 +62,7 @@ fn settingTest(a: Allocator, key: Key, st: *const Settings) error{OutOfMemory}!?
             Test{ .expected = "Exit open and Mido gone", .how = "Leave the forest at once; walk straight to the Deku Tree" },
         .open_zora => if (is(c, "open")) Test{ .expected = "King Zora already moved aside; Fountain + Jabu-Jabu reachable without Ruto's Letter", .how = "Go behind King Zora as child without the letter" } else null,
         .open_door => if (is(c, "open")) Test{ .expected = "Door of Time starts open (Master Sword may still check story)", .how = "Enter the Temple of Time without stones / Song of Time; try the pedestal" } else null,
-        .open_dmt => if (on)
+        .open_dmt => if (is(c, "open"))
             Test{ .expected = "Kakariko's Death Mountain gate is open for child Link and the Happy Mask Shop is open; Zelda's Letter isn't in the seed", .how = "As child, walk up the Kakariko path to Death Mountain; borrow the Keaton Mask" }
         else
             Test{ .expected = "The Kakariko gate soldier wants Zelda's Letter", .how = "Show him the letter as child" },
@@ -101,6 +101,7 @@ fn settingTest(a: Allocator, key: Key, st: *const Settings) error{OutOfMemory}!?
             .how = "Kill a Gold Skulltula on a vine and touch its drop while climbing; kill one, leave without the drop, come back",
         } else null,
         .skip_cutscenes => if (on) Test{ .expected = "Every cutscene can be skipped (opening, credits too)", .how = "Press the skip button in the opening" } else null,
+        .chest_size_matches => if (on) Test{ .expected = "Key items (progression, Small Keys, Key Rings, Boss Keys) are in big chests, everything else in small chests; a big chest with a Progressive item gives the next tier; no chest sits inside a wall or another chest", .how = "Open a few chests of each size (see Check rows); open two big chests holding the same Progressive item" } else null,
         .progressive_items => if (on)
             Test{ .expected = "Each copy of a Progressive item gives the next tier you don't have (Hookshot, then Longshot); they are only in small chests and character / minigame / scrub checks", .how = "Open two chests holding a Progressive Hookshot (see Check rows) and check the pause menu after each" }
         else
@@ -275,7 +276,7 @@ pub fn write(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Filler
         if (loc.kind == .shop) {
             name = if (item == loc.vanilla or world.items.isJunk(item)) "(normal shop goods)" else try std.fmt.allocPrint(a, "{s} ({d} rupees)", .{ name, plan.shop_prices[i].? });
         }
-        if (st.flag(.refill_needs_item) and loc.can_check_owned) {
+        if (st.flag(.refill_needs_item) and world_mod.chestCanCheckOwned(loc, st.flag(.chest_size_matches))) {
             if (fill.refillContainer(world.items.name(item))) |need| {
                 const short = if (std.mem.startsWith(u8, need, "Item_")) need["Item_".len..] else need;
                 name = try std.fmt.allocPrint(a, "{s} (Blue Rupee without the {s})", .{ name, try world.itemName(a, short) });

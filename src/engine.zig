@@ -82,6 +82,7 @@ test {
     _ = world;
     _ = settings;
     _ = settings.startinventory;
+    _ = settings.randomize;
     _ = @import("ui/pagecheck.zig");
     _ = usersettings;
     _ = custompresets;

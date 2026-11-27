@@ -13,6 +13,7 @@ pub const Key = table.Key;
 pub const specs = table.specs;
 pub const presets = table.presets;
 pub const startinventory = @import("startinventory.zig");
+pub const randomize = @import("randomize.zig");
 pub const key_count = @typeInfo(Key).@"enum".field_names.len;
 
 pub const Kind = enum { boolean, choice, int, list };
@@ -55,6 +56,9 @@ pub const Spec = struct {
     max: i64 = 0,
     default: Value,
     tip: []const u8,
+    /// a choice that was an on/off switch before: the options an old false / true means (Death Mountain's Closed /
+    /// Open), so older settings strings and user_settings.toml still read
+    from_boolean: ?[2][]const u8 = null,
 
     /// The option `value`, as the table's own text (so it outlives any input), or null.
     pub fn option(self: *const Spec, value: []const u8) ?Option {
@@ -270,6 +274,10 @@ pub fn checkInput(key: Key, input: Input) ?Value {
     switch (s.kind) {
         .boolean => return if (input == .boolean) Value{ .boolean = input.boolean } else null,
         .choice => {
+            if (input == .boolean) {
+                const values = s.from_boolean orelse return null;
+                return Value{ .choice = values[@intFromBool(input.boolean)] };
+            }
             if (input != .string) return null;
             const o = s.option(input.string) orelse return null;
             return Value{ .choice = o.value };
@@ -638,6 +646,12 @@ fn jsonInput(allocator: Allocator, v: std.json.Value) error{OutOfMemory}!Input {
         },
         else => Input.other,
     };
+}
+
+test "a switch that became a choice still reads" {
+    try std.testing.expectEqualStrings("open", checkInput(.open_dmt, .{ .boolean = true }).?.choice);
+    try std.testing.expectEqualStrings("closed", checkInput(.open_dmt, .{ .boolean = false }).?.choice);
+    try std.testing.expect(checkInput(.open_door, .{ .boolean = true }) == null);
 }
 
 test "settings string round trip" {

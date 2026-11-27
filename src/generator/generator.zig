@@ -157,7 +157,15 @@ pub fn generate(gpa: Allocator, result_allocator: Allocator, env: *const Env, re
     // (version.zig); the text is "<placement version>|<seed>|<settings string>" as before 0.7.4, so seeds made with
     // 0.7.3 come out the same
     const seed_key = std.fmt.allocPrint(a, "{s}|{s}|{s}", .{ version_mod.placement_version, seed, sstr }) catch return error.OutOfMemory;
-    const plan = fill.Plan.init(a, world, st, seed_key) catch |err| return planError(err, progress);
+    // the Random options (open areas, the bridge and its counts, random starting items), rolled from the seed into
+    // the settings the fill and every patch read; the settings string keeps "Random" (settings/randomize.zig)
+    const rolled = settings_mod.randomize.rollRandomChoices(a, st, seed_key) catch return error.OutOfMemory;
+    const rolled_st = a.create(settings_mod.Settings) catch return error.OutOfMemory;
+    rolled_st.* = rolled.settings;
+    for (rolled.rolls) |roll| progress.log("Random: {s} is {s}", .{ roll.label, roll.value });
+    const plan = fill.Plan.init(a, world, rolled_st, seed_key) catch |err| return planError(err, progress);
+    plan.chosen_settings = st;
+    plan.random_rolls = rolled.rolls;
     if (request.test_placements.len > 0) {
         if (plan.applyTestPlacements(request.test_placements) catch return error.OutOfMemory) |problem| {
             return progress.fail(error.GenerationFailed, "test placement: {s}", .{problem});
@@ -658,11 +666,16 @@ fn writeSpoiler(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Fil
     for (settings_mod.specs) |s| {
         try txt.appendSlice(a, "  ");
         try padded(&txt, a, std.fmt.allocPrint(a, "{s}:", .{s.label}) catch return error.OutOfMemory, 28);
-        txt.print(a, " {s}\n", .{try valueText(a, plan.st.get(s.key))}) catch return error.OutOfMemory;
+        txt.print(a, " {s}\n", .{try valueText(a, (plan.chosen_settings orelse plan.st).get(s.key))}) catch return error.OutOfMemory;
     }
     // what the seed chose for Starting Age: Random and Barren Dungeons
     try txt.appendSlice(a, "\nThis seed:\n");
     txt.print(a, "  Starting age:               {s}\n", .{if (plan.options.start_adult) "Adult" else "Child"}) catch return error.OutOfMemory;
+    for (plan.random_rolls) |roll| {
+        try txt.appendSlice(a, "  ");
+        try padded(&txt, a, std.fmt.allocPrint(a, "{s}:", .{roll.label}) catch return error.OutOfMemory, 28);
+        txt.print(a, " {s}\n", .{roll.value}) catch return error.OutOfMemory;
+    }
     if (plan.barren_dungeons.len > 0) {
         const names = a.alloc([]const u8, plan.barren_dungeons.len) catch return error.OutOfMemory;
         for (plan.barren_dungeons, 0..) |folder, k| names[k] = world.regionName(folder);

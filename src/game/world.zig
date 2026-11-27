@@ -222,6 +222,9 @@ pub const Location = struct {
     /// a chest the game has a conditional version of (conditionalChestActor), so it can give one item or another by
     /// what the player owns: a progressive item's next tier, a refill only with its container
     can_check_owned: bool = false,
+    /// a chest's size (chestSizeOf) when every copy of it is a small or a big chest; Chest Size Matches Contents
+    /// changes it by what it holds
+    chest_size: ChestSize = .none,
     room: ?i128 = null,
     /// explicit logic rule for events and special spots
     rule_key: ?logic.Special = null,
@@ -277,6 +280,41 @@ pub fn conditionalChestActor(chest_actor: []const u8) ?[]const u8 {
     return null;
 }
 
+/// A chest's size, for Chest Size Matches Contents: the small chests (Obj_TBox_A_01, its _NoBake and the game's
+/// checking Obj_TBox_A_06) and the big ones (Obj_TBox_A_02 and its _NoBake). Every other chest (invisible chests,
+/// the shop and pedestal chests, the rare variants) keeps its look: .none.
+pub const ChestSize = enum { none, small, big };
+
+pub fn chestSizeOf(chest_actor: []const u8) ChestSize {
+    const small = [_][]const u8{ "Obj_TBox_A_01", "Obj_TBox_A_01_NoBake", "Obj_TBox_A_06", "Obj_TBox_A_06_NoBake" };
+    const big = [_][]const u8{ "Obj_TBox_A_02", "Obj_TBox_A_02_NoBake" };
+    if (eqlAny(chest_actor, &small)) return .small;
+    if (eqlAny(chest_actor, &big)) return .big;
+    return .none;
+}
+
+/// The plain chest of size `size` in the lighting of `chest_actor` (a _NoBake chest stays _NoBake), or null for a
+/// chest without sizes. A small chest that is already the game's checking chest keeps being it.
+pub fn chestOfSize(chest_actor: []const u8, size: ChestSize) ?[]const u8 {
+    const current = chestSizeOf(chest_actor);
+    if (current == .none or size == .none) return null;
+    if (current == size) return chest_actor;
+    const no_bake = std.mem.endsWith(u8, chest_actor, "_NoBake");
+    return switch (size) {
+        .small => if (no_bake) "Obj_TBox_A_01_NoBake" else "Obj_TBox_A_01",
+        .big => if (no_bake) "Obj_TBox_A_02_NoBake" else "Obj_TBox_A_02",
+        .none => null,
+    };
+}
+
+/// Can this chest give one item or another by what the player owns (a progressive item's next tier, a refill only
+/// with its container)? The small chests always (as the game's Obj_TBox_A_06); with Chest Size Matches Contents
+/// the big ones too, as the big chest the generator makes for it (pickups.bigTierChest).
+pub fn chestCanCheckOwned(loc: *const Location, chest_size_matches: bool) bool {
+    if (loc.kind != .chest) return false;
+    return loc.can_check_owned or (chest_size_matches and loc.chest_size == .big);
+}
+
 const StageKind = struct { kind: Kind, label: []const u8 };
 
 /// What kind of item location an actor is (rando/world.py STAGE_KINDS), or null.
@@ -294,6 +332,16 @@ fn stageKind(g: []const u8) ?StageKind {
     if (eqlAny(g, &.{ "Obj_Rupee_Green", "Obj_Rupee_Blue", "Obj_Rupee_Red", "Obj_Rupee_Purple" })) return .{ .kind = .rupee, .label = "Freestanding Rupee" };
     if (std.mem.eql(u8, g, "Enemy_Skulltula_Gold")) return .{ .kind = .gs, .label = "Gold Skulltula" };
     return null;
+}
+
+test "chest sizes" {
+    try std.testing.expectEqual(ChestSize.small, chestSizeOf("Obj_TBox_A_06_NoBake"));
+    try std.testing.expectEqual(ChestSize.big, chestSizeOf("Obj_TBox_A_02"));
+    try std.testing.expectEqual(ChestSize.none, chestSizeOf("Obj_TBox_GlassTruth_A_01"));
+    try std.testing.expectEqualStrings("Obj_TBox_A_02_NoBake", chestOfSize("Obj_TBox_A_01_NoBake", .big).?);
+    try std.testing.expectEqualStrings("Obj_TBox_A_06", chestOfSize("Obj_TBox_A_06", .small).?);
+    try std.testing.expectEqualStrings("Obj_TBox_A_01", chestOfSize("Obj_TBox_A_02", .small).?);
+    try std.testing.expect(chestOfSize("Obj_TBox_A_03", .big) == null);
 }
 
 fn eqlAny(s: []const u8, options: []const []const u8) bool {
@@ -509,6 +557,9 @@ pub const World = struct {
             const d = logic.key_dungeons[k.dungeon];
             return std.fmt.allocPrint(allocator, "{s} ({s})", .{ if (k.ring) "Key Ring" else "Boss Key", d.name });
         }
+        if (logic.mapItemOf(key)) |m| {
+            return std.fmt.allocPrint(allocator, "{s} ({s})", .{ if (m.compass) "Compass" else "Map", logic.map_dungeons[m.dungeon].name });
+        }
         // a progressive item is the generator's too: which tier it gives depends on what the player owns
         if (progressive.chainOfProgressiveItem(key)) |chain| return allocator.dupe(u8, chain.display_name);
         const at = std.mem.indexOfScalar(u8, key, '@');
@@ -564,6 +615,8 @@ pub const World = struct {
     pub fn actorFor(self: *const Self, allocator: Allocator, key: []const u8, context: Context) error{OutOfMemory}!?[]const u8 {
         // a key ring or dungeon boss key: the actor the generator makes for it (keyitems.zig), in every context
         if (logic.keyItemOf(key) != null) return try std.fmt.allocPrint(allocator, "Item_{s}", .{key});
+        // a map or compass item of Maps & Compasses Anywhere: made by the generator too (generator/keyitems.zig)
+        if (logic.mapItemOf(key) != null) return try std.fmt.allocPrint(allocator, "Item_{s}", .{key});
         // a progressive item: its first tier's actor. Why: that is the model a gift shows and what a location that
         // can't branch would give; the hand-overs that branch pick each tier's own actor (generator/patches.zig)
         if (progressive.chainOfProgressiveItem(key)) |chain| return self.actorFor(allocator, chain.tiers[0].key, context);
@@ -716,6 +769,7 @@ pub const World = struct {
         get_event: []const u8,
         conditional: bool,
         can_check_owned: bool,
+        chest_size: ChestSize,
         pos: [3]f64,
         room: ?i128,
         skip: bool = false,
@@ -846,6 +900,7 @@ pub const World = struct {
                             .get_event = a.dupe(u8, get_event) catch return error.OutOfMemory,
                             .conditional = if (dyn) |dd| dd.contains("Drop__CheckActor") else false,
                             .can_check_owned = sk.kind == .chest and conditionalChestActor(g) != null,
+                            .chest_size = if (sk.kind == .chest) chestSizeOf(g) else .none,
                             .pos = .{ round2(pos[0]), round2(pos[1]), round2(pos[2]) },
                             .room = if (dyn) |dd| dd.getInt("DefaultDungeonRoomIndex") else null,
                         };
@@ -858,6 +913,7 @@ pub const World = struct {
                     m.ages.adult = m.ages.adult or ages.adult;
                     // every copy of the chest (child and adult files) must have a conditional version
                     if (conditionalChestActor(g) == null) m.can_check_owned = false;
+                    if (m.chest_size != chestSizeOf(g)) m.chest_size = .none;
                     m.refs.append(a, StageRef{ .rel = rel, .hash = h }) catch return error.OutOfMemory;
                 }
             }
@@ -906,6 +962,7 @@ pub const World = struct {
                 .get_event = m.get_event,
                 .conditional = m.conditional,
                 .can_check_owned = m.can_check_owned,
+                .chest_size = m.chest_size,
                 .room = m.room,
                 .rule_key = specialRule(m.actor),
             }) catch return error.OutOfMemory;

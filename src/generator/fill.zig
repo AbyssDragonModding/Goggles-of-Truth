@@ -40,10 +40,28 @@ pub const shop_keep_one = [_][]const u8{
     "Shop_Weapon_Shield_Deku", "Shop_Weapon_Shield_Hylian", "Shop_Armor_Goron", "Shop_Armor_Zora",
     "Shop_Bottle_BlueFire",    "Shop_Bottle_Bug",           "Shop_Bottle_Fish", "Shop_Bottle_Fairy",
 };
-/// Business Scrubs: "low" 10 rupees, "regular" the game's own price (40 or 100), "random" 10 to 99 (child wallet)
+/// the Business Scrubs' price before a seed sets one (and the floor of the game's own prices read from the flows)
 pub const scrub_low_price: i64 = 10;
-pub const child_wallet: i64 = 99;
-pub const adult_wallet: i64 = 200;
+/// What the remake's wallets hold: the Kokiri Wallet 200, the Adult's 500, the Giant's 1,000 rupees (dump:
+/// ActorMsg/PouchContent.msbt, Item_Wallet_*_Caption). A price above a wallet needs the next one in the logic.
+pub const child_wallet: i64 = 200;
+pub const adult_wallet: i64 = 500;
+pub const giant_wallet: i64 = 1000;
+
+/// A price option's top (the wallet it is named after): the classic game's wallets (99, 200, 500) and the remake's
+/// (child_wallet, adult_wallet, giant_wallet). Null for anything else.
+fn priceTop(mode: []const u8) ?i64 {
+    const tops = [_]struct { mode: []const u8, top: i64 }{
+        .{ .mode = "random", .top = 99 },
+        .{ .mode = "random_wallet", .top = 200 },
+        .{ .mode = "random_giant", .top = 500 },
+        .{ .mode = "remake_child", .top = child_wallet },
+        .{ .mode = "remake_adult", .top = adult_wallet },
+        .{ .mode = "remake_giant", .top = giant_wallet },
+    };
+    for (tops) |t| if (std.mem.eql(u8, t.mode, mode)) return t.top;
+    return null;
+}
 pub const upgrades = [_][]const u8{ "Wallet_Medium", "Wallet_Large", "BombBag_Medium", "BombBag_Large" };
 pub const rewards = [_][]const u8{
     "Stone_Forest", "Stone_Fire", "Stone_Water", "Medal_Forest", "Medal_Fire", "Medal_Water",
@@ -127,9 +145,10 @@ const start_with_bonus = [_]BonusItem{
 };
 
 /// Can this location hand out a progressive item? Only event hand-overs (they branch on what the player owns) and
-/// the small chests (made the game's conditional chest, world.conditionalChestActor) can; see logic/progressive.zig.
-pub fn canGiveProgressive(loc: *const world_mod.Location) bool {
-    return loc.kind == .event or (loc.kind == .chest and loc.can_check_owned);
+/// chests that check what the player owns (world.chestCanCheckOwned: the small ones, and with Chest Size Matches
+/// Contents the big ones too) can; see logic/progressive.zig.
+pub fn canGiveProgressive(st: *const Settings, loc: *const world_mod.Location) bool {
+    return loc.kind == .event or world_mod.chestCanCheckOwned(loc, st.flag(.chest_size_matches));
 }
 
 /// The upgrade line of a progressive item, or null for any other item.
@@ -201,24 +220,21 @@ fn settingOf(d: DungeonItem) settings_mod.Key {
     };
 }
 
-/// A price for `mode`: low, regular (the game's), random (10-99) or random_wallet (10-200). Derived from a hash of
-/// the seed key and the location, so it never depends on the order things are placed in.
-fn price(mode: []const u8, what: []const u8, seed_key: []const u8, loc_id: []const u8, low: i64, step: i64, regular: ?i64) i64 {
-    if (std.mem.eql(u8, mode, "regular")) {
-        if (regular) |r| return r;
-    }
-    const is_random = std.mem.eql(u8, mode, "random");
-    if (is_random or std.mem.eql(u8, mode, "random_wallet")) {
-        const top: i64 = if (is_random) child_wallet else adult_wallet;
+/// A price for `mode`: a random one from 0 up to what the wallet it names holds (priceTop), `low` for anything else.
+/// Derived from a hash of the seed key and the location, so it never depends on the order things are placed in.
+fn price(mode: []const u8, what: []const u8, seed_key: []const u8, loc_id: []const u8, low: i64, step: i64) i64 {
+    if (priceTop(mode)) |highest| {
+        // from 0: a random price can be free (the feature request: "truly random per tier of wallet")
+        const lowest: i64 = 0;
         var buf: [1024]u8 = undefined;
         const text = std.fmt.bufPrint(&buf, "{s}-price|{s}|{s}", .{ what, seed_key, loc_id }) catch return low;
         const digest = hash.sha256(text);
         const n = std.mem.readInt(u64, digest[0..8], .big);
         if (step > 1) {
-            const choices: u64 = @intCast(@divFloor(top - low, step) + 1);
-            return low + step * @as(i64, @intCast(n % choices));
+            const choices: u64 = @intCast(@divFloor(highest - lowest, step) + 1);
+            return lowest + step * @as(i64, @intCast(n % choices));
         }
-        return low + @as(i64, @intCast(n % @as(u64, @intCast(top - low + 1))));
+        return lowest + @as(i64, @intCast(n % @as(u64, @intCast(highest - lowest + 1))));
     }
     return low;
 }
@@ -235,6 +251,8 @@ pub const Plan = struct {
     rules: []logic.LocationRule,
     /// a price above 99 rupees needs the Adult's Wallet (or the Giant's)
     needs_wallet: []bool,
+    /// a price above the Adult's Wallet: the Giant's Wallet (Random, Giant's Wallet prices)
+    needs_giant_wallet: []bool,
     shop_chosen: []bool,
     shop_prices: []?i64,
     scrub_prices: []?i64,
@@ -279,6 +297,10 @@ pub const Plan = struct {
     copies: ?std.AutoHashMap(ItemId, usize) = null,
     /// a test seed's chosen placements in settings.txt form ("" for a normal seed; applyTestPlacements)
     test_placements_text: []const u8 = "",
+    /// the settings as chosen, before their Random options were rolled into `st` (settings/randomize.zig): the
+    /// spoiler's Settings list shows these, and `random_rolls` what this seed rolled
+    chosen_settings: ?*const Settings = null,
+    random_rolls: []const settings_mod.randomize.Roll = &.{},
 
     const Self = @This();
 
@@ -293,6 +315,7 @@ pub const Plan = struct {
             .options = logic.Options.fromSettings(st),
             .rules = allocator.alloc(logic.LocationRule, n) catch return error.OutOfMemory,
             .needs_wallet = try boolArray(allocator, n),
+            .needs_giant_wallet = try boolArray(allocator, n),
             .shop_chosen = try boolArray(allocator, n),
             .shop_prices = try optArray(allocator, i64, n),
             .scrub_prices = try optArray(allocator, i64, n),
@@ -327,7 +350,7 @@ pub const Plan = struct {
         for (world.locations.items, 0..) |*loc, i| {
             // Open Death Mountain: Zelda's Letter has no use (the gate and the mask shop are open), so her check is
             // shuffled even with quest rewards off: it gets a random item and the letter leaves the pool
-            if (try self.isShuffledLocation(loc, i) or (zelda_letter != null and loc.vanilla == zelda_letter.? and st.flag(.open_dmt))) {
+            if (try self.isShuffledLocation(loc, i) or (zelda_letter != null and loc.vanilla == zelda_letter.? and st.is(.open_dmt, "open"))) {
                 try self.shuffled.append(allocator, i);
                 self.is_shuffled[i] = true;
             } else {
@@ -633,6 +656,8 @@ pub const Plan = struct {
     fn barrenRefuses(self: *const Self, i: usize, item: ItemId) bool {
         const name = self.itemName(item);
         if (isRupeeName(name) and !logic.isProgression(item)) return false;
+        // Maps & Compasses Anywhere, Barren Dungeons Too: maps and compasses may be there as well
+        if (logic.mapItemOf(name) != null and self.st.is(.maps_compasses, "anywhere_barren")) return false;
         const at = std.mem.indexOfScalar(u8, name, '@') orelse return true;
         const dungeon = self.world.locations.items[i].dungeon orelse return true;
         return !std.mem.eql(u8, dungeon, name[at + 1 ..]);
@@ -672,7 +697,7 @@ pub const Plan = struct {
             // why refused: a spot that can't choose the tier would give the first tier every time (test report,
             // PROGKOKIRI1 plan: progressive items on Kokiri Forest's rupee spots). The fill never puts them there
             // (allowed(), logic/progressive.zig).
-            if (progressiveChainOf(self, item) != null and !canGiveProgressive(self.location(location_index))) {
+            if (progressiveChainOf(self, item) != null and !canGiveProgressive(self.st, self.location(location_index))) {
                 return std.fmt.allocPrint(allocator, "\"{s}\" can't hold \"{s}\": an item lying in the world, a Gold Skulltula, a shop shelf, a big chest or an invisible chest can't choose the tier, so it would always give the first one (put progressive items in small chests or character/event checks)", .{ request.location, request.item }) catch error.OutOfMemory;
             }
             // why refused: a test plan that forbids and places the same pair contradicts itself
@@ -758,6 +783,7 @@ pub const Plan = struct {
     /// Can location `i` be reached in state `s`? (its rule, and the wallet a high price needs)
     pub fn reachable(self: *const Self, i: usize, s: *logic.State) bool {
         if (!logic.check(s, self.rules[i])) return false;
+        if (self.needs_giant_wallet[i]) return logic.giantWallet(s);
         if (self.needs_wallet[i]) return logic.adultWallet(s);
         return true;
     }
@@ -802,7 +828,7 @@ pub const Plan = struct {
                 if (inList(loc.vanilla_actor, &shop_keep_one) and count.* <= 1) continue;
                 count.* -= 1;
                 self.shop_chosen[i] = true;
-                self.shop_prices[i] = price(self.st.choice(.shop_prices), "shop", self.seed_key, loc.id, shop_price, 5, null);
+                self.shop_prices[i] = price(self.st.choice(.shop_prices), "shop", self.seed_key, loc.id, shop_price, 5);
                 wanted -= 1;
             }
         }
@@ -856,6 +882,7 @@ pub const Plan = struct {
     }
 
     fn needsWalletFor(self: *Self, i: usize, p: i64) void {
+        if (p > adult_wallet) self.needs_giant_wallet[i] = true;
         if (p > child_wallet) self.needs_wallet[i] = true;
     }
 
@@ -865,12 +892,7 @@ pub const Plan = struct {
         const mode = self.st.choice(.scrub_prices);
         for (self.world.locations.items, 0..) |loc, i| {
             if (loc.category != .scrub) continue;
-            var game: i64 = scrub_low_price;
-            if (loc.price_refs.len > 0) {
-                game = loc.price_refs[0].price;
-                for (loc.price_refs) |r| game = @max(game, r.price);
-            }
-            const p = price(mode, "scrub", self.seed_key, loc.id, scrub_low_price, 1, game);
+            const p = price(mode, "scrub", self.seed_key, loc.id, scrub_low_price, 1);
             self.scrub_prices[i] = p;
             self.needsWalletFor(i, p);
         }
@@ -922,7 +944,7 @@ pub const Plan = struct {
         // Ruto's Letter can't be delivered with an open Fountain; an empty bottle takes its place
         if (st.is(.open_zora, "open")) try self.replaceAll("Bottle_Letter", "Bottle");
         // Open Death Mountain: the Kakariko gate and the Happy Mask Shop are open, Zelda's Letter has no use
-        if (st.flag(.open_dmt)) try self.replaceAll("ZeldaLetter", open_dmt_letter_junk);
+        if (st.is(.open_dmt, "open")) try self.replaceAll("ZeldaLetter", open_dmt_letter_junk);
         if (st.flag(.shuffle_ocarinas)) {
             // Saria's bridge gift is switched off; her Fairy Ocarina replaces junk
             var key_buf: [1024]u8 = undefined;
@@ -994,7 +1016,7 @@ pub const Plan = struct {
                 const vanilla_tier = fixed_item.* orelse continue;
                 if (!self.isTierOf(vanilla_tier, chain)) continue;
                 // a location that can't branch keeps its own tier (the logic counts it as one tier of the line)
-                if (!canGiveProgressive(self.location(i))) continue;
+                if (!canGiveProgressive(self.st, self.location(i))) continue;
                 fixed_item.* = copy;
                 self.forced[i] = copy;
             }
@@ -1011,7 +1033,8 @@ pub const Plan = struct {
         const remove_keys = st.is(.small_keys, "remove");
         const boss_mode = bossKeyItemMode(st);
         const remove_boss = st.is(.boss_keys, "remove");
-        if (!ring_mode and !remove_keys and !boss_mode and !remove_boss) return;
+        const map_items = self.options.map_items;
+        if (!ring_mode and !remove_keys and !boss_mode and !remove_boss and !map_items) return;
         const blue = try items.intern("Rupee_Blue");
         var ring_in_pool: [logic.key_dungeons.len]bool = @splat(false);
         for (self.pool.items) |*item| {
@@ -1037,6 +1060,17 @@ pub const Plan = struct {
                     }
                 },
                 .maps_compasses => {},
+            }
+        }
+        // Maps & Compasses Anywhere: each map and compass becomes its dungeon's own item (logic.mapItemOf), placeable
+        // anywhere; it counts for its dungeon wherever it is found (keyitems.zig)
+        if (map_items) {
+            for (self.pool.items) |*item| {
+                const name = items.name(item.*);
+                if (dungeonItemType(name) != .maps_compasses) continue;
+                const at = std.mem.indexOfScalar(u8, name, '@') orelse continue;
+                const d = logic.mapDungeonIndex(name[at + 1 ..]) orelse continue;
+                item.* = try items.intern(try logic.mapItemKey(self.allocator, d, std.mem.startsWith(u8, name, "Dungeon_Compass")));
             }
         }
         if (!ring_mode) return;
@@ -1130,7 +1164,7 @@ pub const Plan = struct {
         if (self.start_locs[i] and own_dungeon != null) return false;
         if (progressive.chainOfProgressiveItem(name)) |chain| {
             // a progressive item needs a hand-over that branches on what the player owns (logic/progressive.zig)
-            if (!canGiveProgressive(loc)) return false;
+            if (!canGiveProgressive(st, loc)) return false;
             // without logic nothing makes sure a three-tier line's chest copy is opened with one copy owned (the
             // fill's chest rule, Filler.keepChestsThatNeedOneCopy)
             if (chain.chestNeedsOneCopy() and loc.kind == .chest and st.is(.logic_rules, "none")) return false;
@@ -1488,6 +1522,7 @@ pub const Filler = struct {
         try self.placeGroup(song_items.items, later.items);
         try self.placeGroup(prog_rest.items, &.{});
         self.rng.shuffle(ItemId, junk_rest.items);
+        try self.placeMapItemsBeforeBarrenRupees(&junk_rest);
         try self.fillBarrenSpotsWithRupees(&junk_rest);
 
         // Items Shuffled Per Shop: junk on a shelf leaves its normal goods, so most chosen shelves looked unchanged
@@ -1562,6 +1597,30 @@ pub const Filler = struct {
         }
     }
 
+    /// Maps & Compasses Anywhere, Barren Dungeons Too: the maps and compasses go first, each to a random empty spot that
+    /// may hold it (a barren dungeon's too). Why first: the barren spots take their rupees before the rest of the junk
+    /// (fillBarrenSpotsWithRupees), so placed with the junk a map could never be in one (6 test seeds: none was).
+    fn placeMapItemsBeforeBarrenRupees(self: *Self, junk_rest: *std.ArrayList(ItemId)) FillError!void {
+        const plan = self.plan;
+        if (plan.barren_dungeons.len == 0 or !plan.st.is(.maps_compasses, "anywhere_barren")) return;
+        var spots: std.ArrayList(usize) = .empty;
+        for (plan.shuffled.items) |i| if (self.placed[i] == null) try appendItem(usize, &spots, self.allocator, i);
+        var k: usize = 0;
+        while (k < junk_rest.items.len) {
+            const item = junk_rest.items[k];
+            if (logic.mapItemOf(plan.itemName(item)) == null) {
+                k += 1;
+                continue;
+            }
+            self.rng.shuffle(usize, spots.items);
+            const spot = try self.firstEmpty(spots.items, item, null) orelse {
+                k += 1; // left with the junk: placed with it later
+                continue;
+            };
+            try self.place(spot, junk_rest.orderedRemove(k));
+        }
+    }
+
     /// Barren Dungeons: each empty barren spot takes a rupee from the junk left, before other junk is placed, so the
     /// rupees aren't used up elsewhere first. When the rupees run out, other junk (ammo, refills: Plan.isJunk) turns
     /// into Blue Rupees for them; a barren spot no rupee is left for fails the seed with a message. Nothing happens
@@ -1613,7 +1672,7 @@ pub const Filler = struct {
     fn firstEmptyCheckingChest(self: *Self, order: []const usize, item: ItemId) FillError!?usize {
         for (order) |i| {
             if (self.placed[i] != null) continue;
-            if (!self.plan.location(i).can_check_owned) continue;
+            if (!world_mod.chestCanCheckOwned(self.plan.location(i), self.plan.st.flag(.chest_size_matches))) continue;
             if (try self.plan.allowed(i, item)) return i;
         }
         return null;

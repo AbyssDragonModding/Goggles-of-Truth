@@ -16,6 +16,7 @@ pub const debug_build = layout.debug_build;
 const wallpaper = @import("wallpaper.zig");
 const Allocator = std.mem.Allocator;
 const settings = engine.settings;
+const Rng = engine.rng.Rng;
 const Settings = settings.Settings;
 const startinventory = settings.startinventory;
 const Key = settings.Key;
@@ -32,10 +33,14 @@ pub const AppError = error{
 const max_log_lines = 400;
 
 /// Settings that only mean something with another one's value: greyed out otherwise.
-const Dependent = struct { key: Key, other: Key, value: []const u8 };
+/// A setting only used while `other` is `value` (or `also`): its control is greyed out otherwise.
+const Dependent = struct { key: Key, other: Key, value: []const u8, also: ?[]const u8 = null };
 const dependents = [_]Dependent{
-    .{ .key = .bridge_medallions, .other = .rainbow_bridge, .value = "medallions" },
-    .{ .key = .bridge_tokens, .other = .rainbow_bridge, .value = "tokens" },
+    // Rainbow Bridge Random may roll Medallions or Gold Skulltula Tokens, so their counts stay usable
+    .{ .key = .bridge_medallions, .other = .rainbow_bridge, .value = "medallions", .also = "random" },
+    .{ .key = .bridge_medallions_random, .other = .rainbow_bridge, .value = "medallions", .also = "random" },
+    .{ .key = .bridge_tokens, .other = .rainbow_bridge, .value = "tokens", .also = "random" },
+    .{ .key = .bridge_tokens_random, .other = .rainbow_bridge, .value = "tokens", .also = "random" },
     .{ .key = .key_ring_forest, .other = .key_rings, .value = "choose" },
     .{ .key = .key_ring_fire, .other = .key_rings, .value = "choose" },
     .{ .key = .key_ring_water, .other = .key_rings, .value = "choose" },
@@ -516,6 +521,12 @@ fn bind(self: *App) AppError!void {
         .{ .name = "rando.check_updates", .f = onCheckUpdates },
     };
     inline for (actions) |action| r.actionBind(action.name, self, action.f);
+    // the Randomize buttons: everything, each tab, each card (a setting group); bound from the setting table
+    r.actionBind(randomize_all_action, self, onRandomize);
+    inline for (settings.specs) |s| {
+        r.actionBind(randomize_tab_prefix ++ s.tab, self, onRandomize);
+        r.actionBind(randomize_group_prefix ++ s.tab ++ "/" ++ s.group, self, onRandomize);
+    }
     self.search_popup.bind();
     self.excl_picker.bind(&self.search_popup, self, onExcludePicked);
     self.restrict_loc_picker.bind(&self.search_popup, self, null);
@@ -629,7 +640,8 @@ fn onSetting(self: *App, sender: ?r.Widget, action: [:0]const u8) void {
 fn updateDependent(self: *App) void {
     for (dependents) |d| {
         const w = self.controls[@backingInt(d.key)] orelse continue;
-        w.setEnabled(self.st.is(d.other, d.value));
+        const also = if (d.also) |v| self.st.is(d.other, v) else false;
+        w.setEnabled(self.st.is(d.other, d.value) or also);
     }
 }
 
@@ -806,6 +818,41 @@ fn storeCustomPresets(self: *App) void {
         return;
     };
     if (failure) |reason| self.writeFmt("Couldn't save custom_presets.toml: {s}", .{reason});
+}
+
+const randomize_all_action = "rando.randomize.all";
+/// + a tab's name (settings Spec.tab): its Randomize This Tab button
+const randomize_tab_prefix = "rando.randomize.tab.";
+/// + "<tab>/<group>": a card's Randomize button
+const randomize_group_prefix = "rando.randomize.group.";
+
+/// A Randomize button: random values for every setting it covers that the buttons may change
+/// (settings/randomize.zig: Stable and In Testing only, never the lists, General Settings or Logic Rules).
+fn onRandomize(self: *App, _: ?r.Widget, action: [:0]const u8) void {
+    const name: []const u8 = action;
+    const scope: settings.randomize.Scope = if (std.mem.eql(u8, name, randomize_all_action))
+        .all
+    else if (std.mem.startsWith(u8, name, randomize_group_prefix)) blk: {
+        const rest = name[randomize_group_prefix.len..];
+        const slash = std.mem.indexOfScalar(u8, rest, '/') orelse return;
+        break :blk .{ .group = .{ .tab = rest[0..slash], .group = rest[slash + 1 ..] } };
+    } else if (std.mem.startsWith(u8, name, randomize_tab_prefix))
+        .{ .tab = name[randomize_tab_prefix.len..] }
+    else
+        return;
+    var raw: [8]u8 = undefined;
+    self.io.random(&raw);
+    var rng = Rng.init(std.mem.readInt(u64, &raw, .little));
+    const a = self.frame.allocator();
+    var st = self.currentSettings(a) catch return;
+    const changed = settings.randomize.randomizeSettings(&st, &rng, scope);
+    self.applySettings(st);
+    const what: []const u8 = switch (scope) {
+        .all => "every gameplay setting",
+        .tab => |tab| std.fmt.allocPrint(a, "the {s} tab", .{tab}) catch "the tab",
+        .group => |g| std.fmt.allocPrint(a, "{s}", .{g.group}) catch "the card",
+    };
+    self.writeFmt("Randomized {s}: {d} settings changed (Experimental options and Logic Rules are left alone).", .{ what, changed });
 }
 
 fn onReset(self: *App, _: ?r.Widget, _: [:0]const u8) void {

@@ -1,0 +1,25 @@
+# Chest Size Matches Contents (in testing): key items are in big chests, everything else in small ones.
+#   Mido's house:  chests 4 and 5: Progressive Hookshot, in the new big chest that checks what you own. Open both
+#                  (either order): the Hookshot, then the Longshot. Check the big chest opens normally and isn't
+#                  stuck in the wall or the bed.
+#                  chests 6 and 7: Pieces of Heart, in small chests.
+#   outside:       chest 1: the Boomerang, in a big chest (a plain one).
+#                  chest 2 (the Kokiri Sword's big chest): a Red Rupee, now a small chest.
+#                  chest 3: a Deku Shield, in a small chest.
+name = "CHESTSIZE1"
+
+[settings]
+chest_size_matches = true
+progressive_items = true
+starting_age = "child"
+barren_dungeons = "off"
+shuffle_kokiri_sword = true
+
+[place]
+"Kokiri Forest Chest 4" = "Progressive Hookshot"
+"Kokiri Forest Chest 5" = "Progressive Hookshot"
+"Kokiri Forest Chest 6" = "Piece of Heart"
+"Kokiri Forest Chest 7" = "Piece of Heart"
+"Kokiri Forest Chest 1" = "Boomerang"
+"Kokiri Forest Chest 2" = "Red Rupee"
+"Kokiri Forest Chest 3" = "Deku Shield"

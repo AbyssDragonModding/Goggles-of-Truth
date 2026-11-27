@@ -208,19 +208,21 @@ const Requirement = struct {
     flags: ?[]const []const u8,
 };
 
-fn requirement(allocator: Allocator, st: *const settings_mod.Settings) error{OutOfMemory}!?Requirement {
-    if (st.is(.rainbow_bridge, "medallions")) {
-        const flags = try allocator.alloc([]const u8, gamedata.bridge_medallions.len);
-        for (gamedata.bridge_medallions, 0..) |m, i| flags[i] = try haveFlag(allocator, m);
-        return .{ .what = "Medallions", .needed = std.math.clamp(st.int(.bridge_medallions), 1, 6), .flags = flags };
+/// The altar's lines for the bridge requirement (one or two: All Tokens, Medallions & Stones shows its rewards and
+/// its tokens apart), or none for Vanilla. All the Medallions and the Stones together are counted as one line.
+fn requirements(allocator: Allocator, st: *const settings_mod.Settings) error{OutOfMemory}![]const Requirement {
+    const needs = gamedata.BridgeNeeds.of(st.choice(.rainbow_bridge), st.int(.bridge_medallions), st.int(.bridge_tokens));
+    var out: std.ArrayList(Requirement) = .empty;
+    if (needs.medallions != null or needs.stones) {
+        var flags: std.ArrayList([]const u8) = .empty;
+        if (needs.medallions != null) for (gamedata.bridge_medallions) |m| try flags.append(allocator, try haveFlag(allocator, m));
+        if (needs.stones) for (gamedata.bridge_stones) |m| try flags.append(allocator, try haveFlag(allocator, m));
+        const what = if (needs.medallions != null and needs.stones) "Medallions & Stones" else if (needs.stones) "Spiritual Stones" else "Medallions";
+        const needed: i64 = (if (needs.medallions) |n| std.math.clamp(n, 1, 6) else 0) + @as(i64, if (needs.stones) 3 else 0);
+        try out.append(allocator, .{ .what = what, .needed = needed, .flags = flags.items });
     }
-    if (st.is(.rainbow_bridge, "stones")) {
-        const flags = try allocator.alloc([]const u8, gamedata.bridge_stones.len);
-        for (gamedata.bridge_stones, 0..) |m, i| flags[i] = try haveFlag(allocator, m);
-        return .{ .what = "Spiritual Stones", .needed = 3, .flags = flags };
-    }
-    if (st.is(.rainbow_bridge, "tokens")) return .{ .what = "Gold Skulltula Tokens", .needed = st.int(.bridge_tokens), .flags = null };
-    return null;
+    if (needs.tokens) |n| try out.append(allocator, .{ .what = "Gold Skulltula Tokens", .needed = n, .flags = null });
+    return out.items;
 }
 
 /// The status line's raw UTF-8 text (with its terminator), and with Barren Dungeons a second page naming them
@@ -249,15 +251,18 @@ fn bridgeStatus(allocator: Allocator, st: *const settings_mod.Settings) error{Ou
     try out.appendSlice(allocator, "Rainbow Bridge to Ganon's Castle");
     try out.appendSlice(allocator, try tagBytes(allocator, 0, 3, "\xff\xff"));
     try out.append(allocator, '\n');
-    const req = (try requirement(allocator, st)) orelse {
+    const reqs = try requirements(allocator, st);
+    if (reqs.len == 0) {
         try out.appendSlice(allocator, "Finish the Shadow and Spirit Temples, then return\nhere to receive the Light Arrows.\x00");
         return out.items;
-    };
+    }
     const ints = gamedata.bridge_status_ints;
-    try out.appendSlice(allocator, req.what);
-    try out.appendSlice(allocator, ": ");
-    try out.appendSlice(allocator, try numberTag(allocator, ints[0]));
-    try out.print(allocator, "/{d}\n", .{req.needed});
+    for (reqs, 0..) |req, k| {
+        try out.appendSlice(allocator, req.what);
+        try out.appendSlice(allocator, ": ");
+        try out.appendSlice(allocator, try numberTag(allocator, countIntOf(k)));
+        try out.print(allocator, "/{d}\n", .{req.needed});
+    }
     try out.appendSlice(allocator, "Bow: ");
     try out.appendSlice(allocator, try numberTag(allocator, ints[1]));
     try out.appendSlice(allocator, "/1    Light Arrows: ");
@@ -267,8 +272,14 @@ fn bridgeStatus(allocator: Allocator, st: *const settings_mod.Settings) error{Ou
 }
 
 /// DoorOfTime: after the altar's inscription, count and show the bridge status.
+/// The Int line `k` of the requirement counts into (the first line, then the second).
+fn countIntOf(k: usize) []const u8 {
+    const ints = gamedata.bridge_status_ints;
+    return if (k == 0) ints[0] else ints[3];
+}
+
 fn bridgeFlow(allocator: Allocator, data: []const u8, st: *const settings_mod.Settings, progress: *Progress) PatchError![]u8 {
-    const req = try requirement(allocator, st);
+    const reqs = try requirements(allocator, st);
     var doc = try flows.readFlow(allocator, data, "DoorOfTime", progress);
     const fc = doc.flowchart orelse return progress.fail(error.NotAsExpected, "no DoorOfTime flowchart", .{});
     for (fc.events.items) |e| {
@@ -307,28 +318,35 @@ fn bridgeFlow(allocator: Allocator, data: []const u8, st: *const settings_mod.Se
     const talk_params = try base.params.?.clone(allocator);
     try talk_params.put(allocator, "MessageId", .{ .string = bridge_message_id });
     var next = try fc.addEvent(allocator, evfl.makeAction("RandoBridgeStatus_Talk", .{ base.actor, base.action }, NONE, talk_params));
-    if (req) |r| {
+    if (reqs.len > 0) {
         const set_aa = try flows.requireAction(fc, allocator, "GameDataActor", "EventTriggerSetGameDataInt", progress);
         const add_aa = try flows.requireAction(fc, allocator, "GameDataActor", "EventTriggerAddOrSubGameDataInt", progress);
         const q_aa = try flows.requireQuery(fc, allocator, "GameDataActor", "EventQueryIsGameDataBoolExp", progress);
         const ints = gamedata.bridge_status_ints;
         next = try counted(fc, allocator, add_aa, q_aa, ints[2], try haveFlag(allocator, gamedata.bridge_light_arrows), next, "Arrows");
         next = try counted(fc, allocator, add_aa, q_aa, ints[1], try haveFlag(allocator, gamedata.bridge_bow), next, "Bow");
-        if (r.flags) |list| {
-            var k = list.len;
-            while (k > 0) {
-                k -= 1;
-                const suffix = std.fmt.allocPrint(allocator, "{d}", .{k}) catch return error.OutOfMemory;
-                next = try counted(fc, allocator, add_aa, q_aa, ints[0], list[k], next, suffix);
+        var line = reqs.len;
+        while (line > 0) {
+            line -= 1;
+            const r = reqs[line];
+            const count_int = countIntOf(line);
+            if (r.flags) |list| {
+                var k = list.len;
+                while (k > 0) {
+                    k -= 1;
+                    const suffix = std.fmt.allocPrint(allocator, "{d}_{d}", .{ line, k }) catch return error.OutOfMemory;
+                    next = try counted(fc, allocator, add_aa, q_aa, count_int, list[k], next, suffix);
+                }
+            } else {
+                const copy_aa = try flows.requireAction(fc, allocator, "GameDataActor", "EventTriggerCopyGameDataInt", progress);
+                const copy_name = std.fmt.allocPrint(allocator, "RandoBridgeStatus_Tokens{d}", .{line}) catch return error.OutOfMemory;
+                next = try fc.addEvent(allocator, evfl.makeAction(copy_name, copy_aa, next, try Container.from(allocator, &.{
+                    .{ .name = "SrcGameDataName", .value = .{ .string = gamedata.token_count } },
+                    .{ .name = "SrcGameDataIndex", .value = .{ .int = -1 } },
+                    .{ .name = "DstGameDataName", .value = .{ .string = count_int } },
+                    .{ .name = "DstGameDataIndex", .value = .{ .int = -1 } },
+                })));
             }
-        } else {
-            const copy_aa = try flows.requireAction(fc, allocator, "GameDataActor", "EventTriggerCopyGameDataInt", progress);
-            next = try fc.addEvent(allocator, evfl.makeAction("RandoBridgeStatus_Tokens", copy_aa, next, try Container.from(allocator, &.{
-                .{ .name = "SrcGameDataName", .value = .{ .string = gamedata.token_count } },
-                .{ .name = "SrcGameDataIndex", .value = .{ .int = -1 } },
-                .{ .name = "DstGameDataName", .value = .{ .string = ints[0] } },
-                .{ .name = "DstGameDataIndex", .value = .{ .int = -1 } },
-            })));
         }
         var k = ints.len;
         while (k > 0) {

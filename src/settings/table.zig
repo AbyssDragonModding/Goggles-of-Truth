@@ -17,7 +17,9 @@ pub const Key = enum {
     starting_age,
     rainbow_bridge,
     bridge_medallions,
+    bridge_medallions_random,
     bridge_tokens,
+    bridge_tokens_random,
     skip_child_zelda,
     skip_epona_race,
     shuffle_songs,
@@ -40,6 +42,7 @@ pub const Key = enum {
     item_pool,
     refill_needs_item,
     progressive_items,
+    chest_size_matches,
     maps_compasses,
     small_keys,
     key_rings,
@@ -54,6 +57,7 @@ pub const Key = enum {
     boss_keys,
     barren_dungeons,
     starting_inventory,
+    random_start_items,
     hint_distribution,
     gossip_stones,
     skip_cutscenes,
@@ -120,6 +124,7 @@ pub const specs = [_]Spec{
             .{ .value = "closed", .label = "Closed" },
             .{ .value = "closed_deku", .label = "Closed Deku" },
             .{ .value = "open", .label = "Open" },
+            .{ .value = "random", .label = "Random" },
         },
         .default = .{ .choice = "closed" },
         .tip =
@@ -127,6 +132,7 @@ pub const specs = [_]Spec{
             \\Kokiri boy blocks the forest exit until the Deku Tree is beaten.
             \\Closed Deku: the forest exit is open from the start; Mido still wants a sword and shield.
             \\Open: both are out of the way; you can go to the Deku Tree or leave the forest right away.
+            \\Random: the seed picks one (the spoiler log says which).
         ,
     },
     .{
@@ -138,11 +144,13 @@ pub const specs = [_]Spec{
         .options = &.{
             .{ .value = "closed", .label = "Closed" },
             .{ .value = "open", .label = "Open" },
+            .{ .value = "random", .label = "Random" },
         },
         .default = .{ .choice = "closed" },
         .tip =
             \\Open: the Door of Time in the Temple of Time is already open, so you can walk in and pull the
             \\Master Sword without the three Spiritual Stones, an ocarina or the Song of Time.
+            \\Random: the seed picks one (the spoiler log says which).
         ,
     },
     .{
@@ -154,6 +162,7 @@ pub const specs = [_]Spec{
         .options = &.{
             .{ .value = "closed", .label = "Closed" },
             .{ .value = "open", .label = "Open" },
+            .{ .value = "random", .label = "Random" },
         },
         .default = .{ .choice = "closed" },
         .tip =
@@ -161,20 +170,28 @@ pub const specs = [_]Spec{
             \\reached without Ruto's Letter. Ruto still gives her reward in Jabu-Jabu. The quest log's Zora entry
             \\stays empty. Ruto's Letter would be useless, so it is replaced by an empty Bottle (wherever it
             \\lands, or at Lake Hylia if freestanding items aren't shuffled).
+            \\Random: the seed picks one (the spoiler log says which).
         ,
     },
     .{
         .key = .open_dmt,
         .tab = "World",
         .group = "Open Areas",
-        .label = "Open Death Mountain",
-        .kind = .boolean,
-        .default = .{ .boolean = false },
+        .label = "Death Mountain",
+        .kind = .choice,
+        .options = &.{
+            .{ .value = "closed", .label = "Closed" },
+            .{ .value = "open", .label = "Open" },
+            .{ .value = "random", .label = "Random" },
+        },
+        .default = .{ .choice = "closed" },
+        .from_boolean = .{ "closed", "open" },
         .tip =
-            \\The gate from Kakariko to Death Mountain is open for child Link from the start, so you don't need
-            \\to show Zelda's Letter to the soldier. The Happy Mask Shop opens too, and the soldier's mask trade
-            \\is ready. Zelda's Letter has no use then, so it isn't in the seed: a Red Rupee takes its place in
-            \\the item pool, and Zelda gives a random item, also when quest rewards aren't shuffled.
+            \\Open: the gate from Kakariko to Death Mountain is open for child Link from the start, so you don't
+            \\need to show Zelda's Letter to the soldier. The Happy Mask Shop opens too, and the soldier's mask
+            \\trade is ready. Zelda's Letter has no use then, so it isn't in the seed: a Red Rupee takes its
+            \\place in the item pool, and Zelda gives a random item, also when quest rewards aren't shuffled.
+            \\Random: the seed picks Closed or Open (the spoiler log says which).
         ,
     },
     .{
@@ -209,6 +226,10 @@ pub const specs = [_]Spec{
             .{ .value = "medallions", .label = "Medallions" },
             .{ .value = "stones", .label = "Spiritual Stones" },
             .{ .value = "tokens", .label = "Gold Skulltula Tokens" },
+            .{ .value = "all_tokens", .label = "All Gold Skulltula Tokens (needs further testing)" },
+            .{ .value = "rewards", .label = "All Medallions & Spiritual Stones (needs further testing)" },
+            .{ .value = "everything", .label = "All Tokens, Medallions & Stones (needs further testing)" },
+            .{ .value = "random", .label = "Random" },
         },
         .default = .{ .choice = "vanilla" },
         .tip =
@@ -224,6 +245,10 @@ pub const specs = [_]Spec{
             \\and the Light Arrows. Zelda's scene isn't needed.
             \\Once the bridge has appeared it stays. The altar in the Temple of Time tells the requirement and
             \\what you have of it (e.g. Medallions: 2/4).
+            \\All Gold Skulltula Tokens: all 100. All Medallions & Spiritual Stones: all six Medallions and all
+            \\three Stones. All Tokens, Medallions & Stones: both at once.
+            \\Random: the seed picks Vanilla, Medallions, Spiritual Stones, Gold Skulltula Tokens or All
+            \\Medallions & Spiritual Stones (never one that needs all 100 tokens); the spoiler log says which.
         ,
     },
     .{
@@ -241,6 +266,18 @@ pub const specs = [_]Spec{
         ,
     },
     .{
+        .key = .bridge_medallions_random,
+        .tab = "World",
+        .group = "Rainbow Bridge",
+        .label = "Random Medallion Count (needs further testing)",
+        .kind = .boolean,
+        .default = .{ .boolean = false },
+        .tip =
+            \\The seed picks how many Medallions the bridge needs: from 1 up to Medallions Needed (the spoiler log
+            \\says how many).
+        ,
+    },
+    .{
         .key = .bridge_tokens,
         .tab = "World",
         .group = "Rainbow Bridge",
@@ -252,6 +289,18 @@ pub const specs = [_]Spec{
         .tip =
             \\For Rainbow Bridge Requirement: Gold Skulltula Tokens. How many Gold Skulltula Tokens you need
             \\for the bridge (1 to 100).
+        ,
+    },
+    .{
+        .key = .bridge_tokens_random,
+        .tab = "World",
+        .group = "Rainbow Bridge",
+        .label = "Random Token Count (needs further testing)",
+        .kind = .boolean,
+        .default = .{ .boolean = false },
+        .tip =
+            \\The seed picks how many Gold Skulltula Tokens the bridge needs: from 1 up to Gold Skulltula Tokens
+            \\Needed (the spoiler log says how many).
         ,
     },
     .{
@@ -448,15 +497,19 @@ pub const specs = [_]Spec{
         .label = "Business Scrub Prices",
         .kind = .choice,
         .options = &.{
-            .{ .value = "low", .label = "10 Rupees" },
-            .{ .value = "regular", .label = "Game's Price (40 / 100 Rupees)" },
-            .{ .value = "random", .label = "Random (10-99 Rupees)" },
-            .{ .value = "random_wallet", .label = "Random (10-200 Rupees)" },
+            .{ .value = "random", .label = "Child Wallet (classic) (0-99 Rupees)" },
+            .{ .value = "random_wallet", .label = "Adult Wallet (classic) (0-200 Rupees)" },
+            .{ .value = "random_giant", .label = "Giant Wallet (classic) (0-500 Rupees)" },
+            .{ .value = "remake_child", .label = "Child Wallet (remake) (0-200 Rupees)" },
+            .{ .value = "remake_adult", .label = "Adult Wallet (remake) (0-500 Rupees)" },
+            .{ .value = "remake_giant", .label = "Giant Wallet (remake) (0-1000 Rupees)" },
         },
-        .default = .{ .choice = "low" },
+        .default = .{ .choice = "random" },
         .tip =
-            \\What the shuffled Business Scrubs charge. Game's Price is 40 rupees for the Lost Woods scrubs and
-            \\100 for the heart scrubs. A price above 99 rupees needs the Adult's Wallet in the logic.
+            \\What the shuffled Business Scrubs charge.
+            \\Each one picks a random price from 0 up to what that wallet holds: the classic game's wallets (99, 200
+            \\and 500 rupees) or the remake's (200, 500 and 1,000). A price above 200 needs the Adult's Wallet in the
+            \\logic, and one above 500 the Giant's Wallet.
         ,
     },
     .{
@@ -536,14 +589,19 @@ pub const specs = [_]Spec{
         .label = "Shop Prices",
         .kind = .choice,
         .options = &.{
-            .{ .value = "low", .label = "10 Rupees" },
-            .{ .value = "random", .label = "Random (10-99 Rupees)" },
-            .{ .value = "random_wallet", .label = "Random (10-200 Rupees)" },
+            .{ .value = "random", .label = "Child Wallet (classic) (0-99 Rupees)" },
+            .{ .value = "random_wallet", .label = "Adult Wallet (classic) (0-200 Rupees)" },
+            .{ .value = "random_giant", .label = "Giant Wallet (classic) (0-500 Rupees)" },
+            .{ .value = "remake_child", .label = "Child Wallet (remake) (0-200 Rupees)" },
+            .{ .value = "remake_adult", .label = "Adult Wallet (remake) (0-500 Rupees)" },
+            .{ .value = "remake_giant", .label = "Giant Wallet (remake) (0-1000 Rupees)" },
         },
-        .default = .{ .choice = "low" },
+        .default = .{ .choice = "random" },
         .tip =
-            \\What the shuffled shop shelves charge. Random prices are rounded to 5 rupees. A price above 99
-            \\rupees needs the Adult's Wallet in the logic.
+            \\What the shuffled shop shelves charge, rounded to 5 rupees.
+            \\Each one picks a random price from 0 up to what that wallet holds: the classic game's wallets (99, 200
+            \\and 500 rupees) or the remake's (200, 500 and 1,000). A price above 200 needs the Adult's Wallet in the
+            \\logic, and one above 500 the Giant's Wallet.
         ,
     },
     .{
@@ -589,13 +647,28 @@ pub const specs = [_]Spec{
         .tip =
             \\On: upgrades come in order, whichever copy you find first. The first Progressive Hookshot is the
             \\Hookshot and the second the Longshot; the same goes for the Ocarinas, strength, scales, wallets,
-            \\bomb bags, Deku Seed bags and quivers. They are only in small chests and given by characters,
-            \\minigames and Business Scrubs: items lying in the world, Gold Skulltulas, shop shelves and big or
-            \\invisible chests can't choose the tier.
+            \\bomb bags, Deku Seed bags and quivers. They are only in small chests (big ones too with Chest Size
+            \\Matches Contents) and given by characters, minigames and Business Scrubs: items lying in the world,
+            \\Gold Skulltulas, shop shelves and invisible chests can't choose the tier.
             \\Off: the Hookshot, scales, strength upgrades and bomb bags are items of their own (Hookshot,
             \\Longshot, ...) and can be in any check. A stronger one goes where you need the weaker one first
             \\when the logic allows it, so you may still find one first. The Ocarinas, wallets, Deku Seed bags
             \\and quivers stay progressive.
+        ,
+    },
+    .{
+        .key = .chest_size_matches,
+        .tab = "Items",
+        .group = "Item Pool",
+        .label = "Chest Size Matches Contents (needs further testing)",
+        .kind = .boolean,
+        .default = .{ .boolean = false },
+        .tip =
+            \\Chests show what they hold, as in the classic randomizer: key items are in big chests, everything else
+            \\in small ones. Key items are what the logic can need (weapons, tools, songs, the Spiritual Stones and
+            \\Medallions, bottles, progressive upgrades...) and every Small Key, Key Ring and Boss Key; Gold
+            \\Skulltula Tokens, hearts, maps, compasses, rupees and refills are small. A big chest that gives the
+            \\next tier of a progressive item is one the randomizer makes for this. Invisible chests keep their look.
         ,
     },
     .{
@@ -609,6 +682,8 @@ pub const specs = [_]Spec{
             .{ .value = "own", .label = "Own Dungeon" },
             .{ .value = "remove", .label = "Remove (replaced by junk)" },
             .{ .value = "start_with", .label = "Start With" },
+            .{ .value = "anywhere", .label = "Anywhere, Not in Barren Dungeons (needs further testing)" },
+            .{ .value = "anywhere_barren", .label = "Anywhere, Barren Dungeons Too (needs further testing)" },
         },
         .default = .{ .choice = "own" },
         .tip =
@@ -618,6 +693,9 @@ pub const specs = [_]Spec{
             \\Start With: a new save already has every dungeon's map and compass, and the chests that held them
             \\are randomized like any other check (a bonus item joins the pool for each: rupees up to Gold,
             \\Bombchus, ammo, sometimes a Piece of Heart).
+            \\Anywhere: each dungeon's map and compass can be in any check of the seed, and still count for their
+            \\own dungeon wherever you find them. Not in Barren Dungeons keeps them out of barren dungeons (those
+            \\stay rupees only); Barren Dungeons Too lets them be there as well.
         ,
     },
     .{
@@ -826,6 +904,28 @@ pub const specs = [_]Spec{
             \\logic counts them from the start. One copy of each leaves the item pool and a Blue Rupee takes its
             \\place (a song stays in the pool with Song Locations, since every song spot needs a song).
             \\A tiered item counts up: Hookshot twice is the Longshot.
+        ,
+    },
+    .{
+        .key = .random_start_items,
+        .tab = "Starting Inventory",
+        .group = "Random Items",
+        .label = "Random Starting Items (needs further testing)",
+        .kind = .choice,
+        .options = &.{
+            .{ .value = "off", .label = "Off" },
+            .{ .value = "1", .label = "1 Item" },
+            .{ .value = "2", .label = "2 Items" },
+            .{ .value = "3", .label = "3 Items" },
+            .{ .value = "4", .label = "4 Items" },
+            .{ .value = "5", .label = "5 Items" },
+            .{ .value = "random", .label = "Random (1-5 Items)" },
+        },
+        .default = .{ .choice = "off" },
+        .tip =
+            \\A new game also starts with this many random items, on top of the ones chosen above: equipment, items,
+            \\upgrades, songs or hearts (an upgrade you already start with gives its next tier). The seed picks them;
+            \\the spoiler log lists them.
         ,
     },
     .{
@@ -1155,11 +1255,13 @@ pub const presets = [_]Preset{
             .{ .key = .open_forest, .value = .{ .choice = "open" } },
             .{ .key = .open_door, .value = .{ .choice = "open" } },
             .{ .key = .open_zora, .value = .{ .choice = "open" } },
-            .{ .key = .open_dmt, .value = .{ .boolean = true } },
+            .{ .key = .open_dmt, .value = .{ .choice = "open" } },
             .{ .key = .starting_age, .value = .{ .choice = "child" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "vanilla" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 6 } },
+            .{ .key = .bridge_medallions_random, .value = .{ .boolean = false } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
+            .{ .key = .bridge_tokens_random, .value = .{ .boolean = false } },
             .{ .key = .skip_child_zelda, .value = .{ .boolean = true } },
             .{ .key = .skip_epona_race, .value = .{ .boolean = false } },
             .{ .key = .shuffle_songs, .value = .{ .choice = "song" } },
@@ -1173,15 +1275,16 @@ pub const presets = [_]Preset{
             .{ .key = .shuffle_npc, .value = .{ .boolean = true } },
             .{ .key = .shuffle_quest, .value = .{ .boolean = true } },
             .{ .key = .shuffle_scrubs, .value = .{ .boolean = false } },
-            .{ .key = .scrub_prices, .value = .{ .choice = "low" } },
+            .{ .key = .scrub_prices, .value = .{ .choice = "random" } },
             .{ .key = .shuffle_fairies, .value = .{ .boolean = true } },
             .{ .key = .shuffle_house, .value = .{ .boolean = true } },
             .{ .key = .tokensanity, .value = .{ .choice = "off" } },
             .{ .key = .shopsanity, .value = .{ .choice = "off" } },
-            .{ .key = .shop_prices, .value = .{ .choice = "low" } },
+            .{ .key = .shop_prices, .value = .{ .choice = "random" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
             .{ .key = .progressive_items, .value = .{ .boolean = true } },
+            .{ .key = .chest_size_matches, .value = .{ .boolean = false } },
             .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .key_rings, .value = .{ .choice = "all" } },
@@ -1196,6 +1299,7 @@ pub const presets = [_]Preset{
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
             .{ .key = .starting_inventory, .value = .{ .list = &.{} } },
+            .{ .key = .random_start_items, .value = .{ .choice = "off" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "strong" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "no_mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
@@ -1228,11 +1332,13 @@ pub const presets = [_]Preset{
             .{ .key = .open_forest, .value = .{ .choice = "closed_deku" } },
             .{ .key = .open_door, .value = .{ .choice = "open" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
-            .{ .key = .open_dmt, .value = .{ .boolean = false } },
+            .{ .key = .open_dmt, .value = .{ .choice = "closed" } },
             .{ .key = .starting_age, .value = .{ .choice = "child" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "vanilla" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 6 } },
+            .{ .key = .bridge_medallions_random, .value = .{ .boolean = false } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
+            .{ .key = .bridge_tokens_random, .value = .{ .boolean = false } },
             .{ .key = .skip_child_zelda, .value = .{ .boolean = true } },
             .{ .key = .skip_epona_race, .value = .{ .boolean = false } },
             .{ .key = .shuffle_songs, .value = .{ .choice = "song" } },
@@ -1246,7 +1352,7 @@ pub const presets = [_]Preset{
             .{ .key = .shuffle_npc, .value = .{ .boolean = true } },
             .{ .key = .shuffle_quest, .value = .{ .boolean = true } },
             .{ .key = .shuffle_scrubs, .value = .{ .boolean = true } },
-            .{ .key = .scrub_prices, .value = .{ .choice = "regular" } },
+            .{ .key = .scrub_prices, .value = .{ .choice = "random" } },
             .{ .key = .shuffle_fairies, .value = .{ .boolean = true } },
             .{ .key = .shuffle_house, .value = .{ .boolean = true } },
             .{ .key = .tokensanity, .value = .{ .choice = "dungeons" } },
@@ -1255,6 +1361,7 @@ pub const presets = [_]Preset{
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
             .{ .key = .progressive_items, .value = .{ .boolean = true } },
+            .{ .key = .chest_size_matches, .value = .{ .boolean = false } },
             .{ .key = .maps_compasses, .value = .{ .choice = "own" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .key_rings, .value = .{ .choice = "all" } },
@@ -1269,6 +1376,7 @@ pub const presets = [_]Preset{
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
             .{ .key = .starting_inventory, .value = .{ .list = &.{} } },
+            .{ .key = .random_start_items, .value = .{ .choice = "off" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
@@ -1304,11 +1412,13 @@ pub const presets = [_]Preset{
             .{ .key = .open_forest, .value = .{ .choice = "closed" } },
             .{ .key = .open_door, .value = .{ .choice = "closed" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
-            .{ .key = .open_dmt, .value = .{ .boolean = false } },
+            .{ .key = .open_dmt, .value = .{ .choice = "closed" } },
             .{ .key = .starting_age, .value = .{ .choice = "random" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "medallions" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 6 } },
+            .{ .key = .bridge_medallions_random, .value = .{ .boolean = false } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
+            .{ .key = .bridge_tokens_random, .value = .{ .boolean = false } },
             .{ .key = .skip_child_zelda, .value = .{ .boolean = false } },
             .{ .key = .skip_epona_race, .value = .{ .boolean = false } },
             .{ .key = .shuffle_songs, .value = .{ .choice = "anywhere" } },
@@ -1331,6 +1441,7 @@ pub const presets = [_]Preset{
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
             .{ .key = .progressive_items, .value = .{ .boolean = true } },
+            .{ .key = .chest_size_matches, .value = .{ .boolean = false } },
             .{ .key = .maps_compasses, .value = .{ .choice = "vanilla" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .key_rings, .value = .{ .choice = "all" } },
@@ -1345,6 +1456,7 @@ pub const presets = [_]Preset{
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
             .{ .key = .starting_inventory, .value = .{ .list = &.{} } },
+            .{ .key = .random_start_items, .value = .{ .choice = "off" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "balanced" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },
@@ -1379,11 +1491,13 @@ pub const presets = [_]Preset{
             .{ .key = .open_forest, .value = .{ .choice = "closed_deku" } },
             .{ .key = .open_door, .value = .{ .choice = "open" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
-            .{ .key = .open_dmt, .value = .{ .boolean = false } },
+            .{ .key = .open_dmt, .value = .{ .choice = "closed" } },
             .{ .key = .starting_age, .value = .{ .choice = "child" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "medallions" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 4 } },
+            .{ .key = .bridge_medallions_random, .value = .{ .boolean = false } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
+            .{ .key = .bridge_tokens_random, .value = .{ .boolean = false } },
             .{ .key = .skip_child_zelda, .value = .{ .boolean = true } },
             .{ .key = .skip_epona_race, .value = .{ .boolean = false } },
             .{ .key = .shuffle_songs, .value = .{ .choice = "song" } },
@@ -1397,15 +1511,16 @@ pub const presets = [_]Preset{
             .{ .key = .shuffle_npc, .value = .{ .boolean = true } },
             .{ .key = .shuffle_quest, .value = .{ .boolean = true } },
             .{ .key = .shuffle_scrubs, .value = .{ .boolean = false } },
-            .{ .key = .scrub_prices, .value = .{ .choice = "low" } },
+            .{ .key = .scrub_prices, .value = .{ .choice = "random" } },
             .{ .key = .shuffle_fairies, .value = .{ .boolean = true } },
             .{ .key = .shuffle_house, .value = .{ .boolean = true } },
             .{ .key = .tokensanity, .value = .{ .choice = "off" } },
             .{ .key = .shopsanity, .value = .{ .choice = "off" } },
-            .{ .key = .shop_prices, .value = .{ .choice = "low" } },
+            .{ .key = .shop_prices, .value = .{ .choice = "random" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
             .{ .key = .progressive_items, .value = .{ .boolean = true } },
+            .{ .key = .chest_size_matches, .value = .{ .boolean = false } },
             .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .key_rings, .value = .{ .choice = "all" } },
@@ -1420,6 +1535,7 @@ pub const presets = [_]Preset{
             .{ .key = .boss_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .barren_dungeons, .value = .{ .choice = "off" } },
             .{ .key = .starting_inventory, .value = .{ .list = &.{} } },
+            .{ .key = .random_start_items, .value = .{ .choice = "off" } },
             .{ .key = .hint_distribution, .value = .{ .choice = "strong" } },
             .{ .key = .gossip_stones, .value = .{ .choice = "no_mask" } },
             .{ .key = .skip_cutscenes, .value = .{ .boolean = true } },

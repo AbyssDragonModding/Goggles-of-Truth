@@ -41,6 +41,7 @@
 				<HBox Spacing="10">
 					<Label Text="Seed preset" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center" Tooltip="@@preset_tip@@"/>
 					<SearchPicker FaceName="preset_in" LabelName="preset_in_label" Placeholder="Custom" Slot.Fill="0.5"/>
+					<Button Text="Randomize All" OnClicked="rando.randomize.all" Slot.Auto="true" Tooltip="Random values for every gameplay setting on every tab (Stable and In Testing options only). Logic Rules, your exclusions, item restrictions and chosen starting items, and the General Settings tab are kept. Generate to make a seed with them."/>
 					<Label Name="preset_lab" Text="" TextSize="12" Class="Muted" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Your settings are saved to user_settings.toml next to the program. Delete that file (or press Reset) to go back to the defaults."/>
 				</HBox>
 				<HBox Spacing="10">

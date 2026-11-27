@@ -5,7 +5,20 @@
   double-clicking one in the list takes a copy away.
 -->
 <VBox Spacing="12" Slot.Title="Starting Inventory">
-	<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Fill="1" Slot.Padding="6,10,6,10">
+	<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+		<VBox Spacing="10">
+			<HBox Spacing="12">
+				<Label Text="Random Items" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+				<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.Starting Inventory/Random Items" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+			</HBox>
+			<HBox Spacing="12">
+				<Label Text="Random Starting Items" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="A new game also starts with this many random items, on top of the ones chosen above: equipment, items,&#10;upgrades, songs or hearts (an upgrade you already start with gives its next tier). The seed picks them;&#10;the spoiler log lists them."/>
+				<ComboBox Name="set_random_start_items" OnChanged="set.random_start_items" Slot.Fill="0.9" Items="Off|1 Item|2 Items|3 Items|4 Items|5 Items|Random (1-5 Items)" Tooltip="A new game also starts with this many random items, on top of the ones chosen above: equipment, items,&#10;upgrades, songs or hearts (an upgrade you already start with gives its next tier). The seed picks them;&#10;the spoiler log lists them."/>
+				<TestingBadge Name="badge_random_start_items" LabelName="badgelab_random_start_items"/>
+			</HBox>
+		</VBox>
+	</Border>
+	<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Fill="1" Slot.Padding="6,0,6,10">
 		<VBox Spacing="10">
 			<HBox Spacing="12">
 				<Label Text="Starting Inventory" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>

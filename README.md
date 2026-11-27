@@ -59,11 +59,14 @@ When only some choices of an option have a different status, they're named in th
 | | No Logic | 🔴 Not tested |
 | Guarantee Reachable Locations | All | 🟢 Stable |
 | | Required Only | 🔴 Not tested |
-| Kokiri Forest | Closed, Closed Deku, Open | 🟢 Stable |
-| Door of Time | Closed, Open | 🟢 Stable |
-| Zora's Fountain | Closed, Open | 🟢 Stable |
-| Open Death Mountain | Off, On (Zelda's Letter leaves the seed) | 🟢 Stable |
+| Kokiri Forest | Closed, Closed Deku, Open, Random | 🟢 Stable |
+| Door of Time | Closed, Open, Random | 🟢 Stable |
+| Zora's Fountain | Closed, Open, Random | 🟢 Stable |
+| Death Mountain | Closed, Open (Zelda's Letter leaves the seed), Random | 🟢 Stable |
 | Rainbow Bridge Requirement | Vanilla, Medallions (1–6), Spiritual Stones, Gold Skulltula Tokens (1–100) | 🟢 Stable |
+| | All Gold Skulltula Tokens, All Medallions & Spiritual Stones, All Tokens, Medallions & Stones | 🟡 In testing |
+| | Random (never one of the two that need all 100 tokens) | 🟢 Stable |
+| Random Medallion Count, Random Token Count (from 1 up to the number set) | Off, On | 🟡 In testing |
 | The Temple of Time altar shows the bridge requirement and your progress | always on | 🟢 Stable |
 | Skip Child Zelda (her, Malon's and Impa's checks can hold any item) | Off, On | 🟢 Stable |
 | Skip Epona Race (Epona comes with just Epona's Song: no race, no child Malon check first) | On | 🟢 Stable |
@@ -84,21 +87,23 @@ When only some choices of an option have a different status, they're named in th
 | Character Gifts and Minigames | On | 🟡 Semi-tested |
 | Gifts show the model of the item they really give, and their text names it | always on | 🔴 Not tested |
 | Shuffle Quest Rewards | Off, On | 🟢 Stable |
-| Business Scrubs (the four one-time scrubs) | Off, On; price 10, the game's, or random | 🟢 Stable |
+| Business Scrubs (the four one-time scrubs) | Off, On; a random price up to a wallet: classic (0–99, 0–200, 0–500) or remake (0–200, 0–500, 0–1000) | 🟢 Stable |
 | Shuffle Great Fairy Rewards | Off, On | 🟢 Stable |
 | Shuffle Skulltula House Rewards | Off, On | 🟢 Stable |
 | Tokensanity (Gold Skulltulas drop shuffled items) | Off, Dungeons Only, Overworld Only, All Tokens | 🟢 Stable |
-| Items Shuffled Per Shop (Kokiri Shop included) | Off, 1–4 items or random; price 10 or random | 🟢 Stable |
+| Items Shuffled Per Shop (Kokiri Shop included) | Off, 1–4 items or random; a random price up to a wallet: classic (0–99, 0–200, 0–500) or remake (0–200, 0–500, 0–1000) | 🟢 Stable |
 | Item Pool | Balanced | 🟢 Stable |
 | | Scarce, Minimal | 🔴 Not tested |
 | Refills Need Their Item (ammo chests give rupees until you have the bag or weapon) | Off, On | 🟢 Stable |
 | Progressive Items (upgrades come in order; Off: the Hookshot, scales, strength and bomb bags can be in any check) | On, Off | 🟢 Stable |
+| Chest Size Matches Contents (key items in big chests, everything else in small ones) | Off, On | 🟡 In testing |
 
 ### Dungeon Items
 
 | Feature | Choices | Status |
 |---|---|---|
 | Maps & Compasses | Vanilla, Own Dungeon, Start With, Remove (their chests hold a Blue Rupee) | 🟢 Stable |
+| | Anywhere, Not in Barren Dungeons / Barren Dungeons Too (they count for their own dungeon wherever found) | 🟡 In testing |
 | Small Keys | Vanilla | 🟢 Stable |
 | | Own Dungeon | 🔴 Not tested |
 | | Removed (every dungeon starts with all its small keys) | 🔴 Not tested |
@@ -115,6 +120,7 @@ When only some choices of an option have a different status, they're named in th
 | Feature | Choices | Status |
 |---|---|---|
 | Starting Inventory (items a new game starts with; the logic counts them and the seed won't hide a second copy) | Equipment, items, upgrades, songs, hearts | 🟢 Stable |
+| Random Starting Items (added by the seed, listed in the spoiler log) | Off, 1–5 items, Random (1–5) | 🟡 In testing |
 
 ### Hints
 
@@ -150,6 +156,7 @@ When only some choices of an option have a different status, they're named in th
 |---|---|
 | Reads a `.nup` package or an extracted romfs and exefs, and checks the game version | 🟢 Stable |
 | Seeds, settings strings and seed presets (Beginner, Standard, Expert, Race) | 🟢 Stable |
+| Randomize buttons (each card, each tab, and Randomize All by the Seed preset) | 🟡 In testing |
 | Your own saved presets | 🟡 Semi-tested |
 | Excluded Locations (checks that only ever hold minor items) | 🟢 Stable |
 | Spoiler log (`spoiler.txt`, `spoiler.json`) and test checklist (`checklist.xlsx`) | 🟢 Stable |
@@ -570,9 +577,9 @@ shows **Custom** (it shows the preset's name again whenever your settings match 
 | Spiritual Stones / Medallions | Vanilla | Dungeon Reward Locations | Anywhere | Dungeon Reward Locations |
 | Ocarinas, Weird Egg, freestanding rupees | Not shuffled | Not shuffled | Shuffled | Not shuffled |
 | Kokiri Sword | In its chest | Shuffled | Shuffled | Shuffled |
-| Business Scrubs | Off | On (game's price) | On (10-200 rupees) | Off |
+| Business Scrubs | Off | On (0-99 rupees) | On (0-200 rupees) | Off |
 | Tokensanity | Off | Dungeons Only | All Tokens | Off |
-| Items Shuffled Per Shop | Off | 2 items, 10-99 rupees | 4 items, 10-200 rupees | Off |
+| Items Shuffled Per Shop | Off | 2 items, 0-99 rupees | 4 items, 0-200 rupees | Off |
 | Maps & Compasses | Start With | Own Dungeon | Vanilla | Start With |
 | Hints | Strong, no Mask of Truth | Balanced | Balanced | Strong, no Mask of Truth |
 | Bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern | On | On | Off | On |

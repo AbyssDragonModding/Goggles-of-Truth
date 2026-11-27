@@ -10,7 +10,8 @@ This document outlines the mandatory architecture, coding standards, performance
   - Avoid implicit behaviors, implicit casts, or undisclosed allocations.
   - All allocations must explicitly accept an `Allocator` parameter.
   - Never suppress errors using `catch unreachable` unless mathematically proven impossible, and document the reason.
-
+- **New Features written in zig and not python then to zig:**
+  - Features not ported from the other randomizer projects and are completely new to my project should be written in zig first and not python then translated to zig.
 - **Struct Method Signatures & Instantiation:**
   - Method calls must explicitly use struct namespace or explicit method receiver syntax.
   - Use explicit field names when initializing structs (no positional struct initialization).

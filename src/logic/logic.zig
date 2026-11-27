@@ -125,6 +125,54 @@ pub fn isForestRegion(region: []const u8) bool {
 /// A dungeon with small keys: its key ring (every small key at once, wherever it is found) and, for the five temples,
 /// a boss key of its own. `keys`: how many small keys a key ring gives, the Archipelago counts OotrR uses (never fewer
 /// than the remake's locked doors; an extra key is harmless). Ganon's Castle's boss key always stays in its chest.
+/// The dungeons with a map and a compass. With Maps & Compasses Anywhere each gets a map and a compass item of its
+/// own ("Map_Forest", "Compass_Forest"; the generator makes them, generator/keyitems.zig), because the game's map and
+/// compass are generic: one picked up counts for the dungeon Link is standing in. `short` keeps the actor names
+/// within the game's 25 characters ("Item_Compass_Dodongo").
+pub const MapDungeon = struct { folder: []const u8, short: []const u8, name: []const u8 };
+
+pub const map_dungeons = [_]MapDungeon{
+    .{ .folder = "InsideTheDekuTree", .short = "Deku", .name = "Deku Tree" },
+    .{ .folder = "DodongoCavern", .short = "Dodongo", .name = "Dodongo's Cavern" },
+    .{ .folder = "InsideJabuJabuBelly", .short = "Jabu", .name = "Jabu-Jabu's Belly" },
+    .{ .folder = "ForestTemple", .short = "Forest", .name = "Forest Temple" },
+    .{ .folder = "FireTemple", .short = "Fire", .name = "Fire Temple" },
+    .{ .folder = "WaterTemple", .short = "Water", .name = "Water Temple" },
+    .{ .folder = "ShadowTemple", .short = "Shadow", .name = "Shadow Temple" },
+    .{ .folder = "SpiritTemple", .short = "Spirit", .name = "Spirit Temple" },
+    .{ .folder = "BottomOfTheWell", .short = "Well", .name = "Bottom of the Well" },
+    .{ .folder = "IceCavern", .short = "Ice", .name = "Ice Cavern" },
+};
+
+pub const MapItem = struct {
+    /// index into map_dungeons
+    dungeon: usize,
+    compass: bool,
+};
+
+const map_prefix = "Map_";
+const compass_prefix = "Compass_";
+
+/// The map or compass item `name` is ("Map_Forest"), or null.
+pub fn mapItemOf(name: []const u8) ?MapItem {
+    for (map_dungeons, 0..) |d, i| {
+        if (std.mem.startsWith(u8, name, map_prefix) and std.mem.eql(u8, name[map_prefix.len..], d.short)) return .{ .dungeon = i, .compass = false };
+        if (std.mem.startsWith(u8, name, compass_prefix) and std.mem.eql(u8, name[compass_prefix.len..], d.short)) return .{ .dungeon = i, .compass = true };
+    }
+    return null;
+}
+
+/// The item key of a map dungeon's map or compass ("Map_Forest").
+pub fn mapItemKey(allocator: std.mem.Allocator, dungeon: usize, compass: bool) error{OutOfMemory}![]const u8 {
+    return std.fmt.allocPrint(allocator, "{s}{s}", .{ if (compass) compass_prefix else map_prefix, map_dungeons[dungeon].short });
+}
+
+/// The map dungeon whose folder is `folder`, or null.
+pub fn mapDungeonIndex(folder: []const u8) ?usize {
+    for (map_dungeons, 0..) |d, i| if (std.mem.eql(u8, d.folder, folder)) return i;
+    return null;
+}
+
 pub const KeyDungeon = struct { folder: []const u8, name: []const u8, ring: Item, keys: u8, boss: ?Item };
 
 pub const key_dungeons = [_]KeyDungeon{
@@ -168,6 +216,8 @@ pub const Options = struct {
     skip_child_zelda: bool = false,
     skip_ganon_trials: bool = false,
     rainbow_bridge: Bridge = .vanilla,
+    /// Maps & Compasses Anywhere: maps and compasses are their dungeon's own items (map_dungeons)
+    map_items: bool = false,
     bridge_medallions: i64 = 6,
     bridge_tokens: i64 = 100,
     skip_epona_race: bool = false,
@@ -182,7 +232,8 @@ pub const Options = struct {
     boss_key_item: [key_dungeons.len]bool = @splat(false),
 
     pub const OpenForest = enum { closed, closed_deku, open };
-    pub const Bridge = enum { vanilla, medallions, stones, tokens };
+    /// Rainbow Bridge Requirement (its Random is rolled before: settings/randomize.zig)
+    pub const Bridge = enum { vanilla, medallions, stones, tokens, all_tokens, rewards, everything };
 
     pub fn fromSettings(st: *const settings.Settings) Options {
         return Options{
@@ -193,10 +244,11 @@ pub const Options = struct {
             .saria_song_ocarina = st.flag(.saria_song_ocarina),
             .dodongo_bag_bombs = st.flag(.dodongo_bag_bombs),
             .shuffle_ocarinas = st.flag(.shuffle_ocarinas),
-            .open_dmt = st.flag(.open_dmt),
+            .open_dmt = st.is(.open_dmt, "open"),
             .skip_child_zelda = st.flag(.skip_child_zelda),
             .skip_ganon_trials = st.flag(.skip_ganon_trials),
             .rainbow_bridge = std.meta.stringToEnum(Bridge, st.choice(.rainbow_bridge)) orelse .vanilla,
+            .map_items = st.is(.maps_compasses, "anywhere") or st.is(.maps_compasses, "anywhere_barren"),
             .bridge_medallions = st.int(.bridge_medallions),
             .bridge_tokens = st.int(.bridge_tokens),
             .skip_epona_race = st.flag(.skip_epona_race),
@@ -419,6 +471,19 @@ pub fn stones(s: *State) bool {
 pub fn moat(s: *State) bool {
     return s.is(.hf_child) and stones(s) and s.is(.zelda_met) and ocarina(s);
 }
+/// the Gold Skulltula Tokens in the game (Rainbow Bridge All Gold Skulltula Tokens)
+pub const all_tokens: i64 = 100;
+
+fn allStones(s: *State) bool {
+    for (child_stones) |stone| if (!s.has(stone)) return false;
+    return true;
+}
+
+fn allMedallions(s: *State) bool {
+    for (medallions) |m| if (!s.has(m)) return false;
+    return true;
+}
+
 pub fn tokens(s: *State, n: i64) bool {
     return s.hasN(.Token_Gold, n);
 }
@@ -521,8 +586,11 @@ fn evalDerived(s: *State, d: Derived) bool {
                     break :medal n >= o.bridge_medallions;
                 },
                 // the items themselves (IsGet), not the dungeon quests
-                .stones => s.has(.Stone_Forest) and s.has(.Stone_Fire) and s.has(.Stone_Water),
+                .stones => allStones(s),
                 .tokens => tokens(s, o.bridge_tokens),
+                .all_tokens => tokens(s, all_tokens),
+                .rewards => allMedallions(s) and allStones(s),
+                .everything => allMedallions(s) and allStones(s) and tokens(s, all_tokens),
                 // vanilla: Zelda's Light Arrows scene (the two sage quests)
                 .vanilla => s.is(.shadow_done) and s.is(.spirit_done),
             };

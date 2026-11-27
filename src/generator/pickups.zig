@@ -37,6 +37,7 @@ const world_mod = @import("../game/world.zig");
 const patchset = @import("patchset.zig");
 const flows = @import("flows.zig");
 const Progress = @import("../core/Progress.zig");
+const ainb = @import("../formats/ainb.zig");
 const Allocator = std.mem.Allocator;
 const PatchError = patchset.PatchError;
 const World = world_mod.World;
@@ -220,7 +221,34 @@ const key_item_animation_refs = [_][]const u8{ "ASRef", "ASInfoRef", "AnimationR
 /// Generated actor names stay within the length OotrR saw working in the game: an item get of a 30- or 33-character
 /// generated actor crashed (null read, Link holding nothing), 25 characters worked.
 pub const max_key_item_name = 25;
-const AutoRow = struct { clone: []const u8, src: []const u8 };
+
+/// The game's small chest that checks what the player owns (world.conditionalChestActor).
+const small_tier_chest = "Obj_TBox_A_06";
+/// "Obj_TBox_A_02" -> "Obj_TBox_A_02_Tier": the big chest that checks what the player owns (bigTierChest)
+pub const big_tier_chest_suffix = "_Tier";
+/// The refs of Obj_TBox_A_06's ActorParam besides its AIInfoRef: what makes it check (dump: Obj_TBox_A_06.pack)
+const tier_check_refs = [_][]const u8{ "ActorHolderRef", "DropRef", "AffiliationRef" };
+
+/// A file of Obj_TBox_A_06's that its check parts read: the holder, the drop logic and its blackboard table.
+fn isTierCheckFile(name: []const u8) bool {
+    const tier_files = [_][]const u8{
+        "Component/ActorHolderParam/Obj_TBox_A_06.game__component__ActorHolderParam.bgyml",
+        "Component/DropParam/Obj_TBox_A_06.game__component__DropParam.bgyml",
+        "Component/Blackboard/BlackboardParamTable/Drop_TreasureBox_A_06.engine__component__BlackboardParamTable.bgyml",
+        "Component/ActorHolderParam/Obj_TBox.game__component__ActorHolderParam.bgyml",
+        "Component/DropParam/Obj_TBox.game__component__DropParam.bgyml",
+        "Component/DropParam/Default.game__component__DropParam.bgyml",
+        "Component/Blackboard/BlackboardParamTable/Drop_TreasureBox.engine__component__BlackboardParamTable.bgyml",
+    };
+    for (tier_files) |t| if (std.mem.eql(u8, t, name)) return true;
+    return false;
+}
+const AutoRow = struct {
+    clone: []const u8,
+    src: []const u8,
+    /// an actor whose memory the copy needs at least too (the big tier chest runs the small tier chest's AI)
+    memory_from: ?[]const u8 = null,
+};
 /// An existing actor (`actor`) given the model of `model_actor`.
 const Restyled = struct { actor: []const u8, model_actor: []const u8 };
 const SizeEntry = struct { path: []const u8, size: ?u32 };
@@ -759,6 +787,19 @@ pub const PickupCloner = struct {
         .{ .item = "Item_Gauntlet_Goron", .box_from = "Pouch_Gauntlet_Goron" },
     };
 
+    /// Items whose own row has their worn box and no Pouch_ actor to lend a display box: the Lens of Truth's box is
+    /// where it sits on Link's eye, 0.92 to 1.04 m above its origin, while as a pickup it is drawn around the origin
+    /// (Item_Common_Animation, as the Gauntlets are). Rested on that box, it was put 0.25 m into the ground and not
+    /// seen: test report, seed BWNKNDCCY3, the Lens on Kokiri Forest's rupee spot 7 by the shop could be picked up
+    /// but wasn't there (and HEIGHTTEST1 "barely seen in the stream"). Their box is moved down onto the origin, the
+    /// same size: for the resting height (modelBottom) and for the pickup's ActorInfo row (the game culls by it).
+    const recentred_box_actors = [_][]const u8{"Item_GlassTruth"};
+
+    fn isRecentred(model_actor: []const u8) bool {
+        for (recentred_box_actors) |name| if (std.mem.eql(u8, name, model_actor)) return true;
+        return false;
+    }
+
     fn displayBoxActorOf(item: []const u8) ?[]const u8 {
         for (display_box_actors) |entry| if (std.mem.eql(u8, entry.item, item)) return entry.box_from;
         return null;
@@ -904,8 +945,7 @@ pub const PickupCloner = struct {
         // 0); the Hover Boots are the same kind of worn model
         .{ .model_actor = "Item_HeavyBoot", .lift = 0.10 },
         .{ .model_actor = "Item_HoverBoot", .lift = 0.10 },
-        // HEIGHTTEST1: the Lens of Truth (lowered the most a pickup is, 0.35 m) was barely seen in the stream
-        .{ .model_actor = "Item_GlassTruth", .lift = 0.10 },
+        // (the Lens of Truth's 0.10 m here made up for resting it on its worn box: recentred_box_actors now)
     };
 
     /// A shop shelf's item shown at this scale: big models (Heart Containers, the Hammer, the Gauntlets: a model box
@@ -964,6 +1004,11 @@ pub const PickupCloner = struct {
                     longest = @max(longest, high - low);
                 }
                 self.model_sizes.put(kept_name, @floatCast(longest)) catch return error.OutOfMemory;
+                // a worn box moved onto the origin (recentred_box_actors): its bottom is half its height down
+                if (isRecentred(name)) {
+                    const top = (box_max.get("Y") orelse continue).asFloat() orelse continue;
+                    bottoms.put(kept_name, @floatCast(-(top - bottom) / 2.0)) catch return error.OutOfMemory;
+                }
             }
         }
         self.model_bottoms = bottoms;
@@ -1118,6 +1163,111 @@ pub const PickupCloner = struct {
         return clone;
     }
 
+    /// Chest Size Matches Contents: the big chest (`big_chest`, Obj_TBox_A_02 or its _NoBake) that checks what the
+    /// player owns, as the small Obj_TBox_A_06 does: owns Drop__CheckActor -> Drop__DropActor_Substitute, else
+    /// Drop__DropActor (world.conditionalChestActor). The game has no big one, and a progressive item in a big chest
+    /// needs it. Null when it can't be built (the chest then stays small).
+    ///
+    /// How: both chests are the small chest with parts of their own ($parent Obj_TBox_A_01). The big chest's own parts
+    /// make its size (model, body, animations); Obj_TBox_A_06's four make the check (its AI, the holder of the second
+    /// item, the drop logic reading Drop__CheckActor, its affiliation). So the new chest is the big chest's pack with
+    /// an ActorParam whose $parent is the big chest and whose AIInfo, ActorHolder, Drop and Affiliation refs are
+    /// Obj_TBox_A_06's, and Obj_TBox_A_06's files beside them. Its AI is a copy of Obj_TBox_A_06's with one body name
+    /// changed: the small chest's touch sensor is GeneralSensor/Sensor, the big chest's GeneralSensor/EnemyCheck (dump:
+    /// Obj_TBox_A_02 ControllerSetParam and its own AI). Its RSDB rows are the big chest's, with at least
+    /// Obj_TBox_A_06's memory.
+    pub fn bigTierChest(self: *Self, big_chest: []const u8) PatchError!?[]const u8 {
+        const k = try self.key("big_tier_chest", big_chest, null);
+        if (self.made.get(k)) |made| return made;
+        const built = try self.buildBigTierChest(big_chest);
+        self.made.put(k, built) catch return error.OutOfMemory;
+        if (built) |clone| self.progress.log("Chest Size Matches Contents: made {s}, a big chest that checks what you own", .{clone});
+        return built;
+    }
+
+    fn buildBigTierChest(self: *Self, big_chest: []const u8) PatchError!?[]const u8 {
+        const a = self.patches.allocator;
+        const tier_chest = small_tier_chest;
+        const clone = std.fmt.allocPrint(self.allocator, "{s}{s}", .{ big_chest, big_tier_chest_suffix }) catch return error.OutOfMemory;
+        if (clone.len > max_key_item_name) {
+            self.progress.log("warning: {s} is too long an actor name for the game; big chests that check what you own stay small", .{clone});
+            return null;
+        }
+        if (!self.world.files.exists(try packOf(a, big_chest)) or !self.world.files.exists(try packOf(a, tier_chest))) return null;
+        const big_raw = try self.patches.read(try packOf(a, big_chest));
+        const big_files = try listFiles(a, big_raw.data);
+        const tier_files = try listFiles(a, (try self.patches.read(try packOf(a, tier_chest))).data);
+        const big_param_path = try paramOf(a, big_chest);
+        const tier_param_path = try paramOf(a, tier_chest);
+        const big_param_bytes = big_files.get(big_param_path) orelse return self.missing(big_chest, big_param_path);
+        const tier_param_bytes = tier_files.get(tier_param_path) orelse return self.missing(tier_chest, tier_param_path);
+        const tier_param = try byml.loadDict(a, tier_param_bytes);
+        const tier_comps = tier_param.getDict("Components") orelse return self.missing(tier_chest, "Components");
+
+        var add: std.ArrayList(sarc.NewFile) = .empty;
+        var entries: std.ArrayList(SizeEntry) = .empty;
+
+        // the AI: Obj_TBox_A_06's, with the big chest's sensor name
+        const tier_ai_path = std.fmt.allocPrint(a, "AI/{s}.root.ainb", .{tier_chest}) catch return error.OutOfMemory;
+        const tier_ai = tier_files.get(tier_ai_path) orelse return self.missing(tier_chest, tier_ai_path);
+        const ai = try ainb.repointStringConst(a, tier_ai, "RigidBodyName", "Sensor", "EnemyCheck");
+        if (ai.count != 1) {
+            self.progress.log("warning: {s}'s AI names its sensor {d} times, not once; big chests that check what you own stay small", .{ tier_chest, ai.count });
+            return null;
+        }
+        const ai_path = std.fmt.allocPrint(a, "AI/{s}.root.ainb", .{clone}) catch return error.OutOfMemory;
+        add.append(a, .{ .name = ai_path, .data = ai.data }) catch return error.OutOfMemory;
+        entries.append(a, .{ .path = ai_path, .size = self.newSize(ai_path, tier_ai_path, @as(i64, @intCast(ai.data.len)) - @as(i64, @intCast(tier_ai.len))) }) catch return error.OutOfMemory;
+
+        // its AIInfo, naming that AI
+        const tier_info_path = std.fmt.allocPrint(a, "AI/AIInfo/{s}.engine__actor__AIInfo.bgyml", .{tier_chest}) catch return error.OutOfMemory;
+        const tier_info_bytes = tier_files.get(tier_info_path) orelse return self.missing(tier_chest, tier_info_path);
+        const info = try byml.loadDict(a, tier_info_bytes);
+        try info.put(a, "RootAIRef", .{ .string = std.fmt.allocPrint(a, "Work/AI/Root/{s}.root.ain", .{clone}) catch return error.OutOfMemory });
+        const info_bytes = try byml.dump(a, .{ .dict = info }, versionOf(tier_info_bytes), false);
+        const info_path = std.fmt.allocPrint(a, "AI/AIInfo/{s}.engine__actor__AIInfo.bgyml", .{clone}) catch return error.OutOfMemory;
+        add.append(a, .{ .name = info_path, .data = info_bytes }) catch return error.OutOfMemory;
+        entries.append(a, .{ .path = info_path, .size = self.newSize(info_path, tier_info_path, @as(i64, @intCast(info_bytes.len)) - @as(i64, @intCast(tier_info_bytes.len))) }) catch return error.OutOfMemory;
+
+        // the ActorParam: the big chest's, with Obj_TBox_A_06's check parts
+        const param = try byml.Dict.create(a);
+        try param.put(a, "$parent", .{ .string = try workPath(a, big_param_path) });
+        const comps = try byml.Dict.create(a);
+        try comps.put(a, "AIInfoRef", .{ .string = std.fmt.allocPrint(a, "?{s}", .{info_path}) catch return error.OutOfMemory });
+        for (tier_check_refs) |ref_key| {
+            const ref = tier_comps.getString(ref_key) orelse return self.missing(tier_chest, ref_key);
+            try comps.put(a, ref_key, .{ .string = ref });
+        }
+        try param.put(a, "Components", .{ .dict = comps });
+        const new_param = try byml.dump(a, .{ .dict = param }, versionOf(big_param_bytes), false);
+        const new_param_path = try paramOf(a, clone);
+        add.append(a, .{ .name = new_param_path, .data = new_param }) catch return error.OutOfMemory;
+        entries.append(a, .{ .path = new_param_path, .size = self.newSize(new_param_path, tier_param_path, @as(i64, @intCast(new_param.len)) - @as(i64, @intCast(tier_param_bytes.len))) }) catch return error.OutOfMemory;
+
+        // Obj_TBox_A_06's own files the big chest's pack lacks (its drop logic's blackboard table included). They keep
+        // their names, which already have size entries (Obj_TBox_A_06 ships them)
+        for (tier_files.entries) |f| {
+            if (big_files.has(f.name)) continue;
+            if (std.mem.eql(u8, f.name, tier_param_path) or std.mem.eql(u8, f.name, tier_ai_path) or std.mem.eql(u8, f.name, tier_info_path)) continue;
+            if (!isTierCheckFile(f.name)) continue;
+            add.append(a, .{ .name = f.name, .data = f.data }) catch return error.OutOfMemory;
+        }
+
+        const data = try rebuildWith(a, big_raw.data, &.{}, add.items);
+        try self.patches.emit(try packOf(a, clone), data, data, big_raw.dictionary, true);
+        const clone_key = try packKey(a, clone);
+        entries.append(a, .{ .path = clone_key, .size = self.newSize(clone_key, try packKey(a, big_chest), @as(i64, @intCast(data.len)) - @as(i64, @intCast(big_raw.data.len))) }) catch return error.OutOfMemory;
+        try self.setSizes(entries.items, false);
+        // `big_chest` may point into the stage file being patched, freed after its step: the row keeps a copy
+        self.auto_rows.append(self.allocator, .{ .clone = clone, .src = try self.keepText(big_chest), .memory_from = tier_chest }) catch return error.OutOfMemory;
+        return clone;
+    }
+
+    fn missing(self: *Self, actor: []const u8, what: []const u8) ?[]const u8 {
+        self.progress.log("warning: {s} has no {s}; big chests that check what you own stay small", .{ actor, what });
+        return null;
+    }
+
     /// The RSDB rows of every clone (ActorInfo, GameActorInfo, PouchActorInfo).
     pub fn finish(self: *Self) PatchError!void {
         if (self.rows.items.len == 0 and self.auto_rows.items.len == 0 and self.restyled.items.len == 0) return;
@@ -1206,6 +1356,8 @@ pub const PickupCloner = struct {
                         if (displayBoxActorOf(r.src)) |box_actor| if (findRow(t.rows, box_actor)) |b| {
                             for ([_][]const u8{ "ModelAabbMin", "ModelAabbMax" }) |k| if (b.get(k)) |v| try row.put(a, k, try v.clone(a));
                         };
+                        // a worn box with no display actor (the Lens of Truth): moved down onto the origin
+                        if (isRecentred(self.modelActorOf(r.clone))) try recentreBox(a, row);
                         const actor_name = if (s) |sd| sd.get("ActorName") orelse byml.Value{ .string = r.src } else byml.Value{ .string = r.src };
                         try row.put(a, "ActorName", actor_name);
                         if (s) |sd| for (heap_keys) |k| {
@@ -1226,6 +1378,9 @@ pub const PickupCloner = struct {
                 if (findRow(t.rows, r.clone) != null) continue;
                 const src = findRow(t.rows, r.src) orelse continue;
                 const row = (try (byml.Value{ .dict = src }).clone(a)).dict;
+                if (r.memory_from) |donor_name| {
+                    if (std.mem.eql(u8, t.name, "ActorInfo")) if (findRow(t.rows, donor_name)) |donor| try raiseMemoryToFit(a, row, donor);
+                }
                 try row.put(a, "__RowId", .{ .string = r.clone });
                 try insertSorted(a, t.rows, row, r.clone);
             }
@@ -1248,6 +1403,27 @@ pub const PickupCloner = struct {
         for (tables) |t| try self.patches.emitZs(t.rel, t.original, try byml.dumpDefault(a, .{ .array = t.rows }));
     }
 };
+
+/// Moves `row`'s model box (ModelAabbMin / Max) down so it is centred on the origin, keeping its size
+/// (PickupCloner.recentred_box_actors says why).
+fn recentreBox(allocator: Allocator, row: *byml.Dict) PatchError!void {
+    const box_min = row.getDict("ModelAabbMin") orelse return;
+    const box_max = row.getDict("ModelAabbMax") orelse return;
+    const low = (box_min.get("Y") orelse return).asFloat() orelse return;
+    const high = (box_max.get("Y") orelse return).asFloat() orelse return;
+    const centre = (low + high) / 2.0;
+    const new_min = (try (byml.Value{ .dict = box_min }).clone(allocator)).dict;
+    const new_max = (try (byml.Value{ .dict = box_max }).clone(allocator)).dict;
+    try new_min.put(allocator, "Y", sameFloat(box_min.get("Y").?, low - centre));
+    try new_max.put(allocator, "Y", sameFloat(box_max.get("Y").?, high - centre));
+    try row.put(allocator, "ModelAabbMin", .{ .dict = new_min });
+    try row.put(allocator, "ModelAabbMax", .{ .dict = new_max });
+}
+
+/// `x` as the same kind of float as `like` (a box keeps the game's own number type).
+fn sameFloat(like: byml.Value, x: f64) byml.Value {
+    return if (like == .double) .{ .double = x } else .{ .float = @floatCast(x) };
+}
 
 /// Appends to `row`'s AnimationResources each entry of `donor`'s it lacks (an entry names an animation file,
 /// {ModelProjectName: ...}), keeping `row`'s own first.

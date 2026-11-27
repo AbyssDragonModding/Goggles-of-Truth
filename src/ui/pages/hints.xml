@@ -5,9 +5,16 @@
 -->
 <ScrollBox Orientation="Vertical" Slot.Title="Hints">
 	<VBox Spacing="14">
-		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+		<HBox Spacing="12" Slot.Auto="true" Slot.Padding="6,10,6,0">
+			<Label Text="" Slot.Fill="1"/>
+			<Button Text="  Randomize This Tab  " OnClicked="rando.randomize.tab.Hints" Slot.Auto="true" Tooltip="Random values for every setting on this tab (Stable and In Testing options only; Logic Rules stays as it is)."/>
+		</HBox>
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Gossip Stones" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Gossip Stones" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.Hints/Gossip Stones" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Label Text="Hint Distribution" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What the Gossip Stones say. No Hints: their normal rumors.&#10;Balanced: a mix of clues: areas on the Way of the Hero (holding something you can't finish without),&#10;areas that are a waste of time, where some major items are, and what some locations hold.&#10;Strong: more Way of the Hero and waste-of-time clues, fewer item clues, no joke lines.&#10;Useless: every stone tells a joke.&#10;A clue that names a location is only put on a stone you can read without that location's item.&#10;Hints are listed in the spoiler log."/>
 					<ComboBox Name="set_hint_distribution" OnChanged="set.hint_distribution" Slot.Fill="0.9" Items="No Hints|Balanced|Strong|Useless" Tooltip="What the Gossip Stones say. No Hints: their normal rumors.&#10;Balanced: a mix of clues: areas on the Way of the Hero (holding something you can't finish without),&#10;areas that are a waste of time, where some major items are, and what some locations hold.&#10;Strong: more Way of the Hero and waste-of-time clues, fewer item clues, no joke lines.&#10;Useless: every stone tells a joke.&#10;A clue that names a location is only put on a stone you can read without that location's item.&#10;Hints are listed in the spoiler log."/>

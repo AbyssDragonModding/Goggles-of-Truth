@@ -7,6 +7,55 @@ fix raises the last number (0.7.**5**).
 the same placement version put items in the same places, so you can rebuild an older seed with a newer version and
 keep your saves. When a version changes where items go, it gets a new placement version.
 
+## 0.8.1 - 2026-11-27
+
+New placement version (0.8.1): random shop and Business Scrub prices changed, so seeds made with 0.8.0 can't be
+rebuilt with this version. They still play fine with 0.8.0, and your saves are safe. Make a new seed to get these
+changes.
+
+### New
+- **More randomness** (a player's request; in testing):
+  - **Random** for Kokiri Forest, Door of Time, Zora's Fountain and Death Mountain, and for the Rainbow Bridge
+    Requirement. Each seed picks its own when it's made, and the spoiler log says what it got. Rebuilding a seed
+    picks the same again.
+  - **Three new Rainbow Bridge requirements:** All Gold Skulltula Tokens, All Medallions & Spiritual Stones, and All
+    Tokens, Medallions & Stones. The Temple of Time altar shows how far along you are. Random never picks one of the
+    two that need all 100 tokens.
+  - **Random Medallion Count** and **Random Token Count**: the seed picks how many the bridge needs, from 1 up to
+    the number you set.
+  - **Random Starting Items**: a new game also starts with 1 to 5 random items, or a random number of them, on top
+    of the ones you chose. The spoiler log lists them.
+  - **Maps & Compasses Anywhere:** each dungeon's map and compass can be in any check of the seed and still count
+    for their own dungeon wherever you find them. Two options: Not in Barren Dungeons (those stay rupees only), or
+    Barren Dungeons Too.
+  - **Randomize buttons:** each card has one, each settings tab has Randomize This Tab, and Randomize All sits by the
+    Seed preset. They pick real values you can see before you generate, from settings marked Stable or In Testing
+    only. Logic Rules, your exclusions, item restrictions, chosen starting items and the General Settings tab are
+    kept.
+- **Chest Size Matches Contents** (Items tab, off by default, in testing): chests show what they hold, as in the
+  classic randomizer. Key items are in big chests: anything the logic can need (weapons, tools, songs, Spiritual
+  Stones and Medallions, bottles, progressive upgrades) and every Small Key, Key Ring and Boss Key. Everything else
+  is in small chests: Gold Skulltula Tokens, hearts, maps, compasses, rupees and refills. Invisible chests keep
+  their look. A big chest holding a progressive item is a new chest made for this, so it still gives the next tier,
+  and progressive items can be in big chests too while this is on. Not tested in-game yet: tell us if a big chest
+  sits inside a wall or another chest.
+
+### Changed
+- **Random prices follow the wallets:** Business Scrubs and shop shelves pick a random price from 0 up to what a
+  wallet holds, as the classic game's wallets (99, 200 and 500 rupees) or the remake's (200, 500 and 1,000). The
+  10 Rupees and Game's Price options are gone: old settings with them now use Child Wallet (classic).
+- **The logic follows the remake's wallets:** a price only needs the Adult's Wallet above 200 rupees, and the
+  Giant's Wallet above 500 (it used to ask for them above 99 and 200, the classic game's sizes).
+- **Death Mountain** is now a drop-down (Closed, Open, Random) instead of an on/off switch. Old settings still work.
+
+### Fixed
+- **The Lens of Truth lying in the world was hidden in the ground** (on a freestanding rupee spot, for example): you
+  could pick it up but not see it. It now rests on the ground where the rupee was. Not tested in-game yet.
+
+### For testers
+- The Test Seeds tab (debug builds) changes settings with two searchable drop-downs, a setting and its value,
+  instead of a text line.
+
 ## 0.8.0 - 2026-11-26
 
 New placement version (0.8.0). Seeds made with 0.7.x can't be rebuilt with this version. They still play fine

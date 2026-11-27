@@ -5,9 +5,16 @@
 -->
 <ScrollBox Orientation="Vertical" Slot.Title="Items">
 	<VBox Spacing="14">
-		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+		<HBox Spacing="12" Slot.Auto="true" Slot.Padding="6,10,6,0">
+			<Label Text="" Slot.Fill="1"/>
+			<Button Text="  Randomize This Tab  " OnClicked="rando.randomize.tab.Items" Slot.Auto="true" Tooltip="Random values for every setting on this tab (Stable and In Testing options only; Logic Rules stays as it is)."/>
+		</HBox>
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Quest Items" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Quest Items" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.Items/Quest Items" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Label Text="Shuffle Songs" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Song Locations: every place that teaches a song (Impa, Malon, Saria, Sheik, the Royal Tomb, the&#10;windmill and the Ocarina of Time scene) teaches a random song instead.&#10;Anywhere: songs can be in any check: lying on the ground, in chests, dropped by Gold&#10;Skulltulas, on shop shelves or given by people. A song shows as a harp."/>
 					<ComboBox Name="set_shuffle_songs" OnChanged="set.shuffle_songs" Slot.Fill="0.9" Items="Vanilla|Song Locations|Anywhere" Tooltip="Song Locations: every place that teaches a song (Impa, Malon, Saria, Sheik, the Royal Tomb, the&#10;windmill and the Ocarina of Time scene) teaches a random song instead.&#10;Anywhere: songs can be in any check: lying on the ground, in chests, dropped by Gold&#10;Skulltulas, on shop shelves or given by people. A song shows as a harp."/>
@@ -34,7 +41,10 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Shuffled Locations" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Shuffled Locations" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.Items/Shuffled Locations" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Checkbox Name="set_shuffle_freestanding" Style="Switch" Text="Shuffle Freestanding Items" OnChanged="set.shuffle_freestanding" Slot.Fill="1" Tooltip="Items lying in the world become checks: the freestanding Pieces of Heart, the Fire Arrows at&#10;Lake Hylia and Ruto's Letter. Walk into a shuffled item to collect it (Pieces of Heart and Ruto's&#10;Letter still need A)."/>
 					<StableBadge Name="badge_shuffle_freestanding" LabelName="badgelab_shuffle_freestanding"/>
@@ -60,8 +70,8 @@
 					<StableBadge Name="badge_shuffle_scrubs" LabelName="badgelab_shuffle_scrubs"/>
 				</HBox>
 				<HBox Spacing="12">
-					<Label Text="Business Scrub Prices" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What the shuffled Business Scrubs charge. Game's Price is 40 rupees for the Lost Woods scrubs and&#10;100 for the heart scrubs. A price above 99 rupees needs the Adult's Wallet in the logic."/>
-					<ComboBox Name="set_scrub_prices" OnChanged="set.scrub_prices" Slot.Fill="0.9" Items="10 Rupees|Game's Price (40 / 100 Rupees)|Random (10-99 Rupees)|Random (10-200 Rupees)" Tooltip="What the shuffled Business Scrubs charge. Game's Price is 40 rupees for the Lost Woods scrubs and&#10;100 for the heart scrubs. A price above 99 rupees needs the Adult's Wallet in the logic."/>
+					<Label Text="Business Scrub Prices" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What the shuffled Business Scrubs charge.&#10;Each one picks a random price from 0 up to what that wallet holds: the classic game's wallets (99, 200&#10;and 500 rupees) or the remake's (200, 500 and 1,000). A price above 200 needs the Adult's Wallet in the&#10;logic, and one above 500 the Giant's Wallet."/>
+					<ComboBox Name="set_scrub_prices" OnChanged="set.scrub_prices" Slot.Fill="0.9" Items="Child Wallet (classic) (0-99 Rupees)|Adult Wallet (classic) (0-200 Rupees)|Giant Wallet (classic) (0-500 Rupees)|Child Wallet (remake) (0-200 Rupees)|Adult Wallet (remake) (0-500 Rupees)|Giant Wallet (remake) (0-1000 Rupees)" Tooltip="What the shuffled Business Scrubs charge.&#10;Each one picks a random price from 0 up to what that wallet holds: the classic game's wallets (99, 200&#10;and 500 rupees) or the remake's (200, 500 and 1,000). A price above 200 needs the Adult's Wallet in the&#10;logic, and one above 500 the Giant's Wallet."/>
 					<StableBadge Name="badge_scrub_prices" LabelName="badgelab_scrub_prices"/>
 				</HBox>
 				<HBox Spacing="12">
@@ -83,15 +93,18 @@
 					<StableBadge Name="badge_shopsanity" LabelName="badgelab_shopsanity"/>
 				</HBox>
 				<HBox Spacing="12">
-					<Label Text="Shop Prices" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What the shuffled shop shelves charge. Random prices are rounded to 5 rupees. A price above 99&#10;rupees needs the Adult's Wallet in the logic."/>
-					<ComboBox Name="set_shop_prices" OnChanged="set.shop_prices" Slot.Fill="0.9" Items="10 Rupees|Random (10-99 Rupees)|Random (10-200 Rupees)" Tooltip="What the shuffled shop shelves charge. Random prices are rounded to 5 rupees. A price above 99&#10;rupees needs the Adult's Wallet in the logic."/>
+					<Label Text="Shop Prices" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What the shuffled shop shelves charge, rounded to 5 rupees.&#10;Each one picks a random price from 0 up to what that wallet holds: the classic game's wallets (99, 200&#10;and 500 rupees) or the remake's (200, 500 and 1,000). A price above 200 needs the Adult's Wallet in the&#10;logic, and one above 500 the Giant's Wallet."/>
+					<ComboBox Name="set_shop_prices" OnChanged="set.shop_prices" Slot.Fill="0.9" Items="Child Wallet (classic) (0-99 Rupees)|Adult Wallet (classic) (0-200 Rupees)|Giant Wallet (classic) (0-500 Rupees)|Child Wallet (remake) (0-200 Rupees)|Adult Wallet (remake) (0-500 Rupees)|Giant Wallet (remake) (0-1000 Rupees)" Tooltip="What the shuffled shop shelves charge, rounded to 5 rupees.&#10;Each one picks a random price from 0 up to what that wallet holds: the classic game's wallets (99, 200&#10;and 500 rupees) or the remake's (200, 500 and 1,000). A price above 200 needs the Adult's Wallet in the&#10;logic, and one above 500 the Giant's Wallet."/>
 					<StableBadge Name="badge_shop_prices" LabelName="badgelab_shop_prices"/>
 				</HBox>
 			</VBox>
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Item Pool" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Item Pool" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.Items/Item Pool" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Label Text="Item Pool" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Balanced: the same items as the original game.&#10;Scarce: half of the Pieces of Heart and Heart Containers become rupees.&#10;Minimal: all Pieces of Heart and Heart Containers become rupees."/>
 					<ComboBox Name="set_item_pool" OnChanged="set.item_pool" Slot.Fill="0.9" Items="Balanced|Scarce|Minimal" Tooltip="Balanced: the same items as the original game.&#10;Scarce: half of the Pieces of Heart and Heart Containers become rupees.&#10;Minimal: all Pieces of Heart and Heart Containers become rupees."/>
@@ -102,8 +115,12 @@
 					<StableBadge Name="badge_refill_needs_item" LabelName="badgelab_refill_needs_item"/>
 				</HBox>
 				<HBox Spacing="12">
-					<Checkbox Name="set_progressive_items" Style="Switch" Text="Progressive Items" OnChanged="set.progressive_items" Slot.Fill="1" Tooltip="On: upgrades come in order, whichever copy you find first. The first Progressive Hookshot is the&#10;Hookshot and the second the Longshot; the same goes for the Ocarinas, strength, scales, wallets,&#10;bomb bags, Deku Seed bags and quivers. They are only in small chests and given by characters,&#10;minigames and Business Scrubs: items lying in the world, Gold Skulltulas, shop shelves and big or&#10;invisible chests can't choose the tier.&#10;Off: the Hookshot, scales, strength upgrades and bomb bags are items of their own (Hookshot,&#10;Longshot, ...) and can be in any check. A stronger one goes where you need the weaker one first&#10;when the logic allows it, so you may still find one first. The Ocarinas, wallets, Deku Seed bags&#10;and quivers stay progressive."/>
+					<Checkbox Name="set_progressive_items" Style="Switch" Text="Progressive Items" OnChanged="set.progressive_items" Slot.Fill="1" Tooltip="On: upgrades come in order, whichever copy you find first. The first Progressive Hookshot is the&#10;Hookshot and the second the Longshot; the same goes for the Ocarinas, strength, scales, wallets,&#10;bomb bags, Deku Seed bags and quivers. They are only in small chests (big ones too with Chest Size&#10;Matches Contents) and given by characters, minigames and Business Scrubs: items lying in the world,&#10;Gold Skulltulas, shop shelves and invisible chests can't choose the tier.&#10;Off: the Hookshot, scales, strength upgrades and bomb bags are items of their own (Hookshot,&#10;Longshot, ...) and can be in any check. A stronger one goes where you need the weaker one first&#10;when the logic allows it, so you may still find one first. The Ocarinas, wallets, Deku Seed bags&#10;and quivers stay progressive."/>
 					<StableBadge Name="badge_progressive_items" LabelName="badgelab_progressive_items"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_chest_size_matches" Style="Switch" Text="Chest Size Matches Contents" OnChanged="set.chest_size_matches" Slot.Fill="1" Tooltip="Chests show what they hold, as in the classic randomizer: key items are in big chests, everything else&#10;in small ones. Key items are what the logic can need (weapons, tools, songs, the Spiritual Stones and&#10;Medallions, bottles, progressive upgrades...) and every Small Key, Key Ring and Boss Key; Gold&#10;Skulltula Tokens, hearts, maps, compasses, rupees and refills are small. A big chest that gives the&#10;next tier of a progressive item is one the randomizer makes for this. Invisible chests keep their look."/>
+					<TestingBadge Name="badge_chest_size_matches" LabelName="badgelab_chest_size_matches"/>
 				</HBox>
 			</VBox>
 		</Border>

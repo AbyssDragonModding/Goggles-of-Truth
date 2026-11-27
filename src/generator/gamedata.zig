@@ -122,7 +122,32 @@ pub const bridge_quest_exp = "Defeat_Ganon_IsAfter_Step01_Exp";
 /// the requirement + Bow + Light Arrows
 pub const bridge_exp = "Rando_Bridge_Exp";
 /// counted into by the altar's status line (bridgetext.zig)
-pub const bridge_status_ints = [_][]const u8{ "Rando_Bridge_Count", "Rando_Bridge_Bow", "Rando_Bridge_LightArrows" };
+/// the altar's counts: the requirement, the Bow, the Light Arrows, and a second requirement (All Tokens, Medallions &
+/// Stones: its tokens)
+pub const bridge_status_ints = [_][]const u8{ "Rando_Bridge_Count", "Rando_Bridge_Bow", "Rando_Bridge_LightArrows", "Rando_Bridge_Count2" };
+
+/// What a Rainbow Bridge Requirement asks for (its Random rolled before, settings/randomize.zig): a Medallion count,
+/// all three Spiritual Stones, a token count, or several at once (the "All" requirements). Null parts aren't asked.
+pub const BridgeNeeds = struct {
+    medallions: ?i64 = null,
+    stones: bool = false,
+    tokens: ?i64 = null,
+
+    pub fn of(mode: []const u8, medallion_count: i64, tokens_needed: i64) BridgeNeeds {
+        const all_tokens: i64 = 100;
+        if (std.mem.eql(u8, mode, "medallions")) return .{ .medallions = medallion_count };
+        if (std.mem.eql(u8, mode, "stones")) return .{ .stones = true };
+        if (std.mem.eql(u8, mode, "tokens")) return .{ .tokens = tokens_needed };
+        if (std.mem.eql(u8, mode, "all_tokens")) return .{ .tokens = all_tokens };
+        if (std.mem.eql(u8, mode, "rewards")) return .{ .medallions = 6, .stones = true };
+        if (std.mem.eql(u8, mode, "everything")) return .{ .medallions = 6, .stones = true, .tokens = all_tokens };
+        return .{};
+    }
+
+    pub fn any(self: BridgeNeeds) bool {
+        return self.medallions != null or self.stones or self.tokens != null;
+    }
+};
 /// the longest computed flag in the game
 pub const bridge_max_entries = 26;
 
@@ -318,29 +343,30 @@ pub const GameDataPatcher = struct {
     ///                                = <k of i-1> OR (<k-1 of i-1> AND medallion i)          (5 entries)
     ///     Rando_Bridge_Exp            = requirement AND Bow AND Light Arrows
     ///     Defeat_Ganon_IsAfter_Ready_Exp = its old value OR Rando_Bridge_Exp
-    pub fn rainbowBridge(self: *Self, mode: []const u8, medallions: i64, tokens: i64) PatchError!bool {
+    /// The bridge appears when every part of `needs` holds (an "All" requirement asks for several: each part's
+    /// check, AND-ed together), and the Bow and the Light Arrows.
+    pub fn rainbowBridge(self: *Self, needs: BridgeNeeds) PatchError!bool {
         const step01 = self.get("Defeat_Ganon_IsAfter_Step01_Exp", .BoolExp) orelse return false;
         const ready = self.get("Defeat_Ganon_IsAfter_Ready_Exp", .BoolExp) orelse return false;
-        const is_medallions = std.mem.eql(u8, mode, "medallions");
-        const is_stones = std.mem.eql(u8, mode, "stones");
-        const is_tokens = std.mem.eql(u8, mode, "tokens");
-        if (!is_medallions and !is_stones and !is_tokens) return true;
+        if (!needs.any()) return true;
         const tmpl = template(step01) orelse return error.InvalidData;
 
         // every flag it reads must exist
         var missing: std.ArrayList(u8) = .empty;
         const need_common = [_][]const u8{ bridge_bow, bridge_light_arrows };
-        const need_items: []const []const u8 = if (is_medallions) &bridge_medallions else if (is_stones) &bridge_stones else &.{};
         for (need_common) |f| if (self.find(f, .Bool) == null) try appendName(&missing, self.allocator, f);
-        for (need_items) |f| if (self.find(f, .Bool) == null) try appendName(&missing, self.allocator, f);
-        if (is_tokens and self.find(token_count, .Int) == null) try appendName(&missing, self.allocator, token_count);
+        if (needs.medallions != null) for (bridge_medallions) |f| if (self.find(f, .Bool) == null) try appendName(&missing, self.allocator, f);
+        if (needs.stones) for (bridge_stones) |f| if (self.find(f, .Bool) == null) try appendName(&missing, self.allocator, f);
+        if (needs.tokens != null and self.find(token_count, .Int) == null) try appendName(&missing, self.allocator, token_count);
         if (missing.items.len > 0) {
             self.progress.log("warning: Rainbow Bridge: save flags not found ({s}); the bridge is left as it is", .{missing.items});
             return false;
         }
 
         var cond: std.ArrayList(byml.Value) = .empty;
-        if (is_medallions) {
+        var parts: usize = 0;
+        if (needs.medallions) |medallions| {
+            parts += 1;
             const n: usize = @intCast(std.math.clamp(medallions, 1, 6));
             // ref[k][i]: the computed flag holding "at least k of the first i medallions"
             var ref: [7][7]?byml.Value = @splat(@splat(null));
@@ -377,17 +403,24 @@ pub const GameDataPatcher = struct {
                 }
             }
             try appendValue(&cond, self.allocator, ref[n][6].?);
-        } else if (is_stones) {
+        }
+        if (needs.stones) {
             const a = try self.have(step01, tmpl, bridge_stones[0]);
             const b = try self.have(step01, tmpl, bridge_stones[1]);
             const c = try self.have(step01, tmpl, bridge_stones[2]);
             for ([_]byml.Value{ a, b, try self.entry(tmpl, 3, null), c, try self.entry(tmpl, 3, null) }) |v| try appendValue(&cond, self.allocator, v);
-        } else {
+            // AND-ed with the part before (opcode 3), as the Bow and the Light Arrows are below
+            if (parts > 0) try appendValue(&cond, self.allocator, try self.entry(tmpl, 3, null));
+            parts += 1;
+        }
+        if (needs.tokens) |tokens| {
             // Opcode 16's number is a plain signed Int in the game's own flags ([16, 100] in ..._Collect100Tokens), not
             // the U64 of the other entries. 0.6.1's token bridge wrote a U64 and the bridge was there with 0 tokens.
             try appendValue(&cond, self.allocator, try self.entry(tmpl, 18, hashValue(tmpl, token_count)));
             try appendValue(&cond, self.allocator, try self.entry(tmpl, 16, .{ .int = @intCast(tokens) }));
             try appendValue(&cond, self.allocator, try self.entry(tmpl, 5, null));
+            if (parts > 0) try appendValue(&cond, self.allocator, try self.entry(tmpl, 3, null));
+            parts += 1;
         }
         try appendValue(&cond, self.allocator, try self.have(step01, tmpl, bridge_bow));
         try appendValue(&cond, self.allocator, try self.entry(tmpl, 3, null));
@@ -769,7 +802,7 @@ pub fn plannedChanges(allocator: Allocator, st: *const Settings, ocarina_bridge_
     if (st.is(.open_door, "open") and !st.flag(.skip_child_zelda))
         try addChange(&out, allocator, .{ .kind = .enum_value, .flag = door_quest_enum, .text = door_quest_step });
     // Kakariko's Death Mountain gate starts open
-    if (st.flag(.open_dmt)) try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = dmt_gate_open });
+    if (st.is(.open_dmt, "open")) try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = dmt_gate_open });
     // a new save owns Epona (the horse list the race fills); Epona's Song calls her
     if (st.flag(.skip_epona_race)) try addChange(&out, allocator, .{ .kind = .string_array, .flag = epona_owned_list, .text = epona_actor });
     if (st.flag(.skip_story_scenes)) {
@@ -888,7 +921,7 @@ pub fn apply(allocator: Allocator, world: *world_mod.World, patches: *patchset.P
         }
     }
     if (!st.is(.rainbow_bridge, "vanilla")) {
-        if (!try gd.rainbowBridge(st.choice(.rainbow_bridge), st.int(.bridge_medallions), st.int(.bridge_tokens))) ok = false;
+        if (!try gd.rainbowBridge(BridgeNeeds.of(st.choice(.rainbow_bridge), st.int(.bridge_medallions), st.int(.bridge_tokens)))) ok = false;
     }
     try gd.finish(patches);
     return ok;

@@ -28,8 +28,9 @@
 						<TextInput Name="ts_settings_string" Placeholder="settings string (optional)" OnChanged="ts.changed" Slot.Fill="0.4"/>
 					</HBox>
 					<HBox Spacing="10">
-						<Label Text="Change settings" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center" Tooltip="[settings]: user_settings.toml lines on top of the settings above, e.g. shuffle_scrubs = true"/>
-						<TextInput Name="ts_override_in" Placeholder="shuffle_scrubs = true" Slot.Fill="0.62"/>
+						<Label Text="Change settings" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center" Tooltip="[settings]: a setting of the randomizer set to a value, on top of the settings above. Pick the setting (type to search), then its value; Add puts the line in the list (a setting added again replaces its line)."/>
+						<SearchPicker FaceName="ts_setting" LabelName="ts_setting_label" Placeholder="Pick a setting..." Slot.Fill="0.37"/>
+						<SearchPicker FaceName="ts_setting_value" LabelName="ts_setting_value_label" Placeholder="Its value..." Slot.Fill="0.25"/>
 						<Button Text="Add" OnClicked="ts.override_add" Slot.Fill="0.2"/>
 					</HBox>
 					<ListView Name="ts_override_list" OnActivated="ts.override_remove" Slot.Auto="true" MinHeight="70"/>

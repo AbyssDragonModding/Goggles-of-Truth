@@ -5,9 +5,16 @@
 -->
 <ScrollBox Orientation="Vertical" Slot.Title="World">
 	<VBox Spacing="14">
-		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
+		<HBox Spacing="12" Slot.Auto="true" Slot.Padding="6,10,6,0">
+			<Label Text="" Slot.Fill="1"/>
+			<Button Text="  Randomize This Tab  " OnClicked="rando.randomize.tab.World" Slot.Auto="true" Tooltip="Random values for every setting on this tab (Stable and In Testing options only; Logic Rules stays as it is)."/>
+		</HBox>
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Logic" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Logic" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.World/Logic" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Label Text="Logic Rules" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Glitchless: the seed can always be beaten without glitches. The logic is cautious, so it may expect&#10;an item a little earlier than you strictly need it.&#10;No Logic: items are placed completely at random; the seed may be unbeatable."/>
 					<ComboBox Name="set_logic_rules" OnChanged="set.logic_rules" Slot.Fill="0.9" Items="Glitchless|No Logic" Tooltip="Glitchless: the seed can always be beaten without glitches. The logic is cautious, so it may expect&#10;an item a little earlier than you strictly need it.&#10;No Logic: items are placed completely at random; the seed may be unbeatable."/>
@@ -22,31 +29,38 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Open Areas" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
-					<Label Text="Kokiri Forest" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Closed: as in the original. Mido blocks the Deku Tree until you have a sword and shield, and the&#10;Kokiri boy blocks the forest exit until the Deku Tree is beaten.&#10;Closed Deku: the forest exit is open from the start; Mido still wants a sword and shield.&#10;Open: both are out of the way; you can go to the Deku Tree or leave the forest right away."/>
-					<ComboBox Name="set_open_forest" OnChanged="set.open_forest" Slot.Fill="0.9" Items="Closed|Closed Deku|Open" Tooltip="Closed: as in the original. Mido blocks the Deku Tree until you have a sword and shield, and the&#10;Kokiri boy blocks the forest exit until the Deku Tree is beaten.&#10;Closed Deku: the forest exit is open from the start; Mido still wants a sword and shield.&#10;Open: both are out of the way; you can go to the Deku Tree or leave the forest right away."/>
+					<Label Text="Open Areas" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.World/Open Areas" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
+				<HBox Spacing="12">
+					<Label Text="Kokiri Forest" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Closed: as in the original. Mido blocks the Deku Tree until you have a sword and shield, and the&#10;Kokiri boy blocks the forest exit until the Deku Tree is beaten.&#10;Closed Deku: the forest exit is open from the start; Mido still wants a sword and shield.&#10;Open: both are out of the way; you can go to the Deku Tree or leave the forest right away.&#10;Random: the seed picks one (the spoiler log says which)."/>
+					<ComboBox Name="set_open_forest" OnChanged="set.open_forest" Slot.Fill="0.9" Items="Closed|Closed Deku|Open|Random" Tooltip="Closed: as in the original. Mido blocks the Deku Tree until you have a sword and shield, and the&#10;Kokiri boy blocks the forest exit until the Deku Tree is beaten.&#10;Closed Deku: the forest exit is open from the start; Mido still wants a sword and shield.&#10;Open: both are out of the way; you can go to the Deku Tree or leave the forest right away.&#10;Random: the seed picks one (the spoiler log says which)."/>
 					<StableBadge Name="badge_open_forest" LabelName="badgelab_open_forest"/>
 				</HBox>
 				<HBox Spacing="12">
-					<Label Text="Door of Time" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Open: the Door of Time in the Temple of Time is already open, so you can walk in and pull the&#10;Master Sword without the three Spiritual Stones, an ocarina or the Song of Time."/>
-					<ComboBox Name="set_open_door" OnChanged="set.open_door" Slot.Fill="0.9" Items="Closed|Open" Tooltip="Open: the Door of Time in the Temple of Time is already open, so you can walk in and pull the&#10;Master Sword without the three Spiritual Stones, an ocarina or the Song of Time."/>
+					<Label Text="Door of Time" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Open: the Door of Time in the Temple of Time is already open, so you can walk in and pull the&#10;Master Sword without the three Spiritual Stones, an ocarina or the Song of Time.&#10;Random: the seed picks one (the spoiler log says which)."/>
+					<ComboBox Name="set_open_door" OnChanged="set.open_door" Slot.Fill="0.9" Items="Closed|Open|Random" Tooltip="Open: the Door of Time in the Temple of Time is already open, so you can walk in and pull the&#10;Master Sword without the three Spiritual Stones, an ocarina or the Song of Time.&#10;Random: the seed picks one (the spoiler log says which)."/>
 					<StableBadge Name="badge_open_door" LabelName="badgelab_open_door"/>
 				</HBox>
 				<HBox Spacing="12">
-					<Label Text="Zora's Fountain" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Open: King Zora has already moved aside and stays aside, so Zora's Fountain and Jabu-Jabu can be&#10;reached without Ruto's Letter. Ruto still gives her reward in Jabu-Jabu. The quest log's Zora entry&#10;stays empty. Ruto's Letter would be useless, so it is replaced by an empty Bottle (wherever it&#10;lands, or at Lake Hylia if freestanding items aren't shuffled)."/>
-					<ComboBox Name="set_open_zora" OnChanged="set.open_zora" Slot.Fill="0.9" Items="Closed|Open" Tooltip="Open: King Zora has already moved aside and stays aside, so Zora's Fountain and Jabu-Jabu can be&#10;reached without Ruto's Letter. Ruto still gives her reward in Jabu-Jabu. The quest log's Zora entry&#10;stays empty. Ruto's Letter would be useless, so it is replaced by an empty Bottle (wherever it&#10;lands, or at Lake Hylia if freestanding items aren't shuffled)."/>
+					<Label Text="Zora's Fountain" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Open: King Zora has already moved aside and stays aside, so Zora's Fountain and Jabu-Jabu can be&#10;reached without Ruto's Letter. Ruto still gives her reward in Jabu-Jabu. The quest log's Zora entry&#10;stays empty. Ruto's Letter would be useless, so it is replaced by an empty Bottle (wherever it&#10;lands, or at Lake Hylia if freestanding items aren't shuffled).&#10;Random: the seed picks one (the spoiler log says which)."/>
+					<ComboBox Name="set_open_zora" OnChanged="set.open_zora" Slot.Fill="0.9" Items="Closed|Open|Random" Tooltip="Open: King Zora has already moved aside and stays aside, so Zora's Fountain and Jabu-Jabu can be&#10;reached without Ruto's Letter. Ruto still gives her reward in Jabu-Jabu. The quest log's Zora entry&#10;stays empty. Ruto's Letter would be useless, so it is replaced by an empty Bottle (wherever it&#10;lands, or at Lake Hylia if freestanding items aren't shuffled).&#10;Random: the seed picks one (the spoiler log says which)."/>
 					<StableBadge Name="badge_open_zora" LabelName="badgelab_open_zora"/>
 				</HBox>
 				<HBox Spacing="12">
-					<Checkbox Name="set_open_dmt" Style="Switch" Text="Open Death Mountain" OnChanged="set.open_dmt" Slot.Fill="1" Tooltip="The gate from Kakariko to Death Mountain is open for child Link from the start, so you don't need&#10;to show Zelda's Letter to the soldier. The Happy Mask Shop opens too, and the soldier's mask trade&#10;is ready. Zelda's Letter has no use then, so it isn't in the seed: a Red Rupee takes its place in&#10;the item pool, and Zelda gives a random item, also when quest rewards aren't shuffled."/>
+					<Label Text="Death Mountain" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Open: the gate from Kakariko to Death Mountain is open for child Link from the start, so you don't&#10;need to show Zelda's Letter to the soldier. The Happy Mask Shop opens too, and the soldier's mask&#10;trade is ready. Zelda's Letter has no use then, so it isn't in the seed: a Red Rupee takes its&#10;place in the item pool, and Zelda gives a random item, also when quest rewards aren't shuffled.&#10;Random: the seed picks Closed or Open (the spoiler log says which)."/>
+					<ComboBox Name="set_open_dmt" OnChanged="set.open_dmt" Slot.Fill="0.9" Items="Closed|Open|Random" Tooltip="Open: the gate from Kakariko to Death Mountain is open for child Link from the start, so you don't&#10;need to show Zelda's Letter to the soldier. The Happy Mask Shop opens too, and the soldier's mask&#10;trade is ready. Zelda's Letter has no use then, so it isn't in the seed: a Red Rupee takes its&#10;place in the item pool, and Zelda gives a random item, also when quest rewards aren't shuffled.&#10;Random: the seed picks Closed or Open (the spoiler log says which)."/>
 					<StableBadge Name="badge_open_dmt" LabelName="badgelab_open_dmt"/>
 				</HBox>
 			</VBox>
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Starting Age" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Starting Age" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.World/Starting Age" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Label Text="Starting Age" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Child: a new game starts as child Link outside the Kokiri Shop, as always.&#10;Adult: a new game starts as adult Link on the pedestal platform in the Temple of Time, with the&#10;Master Sword, as if he had just pulled it. Rauru's check (the Light Medallion spot) is given at&#10;once, the Door of Time is open, and the Kokiri boy at the forest exit is gone, so child Link can&#10;get back into the forest. Put the Master Sword back to become a child.&#10;Random: child or adult, chosen by the seed (the spoiler log says which)."/>
 					<ComboBox Name="set_starting_age" OnChanged="set.starting_age" Slot.Fill="0.9" Items="Child|Adult|Random" Tooltip="Child: a new game starts as child Link outside the Kokiri Shop, as always.&#10;Adult: a new game starts as adult Link on the pedestal platform in the Temple of Time, with the&#10;Master Sword, as if he had just pulled it. Rauru's check (the Light Medallion spot) is given at&#10;once, the Door of Time is open, and the Kokiri boy at the forest exit is gone, so child Link can&#10;get back into the forest. Put the Master Sword back to become a child.&#10;Random: child or adult, chosen by the seed (the spoiler log says which)."/>
@@ -56,10 +70,13 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Rainbow Bridge" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
-					<Label Text="Rainbow Bridge Requirement" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What makes the rainbow bridge to Ganon's Castle appear when you walk up to the castle as adult.&#10;Every option also needs the Bow and the Light Arrows, since Ganon can't be beaten without them.&#10;Vanilla: as in the original. Beat the Shadow and Spirit Temples, get the Light Arrows from Zelda&#10;in the Temple of Time, then the sages build the bridge.&#10;Medallions: own the number of medallions set in Medallions Needed (any of the six), plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Spiritual Stones: own all three Spiritual Stones (Kokiri Emerald, Goron Ruby, Zora Sapphire),&#10;plus the Bow and the Light Arrows. Zelda's scene isn't needed.&#10;Gold Skulltula Tokens: own the number of tokens set in Gold Skulltula Tokens Needed, plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Once the bridge has appeared it stays. The altar in the Temple of Time tells the requirement and&#10;what you have of it (e.g. Medallions: 2/4)."/>
-					<ComboBox Name="set_rainbow_bridge" OnChanged="set.rainbow_bridge" Slot.Fill="0.9" Items="Vanilla|Medallions|Spiritual Stones|Gold Skulltula Tokens" Tooltip="What makes the rainbow bridge to Ganon's Castle appear when you walk up to the castle as adult.&#10;Every option also needs the Bow and the Light Arrows, since Ganon can't be beaten without them.&#10;Vanilla: as in the original. Beat the Shadow and Spirit Temples, get the Light Arrows from Zelda&#10;in the Temple of Time, then the sages build the bridge.&#10;Medallions: own the number of medallions set in Medallions Needed (any of the six), plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Spiritual Stones: own all three Spiritual Stones (Kokiri Emerald, Goron Ruby, Zora Sapphire),&#10;plus the Bow and the Light Arrows. Zelda's scene isn't needed.&#10;Gold Skulltula Tokens: own the number of tokens set in Gold Skulltula Tokens Needed, plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Once the bridge has appeared it stays. The altar in the Temple of Time tells the requirement and&#10;what you have of it (e.g. Medallions: 2/4)."/>
+					<Label Text="Rainbow Bridge" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.World/Rainbow Bridge" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
+				<HBox Spacing="12">
+					<Label Text="Rainbow Bridge Requirement" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What makes the rainbow bridge to Ganon's Castle appear when you walk up to the castle as adult.&#10;Every option also needs the Bow and the Light Arrows, since Ganon can't be beaten without them.&#10;Vanilla: as in the original. Beat the Shadow and Spirit Temples, get the Light Arrows from Zelda&#10;in the Temple of Time, then the sages build the bridge.&#10;Medallions: own the number of medallions set in Medallions Needed (any of the six), plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Spiritual Stones: own all three Spiritual Stones (Kokiri Emerald, Goron Ruby, Zora Sapphire),&#10;plus the Bow and the Light Arrows. Zelda's scene isn't needed.&#10;Gold Skulltula Tokens: own the number of tokens set in Gold Skulltula Tokens Needed, plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Once the bridge has appeared it stays. The altar in the Temple of Time tells the requirement and&#10;what you have of it (e.g. Medallions: 2/4).&#10;All Gold Skulltula Tokens: all 100. All Medallions &amp; Spiritual Stones: all six Medallions and all&#10;three Stones. All Tokens, Medallions &amp; Stones: both at once.&#10;Random: the seed picks Vanilla, Medallions, Spiritual Stones, Gold Skulltula Tokens or All&#10;Medallions &amp; Spiritual Stones (never one that needs all 100 tokens); the spoiler log says which."/>
+					<ComboBox Name="set_rainbow_bridge" OnChanged="set.rainbow_bridge" Slot.Fill="0.9" Items="Vanilla|Medallions|Spiritual Stones|Gold Skulltula Tokens|All Gold Skulltula Tokens|All Medallions &amp; Spiritual Stones|All Tokens, Medallions &amp; Stones|Random" Tooltip="What makes the rainbow bridge to Ganon's Castle appear when you walk up to the castle as adult.&#10;Every option also needs the Bow and the Light Arrows, since Ganon can't be beaten without them.&#10;Vanilla: as in the original. Beat the Shadow and Spirit Temples, get the Light Arrows from Zelda&#10;in the Temple of Time, then the sages build the bridge.&#10;Medallions: own the number of medallions set in Medallions Needed (any of the six), plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Spiritual Stones: own all three Spiritual Stones (Kokiri Emerald, Goron Ruby, Zora Sapphire),&#10;plus the Bow and the Light Arrows. Zelda's scene isn't needed.&#10;Gold Skulltula Tokens: own the number of tokens set in Gold Skulltula Tokens Needed, plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Once the bridge has appeared it stays. The altar in the Temple of Time tells the requirement and&#10;what you have of it (e.g. Medallions: 2/4).&#10;All Gold Skulltula Tokens: all 100. All Medallions &amp; Spiritual Stones: all six Medallions and all&#10;three Stones. All Tokens, Medallions &amp; Stones: both at once.&#10;Random: the seed picks Vanilla, Medallions, Spiritual Stones, Gold Skulltula Tokens or All&#10;Medallions &amp; Spiritual Stones (never one that needs all 100 tokens); the spoiler log says which."/>
 					<StableBadge Name="badge_rainbow_bridge" LabelName="badgelab_rainbow_bridge"/>
 				</HBox>
 				<HBox Spacing="12">
@@ -68,15 +85,26 @@
 					<StableBadge Name="badge_bridge_medallions" LabelName="badgelab_bridge_medallions"/>
 				</HBox>
 				<HBox Spacing="12">
+					<Checkbox Name="set_bridge_medallions_random" Style="Switch" Text="Random Medallion Count" OnChanged="set.bridge_medallions_random" Slot.Fill="1" Tooltip="The seed picks how many Medallions the bridge needs: from 1 up to Medallions Needed (the spoiler log&#10;says how many)."/>
+					<TestingBadge Name="badge_bridge_medallions_random" LabelName="badgelab_bridge_medallions_random"/>
+				</HBox>
+				<HBox Spacing="12">
 					<Label Text="Gold Skulltula Tokens Needed" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="For Rainbow Bridge Requirement: Gold Skulltula Tokens. How many Gold Skulltula Tokens you need&#10;for the bridge (1 to 100)."/>
 					<SpinBox Name="set_bridge_tokens" OnChanged="set.bridge_tokens" Slot.Fill="0.4" Tooltip="For Rainbow Bridge Requirement: Gold Skulltula Tokens. How many Gold Skulltula Tokens you need&#10;for the bridge (1 to 100)."/>
 					<StableBadge Name="badge_bridge_tokens" LabelName="badgelab_bridge_tokens"/>
+				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_bridge_tokens_random" Style="Switch" Text="Random Token Count" OnChanged="set.bridge_tokens_random" Slot.Fill="1" Tooltip="The seed picks how many Gold Skulltula Tokens the bridge needs: from 1 up to Gold Skulltula Tokens&#10;Needed (the spoiler log says how many)."/>
+					<TestingBadge Name="badge_bridge_tokens_random" LabelName="badgelab_bridge_tokens_random"/>
 				</HBox>
 			</VBox>
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Story Skips" TextSize="16" Class="Heading"/>
+				<HBox Spacing="12">
+					<Label Text="Story Skips" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+					<Button Text="  Randomize  " Style="Flat" OnClicked="rando.randomize.group.World/Story Skips" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Random values for the settings in this card (Stable and In Testing options only)."/>
+				</HBox>
 				<HBox Spacing="12">
 					<Checkbox Name="set_skip_child_zelda" Style="Switch" Text="Skip Child Zelda" OnChanged="set.skip_child_zelda" Slot.Fill="1" Tooltip="A new save starts as if you had already been through Hyrule Castle as a child. You already own&#10;the items from Zelda (HC Zeldas Letter), Malon (HC Malon Egg) and Impa (Song from Impa), Malon and&#10;Talon are at Lon Lon Ranch, and Hyrule Field has day and night from the start. Those three checks&#10;can hold any item. Most come with the new save; bags, ammo, rupees, hearts, medallions and the&#10;like are handed over, with their item window, the moment a new game starts."/>
 					<StableBadge Name="badge_skip_child_zelda" LabelName="badgelab_skip_child_zelda"/>
