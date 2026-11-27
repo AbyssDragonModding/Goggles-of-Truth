@@ -5,6 +5,9 @@
 #   (pushes to main, 0.7.x-dev and 0.8.0-dev)
 #   a push to main with a new   also a Release named after the version (tag "<version>", e.g. 0.7.0) with one ZIP
 #   version in src/version.zig  per system, and the notes of that version from CHANGELOG.md
+#   a push to main while that   the draft gets this run's ZIPs (replacing files of the same name), the notes of
+#   version's Release is a      that version from CHANGELOG.md and this commit; it stays a draft until it's
+#   draft                       published on GitHub
 #
 # So to release: raise the version in src/version.zig (and build.zig.zon), add its section to CHANGELOG.md, push.
 # Pushes that don't change the version only update the artifacts. A Release can also be made again by deleting it
@@ -92,24 +95,32 @@ jobs:
         run: |
           version="$(sed -n 's/^pub const version = "\(.*\)";/\1/p' src/version.zig)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if gh release view "$version" > /dev/null 2>&1; then
-            echo "Release $version already exists: nothing to publish."
+          # a draft of this version (written by hand on GitHub) is filled in by this run, not replaced: see
+          # "Update the draft" below
+          if draft="$(gh release view "$version" --json isDraft --jq .isDraft 2>/dev/null)"; then
             echo "new=false" >> "$GITHUB_OUTPUT"
+            if [ "$draft" = "true" ]; then
+              echo "Release $version is a draft: its files and notes are updated from this run."
+              echo "draft=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Release $version already exists: nothing to publish."
+              echo "draft=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             echo "new=true" >> "$GITHUB_OUTPUT"
+            echo "draft=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/download-artifact@v4
-        if: steps.check.outputs.new == 'true'
+        if: steps.check.outputs.new == 'true' || steps.check.outputs.draft == 'true'
         with:
           path: dist
           merge-multiple: true
 
       # the release notes: this version's section of CHANGELOG.md (from its "## <version>" line to the next "## ")
-      - name: Publish the release
-        if: steps.check.outputs.new == 'true'
+      - name: Write the release notes
+        if: steps.check.outputs.new == 'true' || steps.check.outputs.draft == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.check.outputs.version }}
         run: |
           awk -v v="$VERSION" '
@@ -117,7 +128,29 @@ jobs:
             found { print }
           ' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then echo "See CHANGELOG.md." > notes.md; fi
+
+      - name: Publish the release
+        if: steps.check.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
           gh release create "$VERSION" dist/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "Goggles of Truth Randomizer $VERSION" \
+            --notes-file notes.md
+
+      # a draft stays a draft (publish it on GitHub when it's ready): this run's ZIPs replace the files of the same
+      # name, and its notes and commit become this version's CHANGELOG.md section and this commit
+      - name: Update the draft
+        if: steps.check.outputs.draft == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          gh release upload "$VERSION" dist/*.zip --clobber
+          gh release edit "$VERSION" \
+            --draft=true \
             --target "$GITHUB_SHA" \
             --title "Goggles of Truth Randomizer $VERSION" \
             --notes-file notes.md
