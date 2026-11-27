@@ -16,7 +16,7 @@ on:
   push:
     # main releases; 0.7.x-dev (bug fixes) and 0.8.0-dev (new features) get the tests and builds only (the release job
     # runs on main alone)
-    branches: [main, 0.7.x-dev, 0.8.0-dev]
+    branches: [main, 0.8.x-dev]
   pull_request:
   workflow_dispatch:
 
