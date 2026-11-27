@@ -560,6 +560,7 @@ shows **Custom** (it shows the preset's name again whenever your settings match 
 
 | | Beginner | Standard | Expert | Race |
 |---|---|---|---|---|
+| Starting Age | Child | Child | Random | Child |
 | Kokiri Forest | Open | Closed Deku (exit open) | Closed | Closed Deku (exit open) |
 | Door of Time | Open | Open | Closed | Open |
 | Zora's Fountain / Death Mountain | Open / Open | Closed / Closed | Closed / Closed | Closed / Closed |
@@ -577,10 +578,12 @@ shows **Custom** (it shows the preset's name again whenever your settings match 
 | Bombs without the Goron Bracelet, bag bombs open Dodongo's Cavern | On | On | Off | On |
 | Gold Skulltulas any time, Saria's Song with an ocarina, Anju 1 Cucco | On | On | Off | On |
 | Skip Ganon's Trials | On | On | Off | On |
+| Poe shop requires only 1 Big Poe | On | On | Off | On |
 
-All four: glitchless logic with every location reachable, balanced item pool, freestanding items, boss Heart
-Containers, character gifts, quest rewards, Great Fairies and Skulltula House shuffled, vanilla keys, refills need
-their item, and every confirmed cutscene skip on.
+All four: glitchless logic with every location reachable, balanced item pool, progressive items, freestanding
+items, boss Heart Containers, character gifts, quest rewards, Great Fairies and Skulltula House shuffled, vanilla
+keys, refills need their item, no barren dungeons or starting inventory, and every confirmed cutscene skip on (Skip
+NPC Dialogs stays off while it's In Testing).
 
 **Race** follows the idea of the classic randomizer's tournament settings: a fast, fair seed with few places to check
 and strong hints anyone can read. Make the seed once and give the other racers its settings string (and seed

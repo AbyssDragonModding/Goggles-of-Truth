@@ -1147,7 +1147,7 @@ pub const presets = [_]Preset{
             \\Death Mountain), child Zelda is skipped, songs stay at song spots and the stones and medallions where they
             \\normally are, the Kokiri Sword stays in its chest, no Gold Skulltula, shop or Business Scrub shuffle, every map
             \\and compass from the start, Strong hints that speak without the Mask of Truth, and every time saver on
-            \\(Ganon's trials skipped, Gold Skulltulas day and night).
+            \\(Ganon's trials skipped, Gold Skulltulas day and night, one Big Poe for the Poe shop).
         ,
         .values = &.{
             .{ .key = .logic_rules, .value = .{ .choice = "glitchless" } },
@@ -1211,7 +1211,7 @@ pub const presets = [_]Preset{
             .{ .key = .skip_ganon_trials, .value = .{ .boolean = true } },
             .{ .key = .saria_song_ocarina, .value = .{ .boolean = true } },
             .{ .key = .anju_one_cucco, .value = .{ .boolean = true } },
-            .{ .key = .big_poe_one, .value = .{ .boolean = false } },
+            .{ .key = .big_poe_one, .value = .{ .boolean = true } },
         },
     },
     .{
@@ -1220,7 +1220,7 @@ pub const presets = [_]Preset{
             \\The usual randomizer: the forest exit open (Mido still wants a sword and shield), the Door of Time open, Zora's Fountain and Death Mountain as in the game, child Zelda skipped, the stones and
             \\medallions shuffled among the dungeon bosses, the Kokiri Sword, Business Scrubs (game's prices), the dungeon Gold
             \\Skulltulas and 2 items per shop shuffled, maps and compasses in their own dungeon, Balanced hints (Mask of
-            \\Truth needed), Ganon's trials skipped.
+            \\Truth needed), Ganon's trials skipped and one Big Poe for the Poe shop.
         ,
         .values = &.{
             .{ .key = .logic_rules, .value = .{ .choice = "glitchless" } },
@@ -1284,18 +1284,19 @@ pub const presets = [_]Preset{
             .{ .key = .skip_ganon_trials, .value = .{ .boolean = true } },
             .{ .key = .saria_song_ocarina, .value = .{ .boolean = true } },
             .{ .key = .anju_one_cucco, .value = .{ .boolean = true } },
-            .{ .key = .big_poe_one, .value = .{ .boolean = false } },
+            .{ .key = .big_poe_one, .value = .{ .boolean = true } },
         },
     },
     .{
         .name = "Expert",
         .tip =
-            \\For experienced players: everything closed as in the game (child Zelda too), the bridge needs all six
+            \\For experienced players: a random starting age (child or adult, the spoiler log says which), everything
+            \\closed as in the game (child Zelda too), the bridge needs all six
             \\medallions, songs and the stones and medallions anywhere, both ocarinas, the Weird Egg, freestanding rupees,
             \\every Gold Skulltula, 4 items per shop and Business Scrubs shuffled at random prices up to 200 rupees, maps and
             \\compasses where they are in the game, Balanced hints (Mask of Truth needed), and the game's own rules: bombs need
             \\the Goron Bracelet, Gold Skulltulas keep their time and age, Saria needs Zelda's visit, Anju wants all her
-            \\Cuccos and Ganon's trials stay.
+            \\Cuccos, the Poe shop wants all its Big Poes and Ganon's trials stay.
         ,
         .values = &.{
             .{ .key = .logic_rules, .value = .{ .choice = "glitchless" } },
@@ -1304,7 +1305,7 @@ pub const presets = [_]Preset{
             .{ .key = .open_door, .value = .{ .choice = "closed" } },
             .{ .key = .open_zora, .value = .{ .choice = "closed" } },
             .{ .key = .open_dmt, .value = .{ .boolean = false } },
-            .{ .key = .starting_age, .value = .{ .choice = "child" } },
+            .{ .key = .starting_age, .value = .{ .choice = "random" } },
             .{ .key = .rainbow_bridge, .value = .{ .choice = "medallions" } },
             .{ .key = .bridge_medallions, .value = .{ .int = 6 } },
             .{ .key = .bridge_tokens, .value = .{ .int = 100 } },
@@ -1434,7 +1435,7 @@ pub const presets = [_]Preset{
             .{ .key = .skip_ganon_trials, .value = .{ .boolean = true } },
             .{ .key = .saria_song_ocarina, .value = .{ .boolean = true } },
             .{ .key = .anju_one_cucco, .value = .{ .boolean = true } },
-            .{ .key = .big_poe_one, .value = .{ .boolean = false } },
+            .{ .key = .big_poe_one, .value = .{ .boolean = true } },
         },
     },
 };

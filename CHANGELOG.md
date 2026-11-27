@@ -65,6 +65,8 @@ with the version that made them, and your saves are safe. Make a new seed to get
 - **Stable badges:** Starting Age (Child, Adult and Random), Barren Dungeons, Starting Inventory, Item Restrictions
   and Progressive Items are marked Stable, and so is "Poe shop requires only 1 Big Poe" (it has worked since 0.7.6;
   only its badge was wrong). Skip Cutscenes and Skip NPC Dialogs are still In Testing.
+- **Seed presets use the new settings:** Beginner, Standard and Race now need only one Big Poe for the Poe shop,
+  and Expert starts at a random age. All four keep progressive items on.
 - **The ROM Options tab is now called General Settings.**
 - **Skip Area Intro Cutscenes is now part of Skip Cutscenes.** Turning on Skip Cutscenes also skips the area intros.
   Old settings still work: if you had the area intros skipped, Skip Cutscenes is turned on for you.
