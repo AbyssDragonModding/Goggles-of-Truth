@@ -13,3 +13,6 @@ checklist_sample_*.csv
 user_settings.toml
 user_settings.toml.tmp
 save_backups/
+
+# Visual Studio resource editor state (made when app.rc is opened); local only
+src/ui/app.aps
