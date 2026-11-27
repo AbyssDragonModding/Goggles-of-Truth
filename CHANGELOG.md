@@ -27,20 +27,20 @@ with the version that made them, and your saves are safe. Make a new seed to get
 - **Starting Age**: Child, Adult or Random. As an adult, a new game starts straight in the Temple of Time's main
   hall, facing the Master Sword room, with the Master Sword equipped and your start items handed over right away;
   young Link never shows. Rauru's item is already yours, and the Door of Time is open. Put the sword back to become
-  a child. Random picks one for the seed, and the spoiler log says which. Not tested in-game yet.
+  a child. Random picks one for the seed, and the spoiler log says which.
 - **Barren Dungeons**: 1 to 5 dungeons, or a random number, hold nothing but rupees (plus their own keys when keys
   stay in their dungeons). The Medallion or Stone you'd get for beating a barren dungeon, its boss's Heart
   Container, and Sheik's song in a barren Ice Cavern are put somewhere else in the seed. The altar in the Temple of
-  Time tells you which dungeons are barren on its second page. Not tested in-game yet.
+  Time tells you which dungeons are barren on its second page.
 - **Starting Inventory**: a new tab where you pick items a new game starts with: equipment, items, upgrades, songs
   and hearts. Items with tiers count up (add the Hookshot twice for the Longshot). The logic knows you have them,
-  and the seed won't hide a second copy (a Blue Rupee takes its place). Not tested in-game yet.
+  and the seed won't hide a second copy (a Blue Rupee takes its place).
 - **Item Restrictions** on the Exclusions tab: keep a chosen item away from a chosen location, and the seed puts
   it somewhere else. Pick a location in the list, pick an item, then click Forbid. A Progressive item covers every
   tier (Progressive Bomb Bag means any bomb bag).
 - **Skip NPC Dialogs**: characters skip their long story talks and go straight to their short line, for example
   Saria after the Deku Tree. Talks that give an item or move a quest on still play. A setting of its own while it's
-  being tested; it will become part of Skip Cutscenes. Not tested in-game yet.
+  being tested; it will become part of Skip Cutscenes.
 - **The medallions menu opens whenever a boss, sage or character hands you a Spiritual Stone or Medallion**, as it
   does after the Deku Tree, and once when a new game starts with one. With Shuffle Spiritual Stones/Medallions on
   Anywhere, a Stone or Medallion found in a chest, a shop or on the ground doesn't open it. Its message now reads
@@ -56,7 +56,7 @@ with the version that made them, and your saves are safe. Make a new seed to get
   Windows, macOS or GNOME. It changes right away and is remembered.
 - **Test seeds from a plan file**, first released early in 0.7.8, now with the parts that needed 0.8.0: a test
   start can give items already owned, and a plan can set Starting Inventory and Item Restrictions. Building the
-  window yourself in debug mode adds a Test Seeds tab for them.
+  window yourself in debug mode adds a Test Seeds tab for them (Release builds its not there as their used for bug)
 
 ### Changed
 - **Buttons are pill shaped**, with a bit more room on their sides.
@@ -77,10 +77,9 @@ with the version that made them, and your saves are safe. Make a new seed to get
 ### Fixed
 - **Items lying underwater couldn't be picked up:** an invisible block sat above them that Link could stand on
   (a player found it over an Ocarina in the Kokiri Forest pond next to Mido). Items lying anywhere in the world now
-  behave like the rupees they replace: nothing solid around them, and they're a little easier to grab. Not tested
-  in-game yet.
+  behave like the rupees they replace: nothing solid around them, and they're a little easier to grab. 
 - **Refills Need Their Item gave a Blue Rupee even when you had the item** (arrows with the Bow, for example). Those
-  refills now only go in small chests, which give the refill once you own its item. Not tested in-game yet.
+  refills now only go in small chests, which give the refill once you own its item.
 - **A seed could hide your only Bomb Bag behind a rock that needs bombs.** The logic thought young Link could break
   the rocks over the Lost Woods and Hyrule Field scrub grottos with the Megaton Hammer, which only adult Link can
   use. Seeds no longer count on that.
@@ -92,9 +91,9 @@ with the version that made them, and your saves are safe. Make a new seed to get
   something he can't. Places only young Link can reach now need the Goron Bracelet itself.
 - **You can put the Master Sword back as soon as you've been an adult**, not only after the Forest Temple, so a
   seed never needs the Forest Temple before you can be a child again. Sheik now waits by the door of the sword room
-  instead of behind the pedestal. The Forest Temple and the Prelude of Light play as before. Not tested in-game yet.
+  instead of behind the pedestal. The Forest Temple and the Prelude of Light play as before.
 - **The Hyrule Field scrub's Piece of Heart** now waits until you can reach that area as an adult (to learn his
-  password) and as a child with bombs. Not tested in-game yet.
+  password) and as a child with bombs. Not fully tested in-game yet.
 
 ## 0.7.8 - 2026-11-25
 
@@ -110,7 +109,7 @@ Bug fixes, and 0.8.0's test seeds released early. Items stay in the same places,
   quest, cutscene, location and item name you can use.
 - The parts of it that rely on 0.8.0's changes were left out and come with 0.8.0: starting with items already
   owned (a plan that asks for them says so; place the items at nearby checks instead), and the hint for placing
-  progressive items. Starting an event on arrival is not tested yet.
+  progressive items.
 
 ### Fixed
 - **Two Malons and two Talons at Hyrule Castle.** If you got the Goron Ruby before meeting Zelda, Malon and Talon's
@@ -123,8 +122,7 @@ Bug fixes, and 0.8.0's test seeds released early. Items stay in the same places,
   Bomb Bags, which sank into any shelf, now rest on it too.
 - **The Weird Egg never hatched** when you found it after the point where Malon's egg would hatch (with Shuffle
   Weird Egg on). Every Weird Egg the randomizer gives you is now the hatched Cucco straight away, ready to wake
-  Talon. The spoiler log and hints still call it the Weird Egg. Not tested in-game yet.
-
+  Talon. The spoiler log and hints still call it the Weird Egg. 
 ## 0.7.7 - 2026-11-24
 
 Bug fixes only. Items stay in the same places, so you can rebuild any 0.7.6 seed with **Rebuild Seed** to get these
