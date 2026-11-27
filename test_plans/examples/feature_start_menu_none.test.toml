@@ -1,0 +1,16 @@
+# Starting Age: Adult with no Spiritual Stone or Medallion at the start. Check: no child Link at the start, the
+# item windows, and NO medallions menu (no empty Key Items text box) before the autosave.
+name = "ADULTMENUNONE1"
+
+[settings]
+starting_age = "adult"
+skip_child_zelda = true
+
+[place]
+"Rauru (Light Medallion)" = "Purple Rupee"
+
+[forbid]
+# the other checks a new game hands over (Skip Child Zelda)
+"HC Zeldas Letter" = ["Kokiri Emerald", "Goron Ruby", "Zora Sapphire", "Forest Medallion", "Fire Medallion", "Water Medallion", "Shadow Medallion", "Spirit Medallion", "Light Medallion"]
+"HC Malon Egg" = ["Kokiri Emerald", "Goron Ruby", "Zora Sapphire", "Forest Medallion", "Fire Medallion", "Water Medallion", "Shadow Medallion", "Spirit Medallion", "Light Medallion"]
+"Song from Impa" = ["Kokiri Emerald", "Goron Ruby", "Zora Sapphire", "Forest Medallion", "Fire Medallion", "Water Medallion", "Shadow Medallion", "Spirit Medallion", "Light Medallion"]

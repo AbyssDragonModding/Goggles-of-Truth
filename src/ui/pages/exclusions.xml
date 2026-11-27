@@ -7,13 +7,13 @@
 	<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Fill="1" Slot.Padding="6,10,6,10">
 		<VBox Spacing="10">
 			<HBox Spacing="12">
-				<Label Text="Excluded locations" TextSize="16" Color="#F5CC61" Slot.Fill="1" Slot.VAlign="Center"/>
+				<Label Text="Excluded locations" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
 				<StableBadge/>
 			</HBox>
-			<Label TextSize="13" Color="#C7D1DBD9" Wrap="true" Text="Excluded locations never hold progression items, keys or boss rewards: only rupees, ammo, hearts and the like (a map or compass may land there). A song or boss reward spot that can only hold a song or reward with your settings stays included (the log says so). Excluding very many locations can leave too little room for the required items; the error then says to exclude fewer. Pick a location to exclude it (click the field and type to search); double-click an excluded location to include it again. Scan the game on the ROM Options tab to fill the picker."/>
+			<Label TextSize="13" Class="Muted" Wrap="true" Text="Excluded locations never hold progression items, keys or boss rewards: only rupees, ammo, hearts and the like (a map or compass may land there). A song or boss reward spot that can only hold a song or reward with your settings stays included (the log says so). Excluding very many locations can leave too little room for the required items; the error then says to exclude fewer. Pick a location to exclude it (click the field and type to search); double-click an excluded location to include it again. Scan the game on the General Settings tab to fill the picker."/>
 			<HBox Spacing="10">
 				<SearchPicker FaceName="excl_loc" LabelName="excl_loc_label" Placeholder="Pick a location to exclude..." Slot.Fill="1"/>
-				<Label Name="excl_count" Text="0 excluded" TextSize="13" Color="#C7D1DBD9" Slot.Auto="true" Slot.VAlign="Center"/>
+				<Label Name="excl_count" Text="0 excluded" TextSize="13" Class="Muted" Slot.Auto="true" Slot.VAlign="Center"/>
 				<Button Text="Clear all" Style="Flat" OnClicked="rando.clear_excluded" Slot.Auto="true"/>
 			</HBox>
 			<ListView Name="excl_list" OnActivated="rando.toggle_excluded" Slot.Fill="1" Tooltip="Double-click a location to include it again."/>
@@ -22,15 +22,15 @@
 	<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Fill="0.7" Slot.Padding="6,0,6,10">
 		<VBox Spacing="10">
 			<HBox Spacing="12">
-				<Label Text="Item restrictions" TextSize="16" Color="#F5CC61" Slot.Fill="1" Slot.VAlign="Center"/>
-				<NewFeatureBadge/>
+				<Label Text="Item restrictions" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
+				<StableBadge/>
 			</HBox>
-			<Label TextSize="13" Color="#C7D1DBD9" Wrap="true" Text="Keep a chosen item away from a chosen location: the seed puts that item somewhere else. Pick a location and an item (click a field and type to search), then click Forbid. A Progressive item (such as Progressive Bomb Bag) covers every tier of that upgrade, with Progressive Items on or off. Double-click a rule to remove it. Scan the game on the ROM Options tab to fill the item list."/>
+			<Label TextSize="13" Class="Muted" Wrap="true" Text="Keep a chosen item away from a chosen location: the seed puts that item somewhere else. Pick a location and an item (click a field and type to search), then click Forbid. A Progressive item (such as Progressive Bomb Bag) covers every tier of that upgrade, with Progressive Items on or off. Double-click a rule to remove it. Scan the game on the General Settings tab to fill the item list."/>
 			<HBox Spacing="10">
 				<SearchPicker FaceName="restrict_loc" LabelName="restrict_loc_label" Placeholder="Pick a location..." Slot.Fill="0.5"/>
 				<SearchPicker FaceName="restrict_item" LabelName="restrict_item_label" Placeholder="Pick an item..." Slot.Fill="0.5"/>
 				<Button Text="Forbid" OnClicked="rando.restrict_add" Slot.Auto="true" Tooltip="The item is never placed at the location."/>
-				<Label Name="restrict_count" Text="No rules" TextSize="13" Color="#C7D1DBD9" Slot.Auto="true" Slot.VAlign="Center"/>
+				<Label Name="restrict_count" Text="No rules" TextSize="13" Class="Muted" Slot.Auto="true" Slot.VAlign="Center"/>
 				<Button Text="Clear all" Style="Flat" OnClicked="rando.restrict_clear" Slot.Auto="true"/>
 			</HBox>
 			<ListView Name="restrict_list" OnActivated="rando.restrict_remove" Slot.Fill="1" Tooltip="Double-click a rule to remove it."/>

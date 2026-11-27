@@ -42,9 +42,14 @@ pub const Paths = struct {
 };
 
 pub const App = struct {
-    /// kept for the Python version's updater (the compiled program doesn't update itself)
+    /// the window checks GitHub for a newer release when it opens (platform/updater.zig)
     auto_update: bool = true,
+    /// the window's theme (src/ui/themes.zig names them; an unknown one is the default, and the window's log says so)
+    theme: []const u8 = default_theme,
 };
+
+/// the randomizer's own theme (src/ui/themes.zig default_value)
+pub const default_theme = "goggles_of_truth";
 
 pub const Loaded = struct {
     settings: Settings,
@@ -171,9 +176,14 @@ pub fn load(allocator: Allocator, env: *const Env) error{OutOfMemory}!Loaded {
         };
     }
     var app = App{};
-    if (doc.table("app")) |t| if (t.get("auto_update")) |v| if (v == .bool) {
-        app.auto_update = v.bool;
-    };
+    if (doc.table("app")) |t| {
+        if (t.get("auto_update")) |v| if (v == .bool) {
+            app.auto_update = v.bool;
+        };
+        if (t.get("theme")) |v| if (v == .string) {
+            app.theme = v.string;
+        };
+    }
     const entries = if (doc.table("settings")) |t| t.entries.items else &.{};
     const st = try validate(allocator, entries, &messages, "user_settings.toml: ");
     return Loaded{ .settings = st, .paths = paths, .app = app, .messages = messages.items };
@@ -259,9 +269,14 @@ pub fn dumps(allocator: Allocator, st: *const Settings, paths: Paths, app: App) 
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(allocator, header);
     try out.appendSlice(allocator, "[app]\n");
-    try out.appendSlice(allocator, "# Check GitHub for a newer version when the randomizer opens, pull it and restart (only in a git\n");
-    try out.appendSlice(allocator, "# clone; a downloaded zip is never changed): true or false. Default: true\n");
+    try out.appendSlice(allocator, "# Check GitHub for a newer release when the window opens (it asks before downloading and installing it):\n");
+    try out.appendSlice(allocator, "# true or false. Default: true\n");
     try out.print(allocator, "auto_update = {s}\n", .{if (app.auto_update) "true" else "false"});
+    try out.appendSlice(allocator, "# The window's theme, chosen on the General Settings tab: \"goggles_of_truth\" or one of Raven's looks (\"raven_dark\",\n");
+    try out.appendSlice(allocator, "# \"raven_light\", \"raven_glass_dark\", \"windows_light\", \"macos_dark\", \"gnome_light\", \"native_dark\"...). Default: \"goggles_of_truth\"\n");
+    try out.appendSlice(allocator, "theme = ");
+    try tomlString(&out, allocator, app.theme);
+    try out.append(allocator, '\n');
     try out.appendSlice(allocator, "\n[paths]\n");
     try out.appendSlice(allocator, "# Your game (.nup file or extracted romfs folder) and the folder the mod is written to.\n");
     try out.appendSlice(allocator, "# Backslashes are written as \\\\ (or use single quotes: game = 'D:\\Games\\game.nup').\n");
@@ -315,14 +330,13 @@ pub fn dumps(allocator: Allocator, st: *const Settings, paths: Paths, app: App) 
     return out.items;
 }
 
-/// Writes the file (through a temporary file, so a crash never leaves half a file). The [app] options are kept as
-/// they are in the file. Returns an error text, or null when it was saved.
-pub fn save(allocator: Allocator, env: *const Env, st: *const Settings, paths: Paths) error{OutOfMemory}!?[]const u8 {
+/// Writes the file (through a temporary file, so a crash never leaves half a file), with the [app] options the
+/// window sets (`app`: the theme and the update check). Returns an error text, or null when it was saved.
+pub fn save(allocator: Allocator, env: *const Env, st: *const Settings, paths: Paths, app: App) error{OutOfMemory}!?[]const u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const a = arena.allocator();
-    const loaded = try load(a, env);
-    const text = try dumps(a, st, paths, loaded.app);
+    const text = try dumps(a, st, paths, app);
     const file = try path(a, env);
     env.fs.writeAtomic(a, file, text) catch |err| return try std.fmt.allocPrint(allocator, "{s}", .{@errorName(err)});
     return null;

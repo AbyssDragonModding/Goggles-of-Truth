@@ -20,6 +20,7 @@
 //!   goggles_cli dump-world <game> <out.jsonl>         every location as JSON lines (for comparing builds)
 //!   goggles_cli dump-plan <game> <settings> <out.txt> the shuffled locations and the item pool
 //!   goggles_cli selftest <game>                       read and write back every event flow (byte check)
+//!   goggles_cli crash-test [segfault]                 crash on purpose, to check the crash reports (crash_logs)
 //!
 //! Without --settings, generate uses user_settings.toml next to the program with --from-user-settings, else the
 //! defaults. Compressed files are always cached in the cache folder next to the program, unless --no-cache is
@@ -43,10 +44,18 @@ const usage =
     \\  goggles_cli dump-world <game> <out.jsonl>
     \\  goggles_cli dump-plan <game> <settings string> <out.txt>
     \\  goggles_cli selftest <game>
+    \\  goggles_cli crash-test [segfault]
     \\
 ;
 
 const CliError = error{ BadArguments, Failed };
+
+// a crash writes a report to crash_logs next to the program (core/crashlog.zig)
+pub const panic = std.debug.FullPanic(engine.crashlog.onPanic);
+pub const debug = struct {
+    pub const handleSegfault = engine.crashlog.onSegfault;
+};
+pub const std_options: std.Options = .{ .enable_segfault_handler = true };
 
 pub fn main(init: std.process.Init) !u8 {
     const gpa = init.gpa;
@@ -55,6 +64,7 @@ pub fn main(init: std.process.Init) !u8 {
     const fs = engine.fs.Fs.init(io);
     const app_dir = std.process.executableDirPathAlloc(io, init.arena.allocator()) catch ".";
     const env = engine.Env{ .environ = init.environ_map, .fs = fs, .app_dir = app_dir };
+    engine.crashlog.install(app_dir, "command-line tool", printReportPath);
 
     if (args.len < 2) {
         std.debug.print("{s}", .{usage});
@@ -80,6 +90,8 @@ pub fn main(init: std.process.Init) !u8 {
         cmdDumpPlan(gpa, fs, rest)
     else if (std.mem.eql(u8, command, "selftest"))
         cmdSelftest(gpa, fs, rest)
+    else if (std.mem.eql(u8, command, "crash-test"))
+        cmdCrashTest(rest)
     else
         error.BadArguments;
     result catch |err| switch (err) {
@@ -459,4 +471,22 @@ fn cmdSelftest(gpa: Allocator, fs: engine.fs.Fs, args: []const [:0]const u8) !vo
     }
     std.debug.print("event flows: {d} write back byte-identical, {d} not\n", .{ same, different });
     if (different > 0) return error.Failed;
+}
+
+/// Crashes on purpose (a panic, or with "segfault" an invalid memory access), to check that a crash report is
+/// written to crash_logs next to the program (core/crashlog.zig).
+fn cmdCrashTest(args: []const []const u8) CliError!void {
+    if (args.len > 0 and std.mem.eql(u8, args[0], "segfault")) {
+        // a read the system refuses: address 8 is never mapped
+        const unmapped_address: usize = 8;
+        const pointer: *volatile u8 = @ptrFromInt(unmapped_address);
+        std.debug.print("read: {d}\n", .{pointer.*});
+        return;
+    }
+    @panic("crash-test: a crash on purpose, to check the crash reports");
+}
+
+/// Says where the crash report went (core/crashlog.zig; runs while crashing).
+fn printReportPath(report_path: []const u8) void {
+    std.debug.print("\nThe randomizer crashed. A crash report was saved to:\n{s}\n\n", .{report_path});
 }

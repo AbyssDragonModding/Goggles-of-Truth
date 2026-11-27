@@ -34,6 +34,7 @@
 const std = @import("std");
 const evfl = @import("../formats/evfl.zig");
 const byml = @import("../formats/byml.zig");
+const ainb = @import("../formats/ainb.zig");
 const flows = @import("flows.zig");
 const gamedata = @import("gamedata.zig");
 const patchset = @import("patchset.zig");
@@ -57,11 +58,6 @@ const played_prefix = "HavePlayedEvent.";
 const quest_enum_prefix = "Step_";
 /// what the added events' names start with (so a second edit of the opening is refused)
 const added_prefix = "RandoTestStart";
-/// the events giveOnArrival adds
-const arrival_prefix = "RandoAdultArrival";
-/// the gift call the game's NPC and check flows use (faststart.giveAtStart hands the start items over with it)
-const gift_flow = "GetPouchContent";
-const gift_entry = "GetPouchContentByActorName";
 /// the scene change's fade (Sequence_BancChangeFadePattern: 0 LoadingFade, 1 BlackFade; Dm_SY_BancChangeGo uses 1)
 const fade_black: i32 = 1;
 
@@ -81,9 +77,9 @@ pub const Warp = struct {
     fade_pattern: i32 = fade_black,
 };
 
-/// Where an adult start's gifts go: `entry` of `flowchart` (file `flow`), an event the game itself boots on arriving
-/// in adult Castle Town, which giveOnArrival turns into: play `scene`, fade in, hand the gifts over, autosave.
-pub const Arrival = struct { flow: []const u8, flowchart: []const u8, entry: []const u8, scene: []const u8 };
+/// An adult start that loads its own area (see "Starting Age: Adult"): Link is moved to `position` in it while the
+/// screen is still black.
+pub const InPlace = struct { position: [3]f32, facing_degrees: f32 };
 
 /// The opening as startAtSpawn left it.
 pub const SpawnResult = struct { data: []u8 };
@@ -103,74 +99,62 @@ pub const OpeningStart = struct {
     flags: []const FlagSet = &.{},
     /// actors added to the pouch and equipped (PouchSystemActor.EventTriggerAddOrRemovePouchContent, IsEquipDIrect)
     equip: []const []const u8 = &.{},
-    /// the adult start's layout (see "Starting Age: Adult"): no child opening; the change boots `arrival.scene`
-    /// (none: the scene change fades in on its own)
-    arrival: ?Arrival = null,
-    /// the change boots `arrival.entry` instead (it has gifts to hand over after the scene: giveOnArrival)
-    arrival_boots_entry: bool = false,
+    /// the adult start (see "Starting Age: Adult"): the new game already loaded adult Castle Town; the introduction
+    /// becomes the adult start's steps, with Link moved here
+    in_place: ?InPlace = null,
+    /// the medallions menu opens once, as after the Deku Tree (UISystemActor.EventOpenPerformanceImportantMenu, as
+    /// Dm_Kokiri_0130 opens it), just before the autosave; not with `warp` (its scene change comes there)
+    open_important_menu: bool = false,
 
     pub fn isEmpty(self: OpeningStart) bool {
-        return self.warp == null and self.time_hour == null and self.quest_steps.len == 0 and self.flags.len == 0 and self.equip.len == 0;
+        return self.warp == null and self.time_hour == null and self.quest_steps.len == 0 and self.flags.len == 0 and
+            self.equip.len == 0 and self.in_place == null and !self.open_important_menu;
     }
 };
 
 // ------------------------------------------------------------------------------------- Starting Age: Adult
-// As OotrR does it (src/oot_rando/patching/adult_start.py, MIT License, Copyright (c) 2026 Mozencaz): the new game
-// still loads Kokiri Forest, then the opening moves the Sheik and Forest quests on (AllSage Step01: the first
-// arrival's Sheik scenes count as played), marks the first trip to adult as made, and changes to adult Castle Town.
-// The Master Sword is added and equipped as the Door of Time flow does. The Door of Time is opened (door.zig) and
-// the save data has the rest (adult_start_changes).
+// As OotrR does it (src/oot_rando/patching/adult_start.py, MIT License, Copyright (c) 2026 Mozencaz): the opening
+// moves the Sheik and Forest quests on (AllSage Step01: the first arrival's Sheik scenes count as played), marks the
+// first trip to adult as made and adds the Master Sword as the Door of Time flow does. The Door of Time is opened
+// (door.zig) and the save data has the rest (adult_start_changes). Every seed lets the pedestal turn Link back to
+// child from his first trip to adult on and moves Sheik aside (pedestal.zig).
 //
-// Where adult Link appears: the Temple of Time's LightPrelude start spot (the hall, facing the pedestal room), where
-// the Prelude of Light scene puts him, with no scene. Before (0.8.0-dev, test report): the pedestal, with the sword
-// pull Dm_TimeTemple_0085; Sheik stood right behind it and the pedestal didn't take the sword back. Every seed now
-// moves Sheik aside and lets the pedestal turn Link back to child from his first trip to adult on (pedestal.zig).
-//
-// So that a new game doesn't show child Link for long (test report, FEAT_ADULT1: he appeared outside the Kokiri
-// Shop, got the start items' windows, then warped), the adult start (OpeningStart.arrival) also:
-// - cuts the opening's introduction after its Meet_DekuTree step, as OotrR does (its anchor, OpeningEvent:Event8):
-//   the start outside the shop, Navi, the camera and the opening's own fade-in don't play; the silent start items
-//   (ocarinas, the base bags) and the adult start's steps follow at once, then a fade-in, the scene change and the
-//   autosave. Why the fade-in: the introduction fades the screen out (UISystemActor.EventEventFadeOut, Event22) right
-//   before its Meet_DekuTree step and fades it in again only in the part that is cut. With the screen left faded
-//   out, the change to the Temple of Time stayed black (test reports, FEAT_ADULT1 with 0.8.0-dev f45e6fb and
-//   f52dca2, which also left out Kokiri Forest's loading fade-in: it plays again now). The version that played the
-//   whole introduction (e8f1d1c) changed scenes fine. Child Link shows for the moment the white fade takes;
-// - hands the start items that show an item window (Skip Child Zelda's checks, Rauru's check...) over on arrival.
-//   The change then boots AllSage:Market_Adult_AllSage_Start, the event the game itself boots on the first arrival
-//   as adult (DoorOfTime:Event96), so its RSDB rows already exist; giveOnArrival makes that entry add and equip the
-//   Master Sword (Link is adult by then), fade in, hand the gifts over and autosave. The adult start's save data has
-//   already made the native first-arrival scenes count as done, and nothing else boots that entry once the Door of
-//   Time's first pull is skipped (adult_start_changes). A test plan's own spawn has no arrival: the opening adds
-//   the sword then.
-//   Why not a new entry of OpeningEvent with new RSDB rows (0.8.0-dev f45e6fb): a new game stayed on a black
-//   screen (test report, FEAT_ADULT1); its scene had no fade-in after it (FadeInTypeEventEnd), and new event rows
-//   had never been tried in-game.
-pub const adult_start_warp = Warp{
-    .scene = "Market_Adult",
-    .start_spot = "LightPrelude",
-    // the LightPrelude start spot (StartPos.byml), as `goggles_cli test-catalog` lists it
-    .position = .{ 84.751, 104.232, -34.0 },
-    .facing_degrees = 90,
-    .boot_event = "",
-    .childhood = false,
-    .fade_pattern = 2,
-};
+// Unlike OotrR, a new game never loads Kokiri Forest: the first area (Sequence/FormalSequence.root: Title.module's
+// FirstBancParam, KokiriForest_Child) becomes adult Castle Town (firstAreaAdult), which makes Link adult as it loads
+// (its GameBancParam: IsChildWhenInitializingScene false). Why: every version that changed scenes from Kokiri
+// Forest showed child Link first (test reports: outside the Kokiri Shop, then "for a split second" during the
+// fade), and those that changed while the screen was faded out stayed black. The opening then (adultInPlace):
+// - Opening_LoadingKokiriForest closes the loading screen to black and ends (its fade-in and 2-second wait go;
+//   Skip Opening Movie is on, so the Kokiri movie doesn't play);
+// - Opening_Introduction keeps its first steps (Link takes part, the time is 6:00), then: the silent start items,
+//   the adult start's quests and flags, Link (and Navi) moved to the LightPrelude spot of the Temple of Time (the
+//   hall, facing the pedestal room, where the Prelude scene puts him), the Master Sword added and equipped, a
+//   moment for the area, the fade-in, the start items with an item window, the medallions menu, the autosave.
+// A test plan's own spawn keeps Kokiri Forest and changes scenes at the end of the opening, as for a child start.
+pub const first_area_sequence = "Sequence/FormalSequence.root.ainb";
+const first_area_param = "FirstBancParam";
+const first_area_child = "Work/Banc/GameBancParam/KokiriForest_Child.game__banc__GameBancParam.gyml";
+const first_area_adult = "Work/Banc/GameBancParam/Market_Adult.game__banc__GameBancParam.gyml";
+/// the LightPrelude start spot (StartPos.byml), as `goggles_cli test-catalog` lists it
+pub const adult_start_place = InPlace{ .position = .{ 84.751, 104.232, -34.0 }, .facing_degrees = 90 };
+/// Navi next to Link, as faststart.startOutside places her
+const navi_offset = [3]f32{ 0.6, 1.0, 0.4 };
 pub const adult_start_quests = [_]QuestProgress{
     .{ .quest = "AllSage", .step = "Step01" },
     .{ .quest = "SageOfForest", .step = "Step02" },
 };
 pub const adult_start_flags = [_]FlagSet{.{ .name = "Market_Child_Firsttime_GotoAdult", .value = true }};
 pub const adult_start_equip = [_][]const u8{"Weapon_Sword_Master"};
-pub const adult_start_arrival = Arrival{
-    .flow = "Event/EventFlow/AllSage.bfevfl.zs",
-    .flowchart = "AllSage",
-    .entry = "Market_Adult_AllSage_Start",
-    // no scene: Link appears at the LightPrelude spot as he is
-    .scene = "",
-};
-/// the time travel's fade (white, FadePattern 2), as the native scene transitions after it end (AllSage:Event9)
-const arrival_fade_in_type: i32 = 2;
+
+/// The game's first area as adult Castle Town (see "Starting Age: Adult").
+pub fn firstAreaAdult(allocator: Allocator, data: []const u8, progress: *Progress) PatchError![]u8 {
+    const r = ainb.repointStringConst(allocator, data, first_area_param, first_area_child, first_area_adult) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return progress.fail(error.NotAsExpected, "{s} is not as expected", .{first_area_sequence}),
+    };
+    if (r.count != 1) return progress.fail(error.NotAsExpected, "{s}: expected one first area, found {d}", .{ first_area_sequence, r.count });
+    return r.data;
+}
 
 /// The save data of an adult start. Not in OotrR's version:
 /// - the Ganondorf scene of the first pull counts as seen, so pulling the sword again as child is plain time travel
@@ -578,15 +562,38 @@ pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart,
         return progress.fail(error.NotAsExpected, "the opening's autosave is not reached by one event", .{});
     }
 
-    // the adult layout: the change boots the arrival entry when it hands gifts over (giveOnArrival)
-    var warp_boot: []const u8 = if (start.warp) |w| w.boot_event else "";
-    if (start.arrival) |arrival| {
-        if (namedRun(fc, "RandoStartGift") != null) return progress.fail(error.NotAsExpected, "an adult start's gifts belong to its arrival, not the opening", .{});
-        warp_boot = if (start.arrival_boots_entry) arrival.entry else arrival.scene;
-    }
+    const warp_boot: []const u8 = if (start.warp) |w| w.boot_event else "";
 
     // built from the autosave backwards: each new event leads to the one added before it
     var next: u16 = save.?;
+    if (start.open_important_menu and start.warp == null) {
+        try flows.ensureSystemActor(fc, allocator, "UISystemActor", opening_flow, progress);
+        const menu_aa = try flows.requireAction(fc, allocator, "UISystemActor", "EventOpenPerformanceImportantMenu", progress);
+        next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_MedallionsMenu", menu_aa, next, try Container.from(allocator, &.{
+            .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+        })));
+    }
+    // the adult start: its start items move out of the introduction's end (faststart.giveAtStart put them before the
+    // autosave) into its own order; the ones with an item window come after the fade-in
+    const items_run: ?Run = if (start.in_place != null) namedRun(fc, "RandoStartItem") else null;
+    if (start.in_place != null) {
+        if (namedRun(fc, "RandoStartGift")) |gifts| {
+            fc.events.items[gifts.last].nextPtr().?.* = next;
+            next = gifts.first;
+        }
+        try flows.ensureSystemActor(fc, allocator, "UISystemActor", opening_flow, progress);
+        const fade_aa = try flows.requireAction(fc, allocator, "UISystemActor", "EventEventFadeIn", progress);
+        next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_FadeIn", fade_aa, next, try Container.from(allocator, &.{
+            .{ .name = "Length", .value = .{ .int = 1 } },
+            .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+        })));
+        // a moment for the area around the new spot, as faststart.startOutside waits
+        const wait_aa = try flows.requireAction(fc, allocator, "EventSystemActor", "EventWait", progress);
+        next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_Wait", wait_aa, next, try Container.from(allocator, &.{
+            .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+            .{ .name = "Frames", .value = .{ .int = 30 } },
+        })));
+    }
     if (start.warp) |w| {
         const change_aa = try flows.requireAction(fc, allocator, "GameSystemActor", "EventReserveBancChange", progress);
         const position = allocator.alloc(f32, 3) catch return error.OutOfMemory;
@@ -607,16 +614,6 @@ pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart,
         if (warp_boot.len > 0) params.append(allocator, .{ .name = "BootEventName", .value = .{ .string = warp_boot } }) catch return error.OutOfMemory;
         next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_Warp", change_aa, next, try Container.from(allocator, params.items)));
         if (w.childhood) |is_child| next = try setFlag(fc, allocator, "Age", childhood_flag, is_child, next, progress);
-        if (start.arrival != null) {
-            // the adult layout cuts the introduction after its fade-out: the screen is faded in again before the
-            // change (see "Starting Age: Adult"), as the introduction's own end would have
-            try flows.ensureSystemActor(fc, allocator, "UISystemActor", opening_flow, progress);
-            const fade_aa = try flows.requireAction(fc, allocator, "UISystemActor", "EventEventFadeIn", progress);
-            next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_FadeIn", fade_aa, next, try Container.from(allocator, &.{
-                .{ .name = "Length", .value = .{ .int = 1 } },
-                .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
-            })));
-        }
     }
     var k = start.equip.len;
     while (k > 0) {
@@ -630,6 +627,29 @@ pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart,
             .{ .name = "IsSetMessageTargetActorName", .value = .{ .bool = true } },
             .{ .name = "Actor", .value = .{ .string = start.equip[k] } },
             .{ .name = "IsEquipDIrect", .value = .{ .bool = true } },
+        })));
+    }
+    if (start.in_place) |place| {
+        // Link and Navi to the adult start's spot (before the sword: it is equipped where he stands)
+        const link_pos = allocator.alloc(f32, 3) catch return error.OutOfMemory;
+        const navi_pos = allocator.alloc(f32, 3) catch return error.OutOfMemory;
+        for (0..3) |i| {
+            link_pos[i] = place.position[i];
+            navi_pos[i] = place.position[i] + navi_offset[i];
+        }
+        const navi_aa = try flows.requireAction(fc, allocator, "Npc_Navi", "EventTriggerNaviWarpToTargetPosAndRot", progress);
+        next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_Navi", navi_aa, next, try Container.from(allocator, &.{
+            .{ .name = "Position", .value = .{ .float_array = navi_pos } },
+            .{ .name = "ClothWarpMode", .value = .{ .int = -1 } },
+            .{ .name = "YAngle", .value = .{ .float = place.facing_degrees } },
+        })));
+        const link_aa = try flows.requireAction(fc, allocator, "Player_Event", "EventPlayerWarpToTargetPosAndRot", progress);
+        next = try fc.addEvent(allocator, evfl.makeAction(added_prefix ++ "_Link", link_aa, next, try Container.from(allocator, &.{
+            .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+            .{ .name = "UseDemoWait", .value = .{ .bool = true } },
+            .{ .name = "YAngle", .value = .{ .float = place.facing_degrees } },
+            .{ .name = "Position", .value = .{ .float_array = link_pos } },
+            .{ .name = "ASCommand", .value = .{ .string = "EvtWait" } },
         })));
     }
     k = start.flags.len;
@@ -656,8 +676,12 @@ pub fn startAtSpawn(allocator: Allocator, data: []const u8, start: OpeningStart,
             .{ .name = "TimeHour", .value = .{ .int = hour } },
         })));
     }
-    if (start.arrival != null) {
-        try adultLayout(fc, next, progress);
+    if (start.in_place != null) {
+        if (items_run) |items| {
+            fc.events.items[items.last].nextPtr().?.* = next;
+            next = items.first;
+        }
+        try adultInPlace(allocator, fc, next, progress);
         return .{ .data = try flows.writeBack(allocator, &doc, "OpeningEvent (adult start)", progress) };
     }
     fc.events.items[before[0]].nextPtr().?.* = next;
@@ -686,117 +710,32 @@ fn namedRun(fc: *evfl.Flowchart, prefix: []const u8) ?Run {
     return .{ .first = first orelse return null, .last = last orelse return null };
 }
 
-/// The adult layout (see "Starting Age: Adult"): `chain` is the adult start's steps up to the autosave.
-fn adultLayout(fc: *evfl.Flowchart, chain: u16, progress: *Progress) PatchError!void {
-    // the introduction is cut after its Meet_DekuTree step (OotrR's anchor)
-    var anchor: ?u16 = null;
-    var anchors: usize = 0;
-    for (fc.events.items, 0..) |*e, i| {
-        if (!fc.isAction(e, "ChallengeSystemActor", "EventExecuteProgressChallengeStep")) continue;
-        const p = e.params() orelse continue;
-        if (!p.isString("ChallengeName", "Meet_DekuTree")) continue;
-        anchor = @intCast(i);
-        anchors += 1;
-    }
-    if (anchors != 1) return progress.fail(error.NotAsExpected, "expected one Meet_DekuTree step in the opening, found {d}", .{anchors});
+/// The adult start in its own area (see "Starting Age: Adult"): the loading entry ends on its black loading screen
+/// close, and the introduction goes from its time step to `chain` (the adult start's steps up to the autosave). The
+/// introduction's other events stay in the file, unreached.
+fn adultInPlace(allocator: Allocator, fc: *evfl.Flowchart, chain: u16, progress: *Progress) PatchError!void {
+    const loading = fc.entryPoint("Opening_LoadingKokiriForest") orelse return progress.fail(error.NotAsExpected, "no Opening_LoadingKokiriForest entry", .{});
+    const close = try onlyReached(allocator, fc, loading.main_event, "UISystemActor", "EventLoadingFadeOut", "the loading screen close", progress);
+    fc.events.items[close].nextPtr().?.* = NONE;
 
-    // after it: the silent start items, then the adult start's steps
-    var head = chain;
-    if (namedRun(fc, "RandoStartItem")) |items| {
-        fc.events.items[items.last].nextPtr().?.* = chain;
-        head = items.first;
-    }
-    fc.events.items[anchor.?].nextPtr().?.* = head;
+    const intro = fc.entryPoint("Opening_Introduction") orelse return progress.fail(error.NotAsExpected, "no Opening_Introduction entry", .{});
+    const time = try onlyReached(allocator, fc, intro.main_event, "EventWorldManagerController", "EventTrigger_SetTime", "the introduction's time step", progress);
+    fc.events.items[time].nextPtr().?.* = chain;
 }
 
-/// The arrival flow (`data`, Arrival.flow) with its entry now: play the scene (if it has one), add and equip `equip`
-/// (adult Link's Master Sword), fade in, hand `gifts` over (one each, with their item window), autosave. The entry's
-/// native events stay in the file, unreached.
-///
-/// Why the sword here and not in the opening: added there, while Link is still a child, the adult start arrived
-/// without it (test report, ADULTPEDESTAL1: no Master Sword); the sword pull scene had given it before.
-pub fn giveOnArrival(allocator: Allocator, data: []const u8, arrival: Arrival, equip: []const []const u8, gifts: []const []const u8, progress: *Progress) PatchError![]u8 {
-    var doc = try flows.readFlow(allocator, data, arrival.flowchart, progress);
-    const fc = try flows.expectFlowchart(&doc, arrival.flowchart, progress);
-    for (fc.events.items) |e| {
-        if (std.mem.startsWith(u8, e.name, arrival_prefix)) return progress.fail(error.NotAsExpected, "{s} already hands start items over", .{arrival.flowchart});
+/// The one action `actor`.`action` reached from `start` (`what` names it in the error).
+fn onlyReached(allocator: Allocator, fc: *evfl.Flowchart, start: u16, actor: []const u8, action: []const u8, what: []const u8, progress: *Progress) PatchError!u16 {
+    const reached = try fc.reach(allocator, start);
+    var found: ?u16 = null;
+    var count: usize = 0;
+    for (reached, 0..) |r, i| {
+        if (r and fc.isAction(&fc.events.items[i], actor, action)) {
+            found = @intCast(i);
+            count += 1;
+        }
     }
-    const entry = fc.entryPoint(arrival.entry) orelse return progress.fail(error.NotAsExpected, "{s} has no {s} entry", .{ arrival.flowchart, arrival.entry });
-
-    // built from the end backwards: each new event leads to the one added before it
-    try flows.ensureSystemActor(fc, allocator, "GameSystemActor", arrival.flow, progress);
-    const save_aa = try flows.requireAction(fc, allocator, "GameSystemActor", "EventTriggerRequestAutoSave", progress);
-    var next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_Save", save_aa, NONE, null));
-    var gift_events: std.ArrayList(u16) = .empty;
-    var k = gifts.len;
-    while (k > 0) {
-        k -= 1;
-        const name = std.fmt.allocPrint(allocator, "{s}_Gift{d}", .{ arrival_prefix, k }) catch return error.OutOfMemory;
-        next = try fc.addEvent(allocator, evfl.makeSubFlow(name, gift_flow, gift_entry, next, try Container.from(allocator, &.{
-            .{ .name = "ActorName", .value = .{ .string = gifts[k] } },
-        })));
-        gift_events.append(allocator, next) catch return error.OutOfMemory;
-    }
-    // after the scene change (or the scene's own white fade-in) the screen is faded in, so the item windows never
-    // show on a faded screen (AllSage's own entry fades in the same way, Event97)
-    try flows.ensureSystemActor(fc, allocator, "UISystemActor", arrival.flow, progress);
-    const fade_aa = try flows.requireAction(fc, allocator, "UISystemActor", "EventEventFadeIn", progress);
-    next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_FadeIn", fade_aa, next, try Container.from(allocator, &.{
-        .{ .name = "Length", .value = .{ .int = 1 } },
-        .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
-    })));
-    var k_equip = equip.len;
-    while (k_equip > 0) {
-        k_equip -= 1;
-        try flows.ensureSystemActor(fc, allocator, "PouchSystemActor", arrival.flow, progress);
-        const pouch_aa = try flows.requireAction(fc, allocator, "PouchSystemActor", "EventTriggerAddOrRemovePouchContent", progress);
-        const name = std.fmt.allocPrint(allocator, "{s}_Equip{d}", .{ arrival_prefix, k_equip }) catch return error.OutOfMemory;
-        // as DoorOfTime:Event115 adds the Master Sword
-        next = try fc.addEvent(allocator, evfl.makeAction(name, pouch_aa, next, try Container.from(allocator, &.{
-            .{ .name = "Num", .value = .{ .int = 1 } },
-            .{ .name = "IsSetMessageTargetActorName", .value = .{ .bool = true } },
-            .{ .name = "Actor", .value = .{ .string = equip[k_equip] } },
-            .{ .name = "IsEquipDIrect", .value = .{ .bool = true } },
-        })));
-    }
-    if (arrival.scene.len > 0) {
-        const transition_aa = try flows.requireAction(fc, allocator, "EventSystemActor", "EventTransition", progress);
-        next = try fc.addEvent(allocator, evfl.makeAction(arrival_prefix ++ "_Scene", transition_aa, next, try Container.from(allocator, &.{
-            .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
-            .{ .name = "SpecialEventActionType", .value = .{ .int = 1 } },
-            .{ .name = "EventName", .value = .{ .string = arrival.scene } },
-            .{ .name = "FadeInTypeEventEnd", .value = .{ .int = arrival_fade_in_type } },
-        })));
-    }
-    entry.main_event = next;
-    // the entry lists the gift calls it reaches (a missing one hung the game: flows.listReachedCalls)
-    try flows.listReachedCalls(allocator, fc, gift_events.items);
-    return flows.writeBack(allocator, &doc, "AllSage (adult start arrival)", progress);
-}
-
-/// Lists the arrival's scene in its entry's GameAnalyzedEventInfo row (ChildEventList: the scenes an event plays).
-/// The row is the game's own (Arrival.entry); the gift flow goes in its SubFlowList through
-/// storyskip.updateEventInfo, as for every changed flow.
-pub fn addArrivalScene(allocator: Allocator, world: *World, patches: *patchset.PatchSet, arrival: Arrival, progress: *Progress) PatchError!void {
-    // an arrival without a scene plays none
-    if (arrival.scene.len == 0) return;
-    const rel = try world.find(allocator, "RSDB", "GameAnalyzedEventInfo.");
-    const original = try patches.read(rel);
-    const doc = byml.load(allocator, original.data) catch return error.InvalidData;
-    const rows = switch (doc.root orelse return error.InvalidData) {
-        .array => |r| r,
-        else => return error.InvalidData,
-    };
-    for (rows.items.items) |r| {
-        const row = r.asDict() orelse continue;
-        if (!std.mem.eql(u8, row.getString("__RowId") orelse "", arrival.entry)) continue;
-        const scenes = try row.ensureArray(allocator, "ChildEventList");
-        for (scenes.items.items) |v| if (v.asString()) |listed| if (std.mem.eql(u8, listed, arrival.scene)) return;
-        try scenes.append(allocator, .{ .string = arrival.scene });
-        const out = byml.dump(allocator, doc.root, doc.version, doc.big_endian) catch return error.OutOfMemory;
-        return patches.emitZs(rel, original, out);
-    }
-    return progress.fail(error.NotAsExpected, "GameAnalyzedEventInfo has no {s} row", .{arrival.entry});
+    if (count != 1) return progress.fail(error.NotAsExpected, "expected one {s} in the opening, found {d}", .{ what, count });
+    return found.?;
 }
 
 /// GameDataActor.EventTriggerSetGameDataBool {name = value} -> `then`. Returns the new event.

@@ -1,0 +1,7 @@
+# Barren Dungeons: Random (1 to 5) with keys anywhere in their own dungeon and key rings. Check the same as BARREN3,
+# and that a barren dungeon's own key ring / small keys still lie inside it (you can still open its doors).
+name = "BARRENRAND1"
+
+[settings]
+barren_dungeons = "random"
+key_rings = "all"

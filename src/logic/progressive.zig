@@ -33,6 +33,13 @@ pub const Chain = struct {
     display_name: []const u8,
     /// lowest tier first
     tiers: []const Tier,
+    /// With Progressive Items off, each tier is its own item and the fill keeps them in order: a stronger tier only
+    /// goes where the logic needs the weaker one (generator/fill.zig, 0.7.8's rule). False for the lines nothing in
+    /// the logic needs the weaker tier of (the wallets, Deku Seed bags and quivers): no spot could keep their stronger
+    /// tier from being found first, so they stay progressive items either way. The Ocarinas too: an Ocarina lying in
+    /// the world comes without its tutorial and Ocarina button (generator/ocarina_handover.zig only fixes hand-overs
+    /// and chests), and a progressive one is never placed there.
+    separate_without_progressive: bool = false,
 
     /// The tier a chest shows when it has no check to make: the tier below the last one (chests make one check,
     /// see the module comment).
@@ -51,16 +58,16 @@ pub const chains = [_]Chain{
         .{ .key = "Ocarina_Fairy", .pouch_actor = "Item_Ocarina_Fairy" },
         .{ .key = "Ocarina_Time", .pouch_actor = "Item_Ocarina_Time" },
     } },
-    .{ .key = "Progressive_Hookshot", .display_name = "Progressive Hookshot", .tiers = &.{
+    .{ .key = "Progressive_Hookshot", .display_name = "Progressive Hookshot", .separate_without_progressive = true, .tiers = &.{
         .{ .key = "Hookshot", .pouch_actor = "Item_Hookshot" },
         .{ .key = "Longshot", .pouch_actor = "Item_Longshot" },
     } },
-    .{ .key = "Progressive_Strength", .display_name = "Progressive Strength Upgrade", .tiers = &.{
+    .{ .key = "Progressive_Strength", .display_name = "Progressive Strength Upgrade", .separate_without_progressive = true, .tiers = &.{
         .{ .key = "Gauntlet_Goron", .pouch_actor = "Armor_Child_Gauntlet_Goron" },
         .{ .key = "Gauntlet_Silver", .pouch_actor = "Armor_Adult_Gauntlet_Silver" },
         .{ .key = "Gauntlet_Gold", .pouch_actor = "Armor_Adult_Gauntlet_Gold" },
     } },
-    .{ .key = "Progressive_Scale", .display_name = "Progressive Scale", .tiers = &.{
+    .{ .key = "Progressive_Scale", .display_name = "Progressive Scale", .separate_without_progressive = true, .tiers = &.{
         .{ .key = "Scale_Silver", .pouch_actor = "Item_Scale_Silver" },
         .{ .key = "Scale_Gold", .pouch_actor = "Item_Scale_Gold" },
     } },
@@ -70,7 +77,7 @@ pub const chains = [_]Chain{
         .{ .key = "Wallet_Medium", .pouch_actor = "Item_Wallet_Medium" },
         .{ .key = "Wallet_Large", .pouch_actor = "Item_Wallet_Large" },
     } },
-    .{ .key = "Progressive_BombBag", .display_name = "Progressive Bomb Bag", .tiers = &.{
+    .{ .key = "Progressive_BombBag", .display_name = "Progressive Bomb Bag", .separate_without_progressive = true, .tiers = &.{
         .{ .key = "BombBag_Small", .pouch_actor = "Item_BombBag_Small" },
         .{ .key = "BombBag_Medium", .pouch_actor = "Item_BombBag_Medium" },
         .{ .key = "BombBag_Large", .pouch_actor = "Item_BombBag_Large" },
@@ -86,6 +93,17 @@ pub const chains = [_]Chain{
         .{ .key = "Quiver_Large", .pouch_actor = "Item_Quiver_Large" },
     } },
 };
+
+/// The tier just below tier `key` of a line that stays separate items with Progressive Items off
+/// (Chain.separate_without_progressive), or null: "Longshot" -> "Hookshot", "BombBag_Large" -> "BombBag_Medium".
+pub fn weakerTierOf(key: []const u8) ?[]const u8 {
+    const chain = chainOfTierItem(key) orelse return null;
+    if (!chain.separate_without_progressive) return null;
+    for (chain.tiers[1..], 1..) |tier, i| {
+        if (std.mem.eql(u8, tier.key, key)) return chain.tiers[i - 1].key;
+    }
+    return null;
+}
 
 /// The line whose progressive item is `key`, or null.
 pub fn chainOfProgressiveItem(key: []const u8) ?*const Chain {
@@ -115,5 +133,9 @@ test "every line has two or three tiers and unique keys" {
     try std.testing.expectEqualStrings("Longshot", chainOfProgressiveItem("Progressive_Hookshot").?.tiers[1].key);
     try std.testing.expect(chainOfProgressiveItem("Hookshot") == null);
     try std.testing.expect(chainOfProgressiveItem("Progressive_Strength").?.chestNeedsOneCopy());
+    try std.testing.expectEqualStrings("Hookshot", weakerTierOf("Longshot").?);
+    try std.testing.expectEqualStrings("Gauntlet_Goron", weakerTierOf("Gauntlet_Silver").?);
+    try std.testing.expect(weakerTierOf("Hookshot") == null);
+    try std.testing.expect(weakerTierOf("Wallet_Large") == null);
     try std.testing.expectEqualStrings("Gauntlet_Silver", chainOfProgressiveItem("Progressive_Strength").?.chestFallbackTier().key);
 }

@@ -1,0 +1,18 @@
+# The medallions menu after a reward from an event check: the Great Deku Tree's reward scene plays as soon as the new
+# game starts (boot_event) and hands over the Goron Ruby. Check: the "You got" window names the Goron Ruby,
+# then the medallions menu opens with the line "Added to Key Items".
+name = "REWARDMENU1"
+
+[settings]
+shuffle_rewards = "reward"
+starting_age = "child"
+barren_dungeons = "off"
+skip_story_scenes = false
+
+[place]
+"Queen Gohma (Kokiri Emerald)" = "Goron Ruby"
+
+[start]
+scene = "KokiriForest_Child"
+start_spot = "WarpFromDekuTree"
+boot_event = "Dm_Kokiri_0130"

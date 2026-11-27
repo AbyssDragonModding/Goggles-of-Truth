@@ -12,10 +12,10 @@
 			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
 				<VBox Spacing="10">
 					<HBox Spacing="12">
-						<Label Text="Test seed" TextSize="16" Color="#F5CC61" Slot.Fill="1" Slot.VAlign="Center"/>
+						<Label Text="Test seed" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
 						<ExperimentalBadge/>
 					</HBox>
-					<Label TextSize="13" Color="#C7D1DBD9" Wrap="true" Text="Debug builds only. Everything a test plan can say, as a form: the plan below follows it, and Generate Test Seed makes it into GogglesOfTruth_&lt;name&gt; in the output folder, as goggles_cli test does. Scan the game on the ROM Options tab to fill the drop-downs; click one and type to search its list. Double-click a row of any list to remove it."/>
+					<Label TextSize="13" Class="Muted" Wrap="true" Text="Debug builds only. Everything a test plan can say, as a form: the plan below follows it, and Generate Test Seed makes it into GogglesOfTruth_&lt;name&gt; in the output folder, as goggles_cli test does. Scan the game on the General Settings tab to fill the drop-downs; click one and type to search its list. Double-click a row of any list to remove it."/>
 					<HBox Spacing="10">
 						<Label Text="Name" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
 						<TextInput Name="ts_name" Placeholder="HOOKSHOT1 (letters, digits, - and _)" OnChanged="ts.changed" Slot.Fill="0.42"/>
@@ -39,7 +39,7 @@
 			<!-- Items at chosen locations, items kept away -->
 			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 				<VBox Spacing="10">
-					<Label Text="Place and forbid items" TextSize="16" Color="#F5CC61"/>
+					<Label Text="Place and forbid items" TextSize="16" Class="Heading"/>
 					<HBox Spacing="10">
 						<Label Text="Location" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
 						<SearchPicker FaceName="ts_loc" LabelName="ts_loc_label" Placeholder="Pick a location..." Slot.Fill="0.82"/>
@@ -59,7 +59,7 @@
 			<!-- Where and how a new game starts -->
 			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 				<VBox Spacing="10">
-					<Label Text="Start" TextSize="16" Color="#F5CC61"/>
+					<Label Text="Start" TextSize="16" Class="Heading"/>
 					<HBox Spacing="10">
 						<Label Text="Age" TextSize="14" Slot.Fill="0.18" Slot.VAlign="Center"/>
 						<ComboBox Name="ts_age" Items="As the settings say|Child|Adult" OnChanged="ts.changed" Slot.Fill="0.32"/>
@@ -97,7 +97,7 @@
 			<!-- Quests, flags and cutscenes -->
 			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 				<VBox Spacing="10">
-					<Label Text="Story" TextSize="16" Color="#F5CC61"/>
+					<Label Text="Story" TextSize="16" Class="Heading"/>
 					<HBox Spacing="10">
 						<Label Text="Quest" TextSize="14" Slot.Fill="0.12" Slot.VAlign="Center"/>
 						<SearchPicker FaceName="ts_quest" LabelName="ts_quest_label" Placeholder="Pick a quest..." Slot.Fill="0.38"/>
@@ -124,7 +124,7 @@
 			<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,10">
 				<VBox Spacing="10">
 					<HBox Spacing="10">
-						<Label Text="Plan" TextSize="16" Color="#F5CC61" Slot.Fill="1" Slot.VAlign="Center"/>
+						<Label Text="Plan" TextSize="16" Class="Heading" Slot.Fill="1" Slot.VAlign="Center"/>
 						<Button Text="Load Plan..." Style="Flat" OnClicked="ts.load" Slot.Auto="true"/>
 						<Button Text="Save Plan..." Style="Flat" OnClicked="ts.save" Slot.Auto="true"/>
 						<Button Text="Clear" Style="Flat" OnClicked="ts.clear" Slot.Auto="true"/>

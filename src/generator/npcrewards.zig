@@ -216,6 +216,33 @@ pub fn swapModels(world: *World, patches: *patchset.PatchSet, changed: []const C
     return done;
 }
 
+/// The scenes that show their reward with the "important item" display and keep their vanilla reward (not in
+/// `changed`) now show the normal item window for it. Used when the display's line no longer names the Kokiri
+/// Emerald (textpatches.writeStartRewardText: the medallions menu at the start shares it). Returns how many.
+pub fn useItemWindowForKeptImportantDisplays(world: *World, patches: *patchset.PatchSet, changed: []const Changed, progress: *Progress) PatchError!usize {
+    const a = patches.allocator;
+    var done: usize = 0;
+    for (tables.display) |d| {
+        if (!d.shows_important_item_display) continue;
+        var is_changed = false;
+        for (changed) |c| if (std.mem.eql(u8, c.location, d.location)) {
+            is_changed = true;
+        };
+        // a changed reward's display is already the item window (swapModels)
+        if (is_changed) continue;
+        const rel = try world.find(a, "Event/EventFlow", d.flow);
+        const orig = try patches.read(rel);
+        var doc = try flows.readFlow(a, orig.data, d.flow, progress);
+        const fc = doc.flowchart orelse return progress.fail(error.NotAsExpected, "{s} has no flowchart", .{d.flow});
+        // the scene's reward actor is the vanilla item's own actor, which the item window takes as is
+        _ = try replaceImportantItemDisplayWithItemWindow(a, fc, d.flow, d.actor, progress);
+        const out = try flows.writeBack(a, &doc, d.flow, progress);
+        try patches.emitZs(rel, orig, out);
+        done += 1;
+    }
+    return done;
+}
+
 const important_item_display_action = "EventOpenPerformanceImportantMenu";
 /// The game's item hand-over flow and its entry that opens the normal "You got ..." window for an actor
 /// (SetForGetWindow, then OpenGetWindow; dump: Event/EventFlow/GetPouchContent.bfevfl).

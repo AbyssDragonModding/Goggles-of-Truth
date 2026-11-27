@@ -1,0 +1,9 @@
+# Barren Dungeons: three dungeons, chosen by the seed (the spoiler log names them). Check: the Temple of Time altar's
+# second page names them; their chests, freestanding items, Gold Skulltulas and boss Heart Container hold only rupees
+# (tokens stay tokens); their small keys still open their doors; their Stone/Medallion and song (Sheik in the Ice
+# Cavern) are somewhere else, and the seed can be finished without entering them.
+name = "BARREN3"
+
+[settings]
+barren_dungeons = "3"
+small_keys = "vanilla"

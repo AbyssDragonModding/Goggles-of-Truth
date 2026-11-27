@@ -72,6 +72,15 @@ pub fn prepare(allocator: Allocator, fs: fsmod.Fs, plan_text: []const u8, base: 
     const mod_name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ longshot.mod_prefix, plan.name });
     const folder = try fsmod.join(allocator, &.{ out_dir, mod_name });
     var notes: std.ArrayList([]const u8) = .empty;
+    // the plan's seed made before and switched off since (another seed made after it renamed it _GogglesOfTruth_<name>):
+    // switched back on, so it is made again in its own folder with its saves, not as a second copy beside it (test
+    // report: _GogglesOfTruth_UNDERWATER1, "(2)", "(3)" piling up in the mods folder)
+    const switched_off = try fsmod.join(allocator, &.{ out_dir, try std.fmt.allocPrint(allocator, "_{s}", .{mod_name}) });
+    if (!fs.exists(folder) and fs.isDir(switched_off)) {
+        if (fs.rename(switched_off, folder)) {
+            try notes.append(allocator, try std.fmt.allocPrint(allocator, "{s} was switched off: switched back on to make it again", .{mod_name}));
+        } else |_| {}
+    }
     var seed: ?[]const u8 = if (plan.seed.len > 0) plan.seed else null;
     var rebuild = false;
     switch (try generator.checkRebuild(allocator, fs, folder)) {

@@ -39,6 +39,7 @@ pub const Key = enum {
     shop_prices,
     item_pool,
     refill_needs_item,
+    progressive_items,
     maps_compasses,
     small_keys,
     key_rings,
@@ -180,7 +181,7 @@ pub const specs = [_]Spec{
         .key = .starting_age,
         .tab = "World",
         .group = "Starting Age",
-        .label = "Starting Age (0.8.0 feature)",
+        .label = "Starting Age",
         .kind = .choice,
         .options = &.{
             .{ .value = "child", .label = "Child" },
@@ -331,8 +332,8 @@ pub const specs = [_]Spec{
         .tip =
             \\The Fairy Ocarina and the Ocarina of Time are found in random checks. Saria doesn't hand you the
             \\Fairy Ocarina on the forest bridge, and Zelda's Ocarina of Time at the castle moat becomes a check.
-            \\They are two Progressive Ocarinas: the first one you find is the Fairy Ocarina, the second the
-            \\Ocarina of Time. Either ocarina plays every song and opens the Door of Time.
+            \\With Progressive Items they are two Progressive Ocarinas: the first one you find is the Fairy
+            \\Ocarina, the second the Ocarina of Time. Either ocarina plays every song and opens the Door of Time.
         ,
     },
     .{
@@ -408,8 +409,8 @@ pub const specs = [_]Spec{
             \\the Lost Woods targets and Skull Kid, the Deku Theater (Skull Mask and Mask of Truth), both shooting
             \\galleries, Bombchu Bowling, horseback archery, the diving game, Anju, Talon, the Big Poe buyer,
             \\fishing, the lab dive, the frogs, Dampe, the man on the roof and the lost dog. Every branch of one
-            \\reward (e.g. the Bigger or the Biggest bag) gives the same item; an upgrade gives the next one you
-            \\don't have yet (progressive items).
+            \\reward (e.g. the Bigger or the Biggest bag) gives the same item; with Progressive Items, an upgrade
+            \\gives the next one you don't have yet.
             \\Never shuffled: the Gerudo Membership Card (the guards check the carpenter rescue, not the card) and
             \\the adult trade items (they share the Cucco's slot and would hide it).
         ,
@@ -478,8 +479,8 @@ pub const specs = [_]Spec{
         .kind = .boolean,
         .default = .{ .boolean = true },
         .tip =
-            \\The Skulltula House rewards for 10, 20, 30, 40 and 50 Gold Skulltula Tokens are random. Its two
-            \\wallets are found as Progressive Wallets in chests and character gifts: the first one gives the
+            \\The Skulltula House rewards for 10, 20, 30, 40 and 50 Gold Skulltula Tokens are random. With
+            \\Progressive Items its two wallets are found as Progressive Wallets: the first one gives the
             \\Adult's Wallet, the second the Giant's Wallet.
         ,
     },
@@ -576,6 +577,25 @@ pub const specs = [_]Spec{
             \\Sticks work the same way: a bundle only counts once you have picked up a single nut or stick
             \\(that gives you their bag), so until then their chests give a blue rupee too. Refills placed
             \\anywhere other than a chest are always blue rupees.
+        ,
+    },
+    .{
+        .key = .progressive_items,
+        .tab = "Items",
+        .group = "Item Pool",
+        .label = "Progressive Items",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\On: upgrades come in order, whichever copy you find first. The first Progressive Hookshot is the
+            \\Hookshot and the second the Longshot; the same goes for the Ocarinas, strength, scales, wallets,
+            \\bomb bags, Deku Seed bags and quivers. They are only in small chests and given by characters,
+            \\minigames and Business Scrubs: items lying in the world, Gold Skulltulas, shop shelves and big or
+            \\invisible chests can't choose the tier.
+            \\Off: the Hookshot, scales, strength upgrades and bomb bags are items of their own (Hookshot,
+            \\Longshot, ...) and can be in any check. A stronger one goes where you need the weaker one first
+            \\when the logic allows it, so you may still find one first. The Ocarinas, wallets, Deku Seed bags
+            \\and quivers stay progressive.
         ,
     },
     .{
@@ -770,7 +790,7 @@ pub const specs = [_]Spec{
         .key = .barren_dungeons,
         .tab = "Dungeon Items",
         .group = "Barren Dungeons",
-        .label = "Barren Dungeons (0.8.0 feature)",
+        .label = "Barren Dungeons",
         .kind = .choice,
         .options = &.{
             .{ .value = "off", .label = "Off" },
@@ -798,7 +818,7 @@ pub const specs = [_]Spec{
         .key = .starting_inventory,
         .tab = "Starting Inventory",
         .group = "Starting Inventory",
-        .label = "Starting Inventory (0.8.0 feature)",
+        .label = "Starting Inventory",
         .kind = .list,
         .default = .{ .list = &.{} },
         .tip =
@@ -865,7 +885,7 @@ pub const specs = [_]Spec{
         .key = .skip_story_scenes,
         .tab = "Quality of Life",
         .group = "Cutscenes",
-        .label = "Skip Cutscenes (0.8.0 feature)",
+        .label = "Skip Cutscenes (needs more testing)",
         .kind = .boolean,
         .default = .{ .boolean = false },
         .tip =
@@ -904,7 +924,7 @@ pub const specs = [_]Spec{
         .key = .skip_npc_dialogs,
         .tab = "Quality of Life",
         .group = "Cutscenes",
-        .label = "Skip NPC Dialogs (0.8.0 feature)",
+        .label = "Skip NPC Dialogs (needs more testing)",
         .kind = .boolean,
         .default = .{ .boolean = false },
         .tip =
@@ -1052,12 +1072,12 @@ pub const specs = [_]Spec{
         .key = .big_poe_one,
         .tab = "Quality of Life",
         .group = "Minigames & NPCs",
-        .label = "Poe shop requires only 1 Big Poe (experimental)",
+        .label = "Poe shop requires only 1 Big Poe",
         .kind = .boolean,
         .default = .{ .boolean = false },
         .tip =
             \\Sell a single Big Poe to the ghost shop in the adult Market to get his reward (normally five,
-            \\500 points). Not yet confirmed in-game.
+            \\500 points).
         ,
     },
     .{
@@ -1079,7 +1099,7 @@ pub const specs = [_]Spec{
         .key = .item_restrictions,
         .tab = "Exclusions",
         .group = "Item Restrictions",
-        .label = "Item Restrictions (0.8.0 feature)",
+        .label = "Item Restrictions",
         .kind = .list,
         .default = .{ .list = &.{} },
         .tip =
@@ -1092,7 +1112,7 @@ pub const specs = [_]Spec{
     },
     .{
         .key = .create_spoiler,
-        .tab = "ROM Options",
+        .tab = "General Settings",
         .group = "Output",
         .label = "Create Spoiler Log",
         .kind = .boolean,
@@ -1104,7 +1124,7 @@ pub const specs = [_]Spec{
     },
     .{
         .key = .per_seed_saves,
-        .tab = "ROM Options",
+        .tab = "General Settings",
         .group = "Output",
         .label = "Per-Seed Saves",
         .kind = .boolean,
@@ -1112,7 +1132,7 @@ pub const specs = [_]Spec{
         .tip =
             \\Each seed keeps its own save slots, in Longshot and in Switch emulators (Eden, Citron, Lichii and
             \\other yuzu-family emulators: set the output folder to the emulator's load/0400486024DEC000 folder).
-            \\Generating a seed, or Play This Seed on the ROM Options tab, stores the slots you have now with their
+            \\Generating a seed, or Play This Seed on the General Settings tab, stores the slots you have now with their
             \\seed and brings in the new seed's (empty slots for a new one). Slots no seed owns are copied to
             \\save_backups first. The game's options are shared. Close the game before switching.
         ,
@@ -1161,6 +1181,7 @@ pub const presets = [_]Preset{
             .{ .key = .shop_prices, .value = .{ .choice = "low" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
+            .{ .key = .progressive_items, .value = .{ .boolean = true } },
             .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .key_rings, .value = .{ .choice = "all" } },
@@ -1233,6 +1254,7 @@ pub const presets = [_]Preset{
             .{ .key = .shop_prices, .value = .{ .choice = "random" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
+            .{ .key = .progressive_items, .value = .{ .boolean = true } },
             .{ .key = .maps_compasses, .value = .{ .choice = "own" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .key_rings, .value = .{ .choice = "all" } },
@@ -1307,6 +1329,7 @@ pub const presets = [_]Preset{
             .{ .key = .shop_prices, .value = .{ .choice = "random_wallet" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
+            .{ .key = .progressive_items, .value = .{ .boolean = true } },
             .{ .key = .maps_compasses, .value = .{ .choice = "vanilla" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .key_rings, .value = .{ .choice = "all" } },
@@ -1347,7 +1370,7 @@ pub const presets = [_]Preset{
             \\medallions, the stones and medallions shuffled among the dungeon bosses, songs at song spots, no Gold Skulltula,
             \\shop or Business Scrub shuffle (fewer places to check), every map and compass from the start, Strong hints
             \\without the Mask of Truth, and every confirmed time saver on. Make one seed and share its settings string with
-            \\the other racers (turn Create Spoiler Log off on the ROM Options tab if no one should see the spoiler).
+            \\the other racers (turn Create Spoiler Log off on the General Settings tab if no one should see the spoiler).
         ,
         .values = &.{
             .{ .key = .logic_rules, .value = .{ .choice = "glitchless" } },
@@ -1381,6 +1404,7 @@ pub const presets = [_]Preset{
             .{ .key = .shop_prices, .value = .{ .choice = "low" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
+            .{ .key = .progressive_items, .value = .{ .boolean = true } },
             .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
             .{ .key = .key_rings, .value = .{ .choice = "all" } },

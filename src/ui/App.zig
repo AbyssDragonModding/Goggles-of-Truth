@@ -10,6 +10,7 @@ const engine = @import("engine");
 const layout = @import("layout.zig");
 const TestSeedsTab = @import("TestSeedsTab.zig");
 const SearchPicker = @import("SearchPicker.zig");
+const themes = @import("themes.zig");
 /// Debug builds (local builds) have the Test Seeds tab; release builds (the GitHub ones) don't (layout.zig).
 pub const debug_build = layout.debug_build;
 const wallpaper = @import("wallpaper.zig");
@@ -28,10 +29,6 @@ pub const AppError = error{
     OutOfMemory,
 };
 
-const accent = [3]f32{ 0.36, 0.80, 0.56 }; // Kokiri green
-const muted = r.Color.rgba(0.78, 0.82, 0.86, 0.85);
-const ok_green = r.Color.rgba(0.40, 0.86, 0.52, 1.0);
-const bad_red = r.Color.rgba(0.96, 0.46, 0.44, 1.0);
 const max_log_lines = 400;
 
 /// Settings that only mean something with another one's value: greyed out otherwise.
@@ -51,7 +48,9 @@ const dependents = [_]Dependent{
 
 // ------------------------------------------------------------------------------------------ the worker's queue
 
-const MessageKind = enum { log, locations, items, catalog, done, failed, idle };
+/// update_found: list = version, release page, ZIP name, ZIP address, ZIP size; update_none / update_failed: text =
+/// what to say ("!" first: the player asked, so a message box too); update_installed: the update is in place
+const MessageKind = enum { log, locations, items, catalog, done, failed, idle, update_found, update_none, update_failed, update_installed };
 
 const Message = struct {
     kind: MessageKind,
@@ -148,6 +147,20 @@ progress_bar: r.ProgressBar,
 log: r.ListView,
 /// the Seed preset picker: "Custom", the built-in presets, then the saved ones (SearchPicker)
 preset_picker: SearchPicker,
+/// the window's theme (General Settings; themes.zig), saved to user_settings.toml
+theme_picker: SearchPicker,
+theme_index: usize = 0,
+/// the Goggles of Truth theme's background (null if it couldn't be made)
+wallpaper_texture: ?r.Texture = null,
+/// the Updates card (General Settings; platform/updater.zig)
+auto_update_in: r.Checkbox,
+update_lab: r.Label,
+/// [app] auto_update: check GitHub when the window opens
+auto_update: bool = true,
+/// the update check or install, away from the window's thread (joined before the next one and at the end)
+update_thread: ?std.Thread = null,
+/// an update is being downloaded and installed (nothing else may start)
+installing_update: bool = false,
 /// the popup every SearchPicker of the window opens (made once from widgets.xml's SearchPopup)
 search_popup: SearchPicker.Popup,
 /// the location and item pickers' labels (zero-terminated copies of `locations` and `item_names`)
@@ -302,15 +315,13 @@ fn ravenError() []const u8 {
 pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
     r.init(.vulkan) catch return fail("Raven could not start (a Vulkan driver is required).", .{});
     defer r.shutdown();
-    r.themeSetDark(true);
-    r.themeSetMaterial(.solid);
-    r.themeSetAccent(accent[0], accent[1], accent[2]);
-    r.themeSetStyleMetric("Button", "", .corner_radius, 32.0);
-
+    var wallpaper_texture: ?r.Texture = null;
     if (wallpaper.png(gpa, 640, 420)) |png| {
         defer gpa.free(png);
-        if (r.Texture.create(png)) |tex| r.themeSetWallpaper(tex) else |_| {}
+        if (r.Texture.create(png)) |tex| wallpaper_texture = tex else |_| {}
     } else |_| {}
+    // the default theme until user_settings.toml is read (App.bind applies the saved one)
+    themes.applyTheme(themes.themes[0], wallpaper_texture);
     // the widgets main.xml uses (status badges): declared once in src/ui/widgets.xml
     if (r.xmlRegisterWidgets(layout.widgets_xml) < 1) return fail("src/ui/widgets.xml could not be loaded: {s}", .{ravenError()});
 
@@ -360,6 +371,10 @@ pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
         .progress_bar = try find(root, r.ProgressBar, "progress"),
         .log = try find(root, r.ListView, "log"),
         .preset_picker = try searchPicker(gpa, root, "preset_in", "Custom"),
+        .theme_picker = try searchPicker(gpa, root, "theme_in", themes.themes[0].label),
+        .wallpaper_texture = wallpaper_texture,
+        .auto_update_in = try find(root, r.Checkbox, "auto_update_in"),
+        .update_lab = try find(root, r.Label, "update_lab"),
         .search_popup = SearchPicker.Popup.init(gpa, window) catch return fail("widgets.xml's SearchPopup couldn't be made", .{}),
         .picker_arena = std.heap.ArenaAllocator.init(gpa),
         .preset_lab = try find(root, r.Label, "preset_lab"),
@@ -381,6 +396,7 @@ pub fn run(gpa: Allocator, io: std.Io, env: engine.Env) AppError!void {
     _ = r.Timer.create(0.1, true, app, App.poll);
     while (r.waitFrame(-1.0)) {}
     if (app.worker) |t| t.join();
+    if (app.update_thread) |t| t.join();
 }
 
 fn deinit(self: *App) void {
@@ -401,7 +417,7 @@ fn deinit(self: *App) void {
     self.gpa.free(self.check_key);
     self.gpa.free(self.world_path);
     self.freeLocations();
-    for ([_]*SearchPicker{ &self.excl_picker, &self.restrict_loc_picker, &self.restrict_item_picker, &self.preset_picker, &self.start_item_picker }) |p| p.deinit();
+    for ([_]*SearchPicker{ &self.excl_picker, &self.restrict_loc_picker, &self.restrict_item_picker, &self.preset_picker, &self.start_item_picker, &self.theme_picker }) |p| p.deinit();
     self.search_popup.deinit();
     self.picker_arena.deinit();
     for (self.seed_rows.items) |s| self.gpa.free(s);
@@ -430,6 +446,8 @@ fn subtitle(self: *App) [:0]const u8 {
 /// Finds the setting controls, fills everything in and binds the actions.
 fn bind(self: *App) AppError!void {
     (try find(self.root, r.Label, "subtitle")).setText(self.subtitle());
+    // a debug build (the Test Seeds tab, not in the GitHub releases) says so after the name at the top
+    if (debug_build) (try find(self.root, r.Label, "app_title")).setText("Goggles of Truth Randomizer (Debug Build)");
 
     // user_settings.toml
     var load_arena = std.heap.ArenaAllocator.init(self.gpa);
@@ -494,6 +512,8 @@ fn bind(self: *App) AppError!void {
         .{ .name = "rando.restrict_clear", .f = onRestrictClear },
         .{ .name = "rando.start_remove", .f = onStartRemove },
         .{ .name = "rando.start_clear", .f = onStartClear },
+        .{ .name = "rando.auto_update", .f = onAutoUpdateChanged },
+        .{ .name = "rando.check_updates", .f = onCheckUpdates },
     };
     inline for (actions) |action| r.actionBind(action.name, self, action.f);
     self.search_popup.bind();
@@ -503,6 +523,17 @@ fn bind(self: *App) AppError!void {
     self.preset_picker.bind(&self.search_popup, self, onPresetPicked);
     self.start_item_picker.bind(&self.search_popup, self, onStartItemPicked);
     self.start_item_picker.setItems(&start_picker_labels, &start_picker_values);
+    self.theme_picker.bind(&self.search_popup, self, onThemePicked);
+    self.theme_picker.setItems(&themes.theme_labels, &themes.theme_values);
+    if (themes.indexOfTheme(loaded.app.theme)) |index| {
+        self.theme_index = index;
+    } else {
+        self.writeFmt("user_settings.toml: unknown theme \"{s}\"; using {s}.", .{ loaded.app.theme, themes.themes[0].label });
+    }
+    self.theme_picker.pick(self.theme_index);
+    self.applyWindowTheme();
+    self.auto_update = loaded.app.auto_update;
+    self.auto_update_in.setChecked(self.auto_update);
     if (debug_build) TestSeedsTab.bindActions(self);
 
     for (&settings.specs) |*s| {
@@ -527,6 +558,13 @@ fn bind(self: *App) AppError!void {
     self.write("Ready. Pick your romfs and an output folder, then Generate.");
     for (loaded.messages) |m| self.write(m);
     for (preset_messages.items) |m| self.write(m);
+    // what an update left behind (the replaced files), then the check for a newer one
+    engine.updater.removeLeftovers(self.gpa, self.io, self.env.app_dir);
+    if (debug_build) {
+        self.update_lab.setText("Debug build: no update check when the window opens (it would replace your build). Check for Updates still says whether a release is out.");
+    } else if (self.auto_update) {
+        self.startUpdateCheck(false);
+    }
     if (std.mem.trim(u8, self.out_path, " \t").len == 0) {
         self.useLongshot(true); // first start with Longshot installed: use its mods folder
     } else {
@@ -930,7 +968,7 @@ fn fillRestrictionItems(self: *App) void {
 /// Forbid: the picked item at the picked location.
 fn onRestrictAdd(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     const location = self.restrict_loc_picker.selected() orelse {
-        self.write("Item restrictions: pick a location first (scan the game on the ROM Options tab to fill the list).");
+        self.write("Item restrictions: pick a location first (scan the game on the General Settings tab to fill the list).");
         return;
     };
     const item = self.restrict_item_picker.selected() orelse {
@@ -1264,19 +1302,19 @@ fn verifyGame(self: *App) engine.gamecheck.GameCheck {
     if (g.ok) {
         const where = if (engine.gamefiles.isNup(self.env.fs, romfs)) "  (from the .nup)" else "  (exefs found next to the romfs folder)";
         text = self.fmtZ("{s}{s}", .{ g.message, where });
-        c = ok_green;
+        c = themes.codeColors().success;
     } else if (g.status == .missing) {
         text = self.z(g.message);
-        c = muted;
+        c = themes.codeColors().muted;
     } else {
         const first_line = g.message[0 .. std.mem.indexOfScalar(u8, g.message, '\n') orelse g.message.len];
         text = self.z(first_line);
-        c = bad_red;
+        c = themes.codeColors().danger;
     }
     self.game_lab.setText(text);
     self.game_lab.setColor(c);
     self.hash_lab.setText(self.fmtZ("exefs/main SHA-256: {s}", .{if (g.sha256.len > 0) g.sha256 else "-"}));
-    self.hash_lab.setColor(if (g.sha256.len > 0) c else muted);
+    self.hash_lab.setColor(if (g.sha256.len > 0) c else themes.codeColors().muted);
     return g;
 }
 
@@ -1289,7 +1327,7 @@ fn requireGame(self: *App) bool {
 fn onOpenFolder(self: *App, _: ?r.Widget, _: [:0]const u8) void {
     const out = std.mem.trim(u8, self.out_in.getText(), " \t");
     if (out.len == 0 or !self.env.fs.isDir(out)) {
-        self.messageBox("Output", "The output folder doesn't exist yet.\nChoose one on the ROM Options tab, or generate a seed first.");
+        self.messageBox("Output", "The output folder doesn't exist yet.\nChoose one on the General Settings tab, or generate a seed first.");
         return;
     }
     const opener: []const u8 = engine.host.folder_opener_command;
@@ -1385,7 +1423,7 @@ fn startJob(self: *App, kind: @FieldType(Job, "kind"), game: []const u8, request
 }
 
 fn startJobWithPlan(self: *App, kind: @FieldType(Job, "kind"), game: []const u8, request: ?engine.generator.Request, plan_text: []const u8) void {
-    if (self.busy) return;
+    if (self.busy or self.installing_update) return;
     if (self.worker) |t| {
         t.join();
         self.worker = null;
@@ -1658,6 +1696,19 @@ fn poll(self: *App, _: r.Timer) void {
                 self.gen_btn.setEnabled(true);
                 if (debug_build) self.test_tab.setBusy(false);
             },
+            .update_found => self.offerUpdate(m.list),
+            .update_none, .update_failed => {
+                const asked = m.text.len > 0 and m.text[0] == '!';
+                const text = if (asked) m.text[1..] else m.text;
+                self.update_lab.setText(self.z(text));
+                if (m.kind == .update_failed) {
+                    self.installing_update = false;
+                    self.gen_btn.setEnabled(!self.busy);
+                    self.writeFmt("Update: {s}", .{text});
+                }
+                if (asked) self.messageBox("Updates", text);
+            },
+            .update_installed => self.restartIntoUpdate(m.text),
         }
     }
 }
@@ -1801,6 +1852,183 @@ fn playSeed(self: *App, index: i32) void {
     self.messageBox("Play This Seed", self.fmtZ("{s} is switched on.\n\n{s}", .{ name, joined }));
 }
 
+// ----------------------------------------------------------------------------------------------- updates
+// The Updates card (General Settings) and the check when the window opens: platform/updater.zig asks GitHub for the
+// newest release on `update_thread`; a newer one is offered in a message box; a yes downloads and installs it on
+// the same thread, then the window starts the new program and closes. Debug builds only report a newer release:
+// installing a release would replace the build made from source (and its Test Seeds tab).
+
+fn onAutoUpdateChanged(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    self.auto_update = self.auto_update_in.isChecked();
+    if (self.loaded) _ = self.save();
+}
+
+fn onCheckUpdates(self: *App, _: ?r.Widget, _: [:0]const u8) void {
+    self.startUpdateCheck(true);
+}
+
+/// Starts the check on `update_thread`. `asked`: the player pressed Check for Updates (every answer gets a message box).
+fn startUpdateCheck(self: *App, asked: bool) void {
+    if (self.installing_update) return;
+    if (self.update_thread) |t| {
+        t.join();
+        self.update_thread = null;
+    }
+    self.update_lab.setText("Checking GitHub for a newer release...");
+    self.update_thread = std.Thread.spawn(.{}, updateCheckMain, .{ self, asked }) catch {
+        self.update_lab.setText("The update check couldn't start.");
+        return;
+    };
+}
+
+/// Runs on `update_thread`: asks GitHub, then tells the window through the queue.
+fn updateCheckMain(self: *App, asked: bool) void {
+    var arena = std.heap.ArenaAllocator.init(self.gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const prefix: []const u8 = if (asked) "!" else "";
+    const found = engine.updater.findNewerRelease(a, self.io) catch |err| {
+        const why = switch (err) {
+            error.NetworkFailed => "GitHub couldn't be reached (no internet connection?)",
+            error.BadRelease => "GitHub's answer wasn't what a release looks like",
+            else => @errorName(err),
+        };
+        const text = std.fmt.allocPrint(a, "{s}Couldn't check for updates: {s}.", .{ prefix, why }) catch return;
+        return self.queue.pushText(.update_failed, text);
+    };
+    const release = found orelse {
+        const text = std.fmt.allocPrint(a, "{s}You have the newest version ({s}).", .{ prefix, engine.version.version }) catch return;
+        return self.queue.pushText(.update_none, text);
+    };
+    const size = std.fmt.allocPrint(a, "{d}", .{release.asset_size}) catch return;
+    self.pushList(.update_found, &.{ release.version, release.page_url, release.asset_name, release.asset_url, size });
+}
+
+/// A message with a list of texts, copied for the queue.
+fn pushList(self: *App, kind: MessageKind, texts: []const []const u8) void {
+    const list = self.gpa.alloc([]u8, texts.len) catch return;
+    var copied: usize = 0;
+    for (texts) |t| {
+        list[copied] = self.gpa.dupe(u8, t) catch break;
+        copied += 1;
+    }
+    if (copied < texts.len) {
+        for (list[0..copied]) |t| self.gpa.free(t);
+        self.gpa.free(list);
+        return;
+    }
+    self.queue.push(.{ .kind = kind, .list = list });
+}
+
+/// A newer release: asks the player, then installs it (release builds) on `update_thread`.
+fn offerUpdate(self: *App, list: []const []u8) void {
+    if (list.len < 5) return;
+    const new_version = list[0];
+    const page = list[1];
+    self.update_lab.setText(self.fmtZ("Version {s} is out (you have {s}): {s}", .{ new_version, engine.version.version, page }));
+    self.writeFmt("Update: version {s} is out ({s}).", .{ new_version, page });
+    if (debug_build) {
+        self.messageBox("Update available", self.fmtZ("Version {s} is out (you have {s}).\n\nThis is a debug build, so it doesn't update itself: pull the new source and build it again, or download the release from\n{s}", .{ new_version, engine.version.version, page }));
+        return;
+    }
+    if (self.busy) {
+        self.messageBox("Update available", self.fmtZ("Version {s} is out (you have {s}).\n\nPress Check for Updates once the seed is done to install it.", .{ new_version, engine.version.version }));
+        return;
+    }
+    const question = self.fmtZ("Version {s} is out (you have {s}). What's new:\n{s}\n\nDownload and install it now? The randomizer closes and opens again as version {s}. Your settings, presets and seeds are kept.", .{ new_version, engine.version.version, page, new_version });
+    if (r.messageBox(self.window, "Update available", question, .yes_no) != .yes) {
+        self.update_lab.setText(self.fmtZ("Version {s} is out (you have {s}). Check for Updates installs it.", .{ new_version, engine.version.version }));
+        return;
+    }
+    const size = std.fmt.parseInt(u64, list[4], 10) catch 0;
+    const job = self.gpa.create(UpdateInstall) catch return;
+    job.* = .{ .app = self, .arena = std.heap.ArenaAllocator.init(self.gpa), .release = undefined };
+    const a = job.arena.allocator();
+    job.release = .{
+        .version = a.dupe(u8, new_version) catch return self.freeUpdateInstall(job),
+        .page_url = a.dupe(u8, page) catch return self.freeUpdateInstall(job),
+        .asset_name = a.dupe(u8, list[2]) catch return self.freeUpdateInstall(job),
+        .asset_url = a.dupe(u8, list[3]) catch return self.freeUpdateInstall(job),
+        .asset_size = size,
+    };
+    if (self.update_thread) |t| {
+        t.join();
+        self.update_thread = null;
+    }
+    self.installing_update = true;
+    self.gen_btn.setEnabled(false);
+    self.update_lab.setText(self.fmtZ("Installing version {s}...", .{new_version}));
+    self.update_thread = std.Thread.spawn(.{}, updateInstallMain, .{job}) catch {
+        self.installing_update = false;
+        self.gen_btn.setEnabled(true);
+        self.update_lab.setText("The update couldn't start.");
+        return self.freeUpdateInstall(job);
+    };
+}
+
+/// The release to install, owned by the install thread.
+const UpdateInstall = struct {
+    app: *App,
+    arena: std.heap.ArenaAllocator,
+    release: engine.updater.Release,
+};
+
+fn freeUpdateInstall(self: *App, job: *UpdateInstall) void {
+    job.arena.deinit();
+    self.gpa.destroy(job);
+}
+
+/// Runs on `update_thread`: downloads and installs, then tells the window to restart (or why it couldn't).
+fn updateInstallMain(job: *UpdateInstall) void {
+    const self = job.app;
+    defer self.freeUpdateInstall(job);
+    engine.updater.downloadAndInstall(self.gpa, self.io, job.release, self.env.app_dir, queueLine, &self.queue) catch |err| {
+        const why = switch (err) {
+            error.NetworkFailed => "the download failed (no internet connection?)",
+            error.BadRelease => "the download isn't a release of the randomizer for this system",
+            error.InstallFailed => "the files couldn't be replaced (is the folder read-only, or another copy of the randomizer open?); nothing was changed",
+            error.OutOfMemory => "out of memory",
+        };
+        var buffer: [512]u8 = undefined;
+        const text = std.fmt.bufPrint(&buffer, "!The update couldn't be installed: {s}.", .{why}) catch "!The update couldn't be installed.";
+        return self.queue.pushText(.update_failed, text);
+    };
+    self.queue.pushText(.update_installed, job.release.version);
+}
+
+/// The update is in place: save, start the new program, close this one.
+fn restartIntoUpdate(self: *App, new_version: []const u8) void {
+    _ = self.save();
+    const program = std.process.executablePathAlloc(self.io, self.frame.allocator()) catch {
+        self.messageBox("Updated", self.fmtZ("Version {s} is installed. Close the randomizer and open it again to use it.", .{new_version}));
+        return;
+    };
+    engine.updater.startProgram(self.io, program) catch {
+        self.messageBox("Updated", self.fmtZ("Version {s} is installed, but it couldn't be started. Close the randomizer and open it again.", .{new_version}));
+        return;
+    };
+    r.quit(0);
+}
+
+// ------------------------------------------------------------------------------------------------- theme
+
+fn onThemePicked(context: *anyopaque) void {
+    const self: *App = @ptrCast(@alignCast(context));
+    const index = self.theme_picker.chosenIndex() orelse return;
+    if (index == self.theme_index) return;
+    self.theme_index = index;
+    self.applyWindowTheme();
+    if (self.loaded) _ = self.save();
+}
+
+/// Applies the chosen theme, then sets again what the code colours itself with the theme's colours.
+fn applyWindowTheme(self: *App) void {
+    themes.applyTheme(themes.themes[self.theme_index], self.wallpaper_texture);
+    for ([_]*SearchPicker{ &self.excl_picker, &self.restrict_loc_picker, &self.restrict_item_picker, &self.preset_picker, &self.start_item_picker, &self.theme_picker }) |p| p.refreshColors();
+    if (debug_build) for (self.test_tab.allPickers()) |p| p.refreshColors();
+    _ = self.verifyGame();
+}
+
 // ---------------------------------------------------------------------------------------- user_settings.toml
 
 /// Writes user_settings.toml. True when it was saved.
@@ -1815,7 +2043,7 @@ fn save(self: *App) bool {
         .longshot = self.longshot_path,
         .emulator = self.emulator_path,
         .emulator_game = self.emulator_game_path,
-    }) catch return false;
+    }, .{ .theme = themes.themes[self.theme_index].value, .auto_update = self.auto_update }) catch return false;
     if (err) |e| {
         if (!self.save_warned) {
             self.save_warned = true;

@@ -7,10 +7,10 @@ fix raises the last number (0.7.**5**).
 the same placement version put items in the same places, so you can rebuild an older seed with a newer version and
 keep your saves. When a version changes where items go, it gets a new placement version.
 
-## 0.8.0 - unreleased
+## 0.8.0 - 2026-11-26
 
 New placement version (0.8.0). Seeds made with 0.7.x can't be rebuilt with this version. They still play fine
-with the version that made them, and your saves are safe. Make a new seed to get progressive items.
+with the version that made them, and your saves are safe. Make a new seed to get the new features.
 
 ### New
 - **Progressive items.** Upgrades now come in order, whichever copy you find first: the first Progressive Hookshot
@@ -18,47 +18,76 @@ with the version that made them, and your saves are safe. Make a new seed to get
   strength (Goron Bracelet, Silver Gauntlets, Golden Gauntlets), the scales (Silver, then Golden), the wallets
   (Adult's, then Giant's), the bomb bags (Bomb Bag, Bigger, Biggest), and the bigger Deku Seed bags and quivers.
   The spoiler log, the hints and the Business Scrubs call them "Progressive ..." because what you get depends on
-  what you already have.
-- Progressive items are found in chests and given by characters, minigames and Business Scrubs, never lying on the
-  ground, on a Gold Skulltula or on a shop shelf. Not tested in-game yet.
-- **Test seeds from a plan file**, first released early in 0.7.8, now with the parts that needed 0.8.0: a test
-  start can give items already owned, and placing a single upgrade with Progressive Items on says which progressive
-  item to place instead.
-- **Starting Age**: Child, Adult or Random. As an adult, a new game starts in the Temple of Time's main hall,
-  facing the Master Sword room, with your start items handed over right away. Rauru's item is already yours, and the
-  Door of Time is open. Put the sword back to become a child. Random picks one for the seed, and the spoiler log says
-  which. Not tested in-game yet.
+  what you already have. They are found in small chests and given by characters, minigames and Business Scrubs,
+  never lying on the ground, on a Gold Skulltula, on a shop shelf or in a big or invisible chest.
+- **Progressive Items can be turned off** (Items tab, on by default). Off, the Hookshot, scales, strength upgrades
+  and bomb bags are items of their own and can be in any check, as in 0.7. A stronger one is put where you need the
+  weaker one first when the logic allows it, so you may still find a stronger one first. The Ocarinas, wallets,
+  Deku Seed bags and quivers stay progressive.
+- **Starting Age**: Child, Adult or Random. As an adult, a new game starts straight in the Temple of Time's main
+  hall, facing the Master Sword room, with the Master Sword equipped and your start items handed over right away;
+  young Link never shows. Rauru's item is already yours, and the Door of Time is open. Put the sword back to become
+  a child. Random picks one for the seed, and the spoiler log says which. Not tested in-game yet.
 - **Barren Dungeons**: 1 to 5 dungeons, or a random number, hold nothing but rupees (plus their own keys when keys
   stay in their dungeons). The Medallion or Stone you'd get for beating a barren dungeon, its boss's Heart
   Container, and Sheik's song in a barren Ice Cavern are put somewhere else in the seed. The altar in the Temple of
   Time tells you which dungeons are barren on its second page. Not tested in-game yet.
 - **Starting Inventory**: a new tab where you pick items a new game starts with: equipment, items, upgrades, songs
   and hearts. Items with tiers count up (add the Hookshot twice for the Longshot). The logic knows you have them,
-  and the seed won't hide a second copy (a Blue Rupee takes its place). Test plans can set it too. Not tested
-  in-game yet.
+  and the seed won't hide a second copy (a Blue Rupee takes its place). Not tested in-game yet.
+- **Item Restrictions** on the Exclusions tab: keep a chosen item away from a chosen location, and the seed puts
+  it somewhere else. Pick a location in the list, pick an item, then click Forbid. A Progressive item covers every
+  tier (Progressive Bomb Bag means any bomb bag).
 - **Skip NPC Dialogs**: characters skip their long story talks and go straight to their short line, for example
   Saria after the Deku Tree. Talks that give an item or move a quest on still play. A setting of its own while it's
   being tested; it will become part of Skip Cutscenes. Not tested in-game yet.
-- **Item Restrictions** on the Exclusions tab: keep a chosen item away from a chosen location, and the seed puts
-  it somewhere else. Pick a location in the list, pick an item, then click Forbid. A Progressive item covers every
-  tier (Progressive Bomb Bag means any bomb bag). Test plans can set them too.
-- Settings new in 0.8.0 carry a purple **0.8.0 Feature** badge in the window while they're being tested.
+- **The medallions menu opens whenever a boss, sage or character hands you a Spiritual Stone or Medallion**, as it
+  does after the Deku Tree, and once when a new game starts with one. With Shuffle Spiritual Stones/Medallions on
+  Anywhere, a Stone or Medallion found in a chest, a shop or on the ground doesn't open it. Its message now reads
+  "Added to Key Items" (it used to always say Kokiri Emerald; the item window before it names the item). If only
+  the start opens it, it names the Stones and Medallions you start with.
+- **Updates from inside the window:** when the randomizer opens, it checks for a newer release. If there is one, it
+  asks first, then downloads the version for your system, installs it and opens again. Your settings, presets and
+  seeds are kept. Turn the check off, or check any time, in the new Updates card on the General Settings tab.
+- **Crash reports:** if the randomizer window ever crashes, it saves a report in a `crash_logs` folder next to the
+  program and tells you where. Attach it to your bug report.
+- **Window themes:** pick how the randomizer window looks at the top of the window, next to Open Folder: its own
+  Goggles of Truth theme (frosted glass over the night sky), light or dark, glass, high contrast, or the look of
+  Windows, macOS or GNOME. It changes right away and is remembered.
+- **Test seeds from a plan file**, first released early in 0.7.8, now with the parts that needed 0.8.0: a test
+  start can give items already owned, and a plan can set Starting Inventory and Item Restrictions. Building the
+  window yourself in debug mode adds a Test Seeds tab for them.
 
 ### Changed
+- **Buttons are pill shaped**, with a bit more room on their sides.
+- **Searchable drop-downs:** the long lists (seed presets, exclusions, Item Restrictions, Starting Inventory and
+  themes) let you type to find an entry. When there's no room below, the list opens upward.
+- **Stable badges:** Starting Age (Child, Adult and Random), Barren Dungeons, Starting Inventory, Item Restrictions
+  and Progressive Items are marked Stable, and so is "Poe shop requires only 1 Big Poe" (it has worked since 0.7.6;
+  only its badge was wrong). Skip Cutscenes and Skip NPC Dialogs are still In Testing.
+- **The ROM Options tab is now called General Settings.**
 - **Skip Area Intro Cutscenes is now part of Skip Cutscenes.** Turning on Skip Cutscenes also skips the area intros.
   Old settings still work: if you had the area intros skipped, Skip Cutscenes is turned on for you.
 - **The Skulltula House wallets** can now also be given by characters, minigames and scrubs, not only chests.
-- **The strongest upgrades are no longer held back** to places that need the weaker one first: any copy can be
-  anywhere it's allowed.
 - **Boss Keys is back in the main Dungeon Items card** on the Dungeon Items tab, above the Key Ring Dungeons.
 - **The Not Supported tab is gone.**
 
 ### Fixed
+- **Items lying underwater couldn't be picked up:** an invisible block sat above them that Link could stand on
+  (a player found it over an Ocarina in the Kokiri Forest pond next to Mido). Items lying anywhere in the world now
+  behave like the rupees they replace: nothing solid around them, and they're a little easier to grab. Not tested
+  in-game yet.
+- **Refills Need Their Item gave a Blue Rupee even when you had the item** (arrows with the Bow, for example). Those
+  refills now only go in small chests, which give the refill once you own its item. Not tested in-game yet.
 - **A seed could hide your only Bomb Bag behind a rock that needs bombs.** The logic thought young Link could break
   the rocks over the Lost Woods and Hyrule Field scrub grottos with the Megaton Hammer, which only adult Link can
   use. Seeds no longer count on that.
 - **Your first Bomb Bag is never behind a bombable rock or wall** (or anything else that needs bombs or the Megaton
-  Hammer to get at), even if the logic could reach that spot another way. A new base rule, always on.
+  Hammer to get at), even if the logic could reach that spot another way. A new base rule, always on. With
+  Progressive Items off, this covers every bomb bag, since a bigger one can be the first you find.
+- **Young Link can't use the Silver or Golden Gauntlets.** The logic counted them as the Goron Bracelet for young
+  Link (bomb flowers, Dodongo's Cavern, and bag bombs when they need lifting), so a seed could expect him to lift
+  something he can't. Places only young Link can reach now need the Goron Bracelet itself.
 - **You can put the Master Sword back as soon as you've been an adult**, not only after the Forest Temple, so a
   seed never needs the Forest Temple before you can be a child again. Sheik now waits by the door of the sword room
   instead of behind the pedestal. The Forest Temple and the Prelude of Light play as before. Not tested in-game yet.

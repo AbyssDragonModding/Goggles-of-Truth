@@ -1,0 +1,27 @@
+# Progressive items, in Kokiri Forest's small chests and the Lost Woods chest so they're quick to collect as child.
+# Only small chests and character / event checks can choose the tier (an item lying in the world, a Gold Skulltula,
+# a shop shelf, a big chest or an invisible chest can't, so the randomizer never puts a progressive item there). A chest makes one check, so a three-tier line (Bomb Bag,
+# Strength) starts from the copy you own at the start here. Collect them in any order: each copy should give the
+# next tier you don't have yet, with that tier in its item window and the pause menu.
+#   Mido's house:  chests 4 and 5: Progressive Hookshot (Hookshot, then Longshot)
+#                  chests 6 and 7: Progressive Scale (Silver Scale, then Golden Scale)
+#   outside:       chests 1 and 3: Progressive Bomb Bag (you start with the Bomb Bag: Bigger, then Biggest)
+#   Lost Woods:    the chest: Progressive Strength (you start with the Goron Bracelet: Silver Gauntlets)
+# The Kokiri Sword's chest is a big chest, so it holds something else.
+name = "PROGKOKIRI1"
+
+[settings]
+progressive_items = true
+starting_age = "child"
+barren_dungeons = "off"
+shuffle_kokiri_sword = true
+starting_inventory = ["BombBag_Small", "Gauntlet_Goron"]
+
+[place]
+"Kokiri Forest Chest 4" = "Progressive Hookshot"
+"Kokiri Forest Chest 5" = "Progressive Hookshot"
+"Kokiri Forest Chest 6" = "Progressive Scale"
+"Kokiri Forest Chest 7" = "Progressive Scale"
+"Kokiri Forest Chest 1" = "Progressive Bomb Bag"
+"Kokiri Forest Chest 3" = "Progressive Bomb Bag"
+"Lost Woods Chest 1" = "Progressive Strength Upgrade"

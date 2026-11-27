@@ -1,0 +1,18 @@
+# Bug report: the Ocarina of Time lying in the Kokiri Forest water (Freestanding Rupee 8, next to Mido) couldn't be
+# picked up: an invisible box above it, Link stood on it (only the Boomerang got it). Every item lying in the world
+# now has a rupee's body. Check: swim down to the Kokiri Sword and the Light Arrow and pick them up; walk into the
+# Boomerang on dry ground (picked up like a rupee); nothing to stand on above any of them.
+# (Not the Ocarina: in 0.8.0 the Ocarinas are progressive, and a progressive item never lies in the world.)
+name = "UNDERWATER1"
+
+[settings]
+starting_age = "child"
+barren_dungeons = "off"
+shuffle_kokiri_sword = true
+shuffle_freestanding = true
+shuffle_rupees = true
+
+[place]
+"Kokiri Forest Freestanding Rupee 8" = "Kokiri Sword"
+"Kokiri Forest Freestanding Rupee 5" = "Light Arrow"
+"Kokiri Forest Freestanding Rupee 1" = "Boomerang"

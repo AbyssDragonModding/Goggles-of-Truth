@@ -7,7 +7,7 @@
 	<VBox Spacing="14">
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
 			<VBox Spacing="10">
-				<Label Text="Logic" TextSize="16" Color="#F5CC61"/>
+				<Label Text="Logic" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Label Text="Logic Rules" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Glitchless: the seed can always be beaten without glitches. The logic is cautious, so it may expect&#10;an item a little earlier than you strictly need it.&#10;No Logic: items are placed completely at random; the seed may be unbeatable."/>
 					<ComboBox Name="set_logic_rules" OnChanged="set.logic_rules" Slot.Fill="0.9" Items="Glitchless|No Logic" Tooltip="Glitchless: the seed can always be beaten without glitches. The logic is cautious, so it may expect&#10;an item a little earlier than you strictly need it.&#10;No Logic: items are placed completely at random; the seed may be unbeatable."/>
@@ -22,7 +22,7 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Open Areas" TextSize="16" Color="#F5CC61"/>
+				<Label Text="Open Areas" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Label Text="Kokiri Forest" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Closed: as in the original. Mido blocks the Deku Tree until you have a sword and shield, and the&#10;Kokiri boy blocks the forest exit until the Deku Tree is beaten.&#10;Closed Deku: the forest exit is open from the start; Mido still wants a sword and shield.&#10;Open: both are out of the way; you can go to the Deku Tree or leave the forest right away."/>
 					<ComboBox Name="set_open_forest" OnChanged="set.open_forest" Slot.Fill="0.9" Items="Closed|Closed Deku|Open" Tooltip="Closed: as in the original. Mido blocks the Deku Tree until you have a sword and shield, and the&#10;Kokiri boy blocks the forest exit until the Deku Tree is beaten.&#10;Closed Deku: the forest exit is open from the start; Mido still wants a sword and shield.&#10;Open: both are out of the way; you can go to the Deku Tree or leave the forest right away."/>
@@ -46,17 +46,17 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Starting Age" TextSize="16" Color="#F5CC61"/>
+				<Label Text="Starting Age" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Label Text="Starting Age" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Child: a new game starts as child Link outside the Kokiri Shop, as always.&#10;Adult: a new game starts as adult Link on the pedestal platform in the Temple of Time, with the&#10;Master Sword, as if he had just pulled it. Rauru's check (the Light Medallion spot) is given at&#10;once, the Door of Time is open, and the Kokiri boy at the forest exit is gone, so child Link can&#10;get back into the forest. Put the Master Sword back to become a child.&#10;Random: child or adult, chosen by the seed (the spoiler log says which)."/>
 					<ComboBox Name="set_starting_age" OnChanged="set.starting_age" Slot.Fill="0.9" Items="Child|Adult|Random" Tooltip="Child: a new game starts as child Link outside the Kokiri Shop, as always.&#10;Adult: a new game starts as adult Link on the pedestal platform in the Temple of Time, with the&#10;Master Sword, as if he had just pulled it. Rauru's check (the Light Medallion spot) is given at&#10;once, the Door of Time is open, and the Kokiri boy at the forest exit is gone, so child Link can&#10;get back into the forest. Put the Master Sword back to become a child.&#10;Random: child or adult, chosen by the seed (the spoiler log says which)."/>
-					<NewFeatureBadge Name="badge_starting_age" LabelName="badgelab_starting_age"/>
+					<StableBadge Name="badge_starting_age" LabelName="badgelab_starting_age"/>
 				</HBox>
 			</VBox>
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Rainbow Bridge" TextSize="16" Color="#F5CC61"/>
+				<Label Text="Rainbow Bridge" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Label Text="Rainbow Bridge Requirement" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="What makes the rainbow bridge to Ganon's Castle appear when you walk up to the castle as adult.&#10;Every option also needs the Bow and the Light Arrows, since Ganon can't be beaten without them.&#10;Vanilla: as in the original. Beat the Shadow and Spirit Temples, get the Light Arrows from Zelda&#10;in the Temple of Time, then the sages build the bridge.&#10;Medallions: own the number of medallions set in Medallions Needed (any of the six), plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Spiritual Stones: own all three Spiritual Stones (Kokiri Emerald, Goron Ruby, Zora Sapphire),&#10;plus the Bow and the Light Arrows. Zelda's scene isn't needed.&#10;Gold Skulltula Tokens: own the number of tokens set in Gold Skulltula Tokens Needed, plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Once the bridge has appeared it stays. The altar in the Temple of Time tells the requirement and&#10;what you have of it (e.g. Medallions: 2/4)."/>
 					<ComboBox Name="set_rainbow_bridge" OnChanged="set.rainbow_bridge" Slot.Fill="0.9" Items="Vanilla|Medallions|Spiritual Stones|Gold Skulltula Tokens" Tooltip="What makes the rainbow bridge to Ganon's Castle appear when you walk up to the castle as adult.&#10;Every option also needs the Bow and the Light Arrows, since Ganon can't be beaten without them.&#10;Vanilla: as in the original. Beat the Shadow and Spirit Temples, get the Light Arrows from Zelda&#10;in the Temple of Time, then the sages build the bridge.&#10;Medallions: own the number of medallions set in Medallions Needed (any of the six), plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Spiritual Stones: own all three Spiritual Stones (Kokiri Emerald, Goron Ruby, Zora Sapphire),&#10;plus the Bow and the Light Arrows. Zelda's scene isn't needed.&#10;Gold Skulltula Tokens: own the number of tokens set in Gold Skulltula Tokens Needed, plus the Bow&#10;and the Light Arrows. Zelda's scene isn't needed.&#10;Once the bridge has appeared it stays. The altar in the Temple of Time tells the requirement and&#10;what you have of it (e.g. Medallions: 2/4)."/>
@@ -76,7 +76,7 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Story Skips" TextSize="16" Color="#F5CC61"/>
+				<Label Text="Story Skips" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Checkbox Name="set_skip_child_zelda" Style="Switch" Text="Skip Child Zelda" OnChanged="set.skip_child_zelda" Slot.Fill="1" Tooltip="A new save starts as if you had already been through Hyrule Castle as a child. You already own&#10;the items from Zelda (HC Zeldas Letter), Malon (HC Malon Egg) and Impa (Song from Impa), Malon and&#10;Talon are at Lon Lon Ranch, and Hyrule Field has day and night from the start. Those three checks&#10;can hold any item. Most come with the new save; bags, ammo, rupees, hearts, medallions and the&#10;like are handed over, with their item window, the moment a new game starts."/>
 					<StableBadge Name="badge_skip_child_zelda" LabelName="badgelab_skip_child_zelda"/>

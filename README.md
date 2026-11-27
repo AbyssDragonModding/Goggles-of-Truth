@@ -67,7 +67,7 @@ When only some choices of an option have a different status, they're named in th
 | The Temple of Time altar shows the bridge requirement and your progress | always on | 🟢 Stable |
 | Skip Child Zelda (her, Malon's and Impa's checks can hold any item) | Off, On | 🟢 Stable |
 | Skip Epona Race (Epona comes with just Epona's Song: no race, no child Malon check first) | On | 🟢 Stable |
-| Starting Age (Adult starts with Link pulling the Master Sword in the Temple of Time) | Child, Adult, Random | 🟣 0.8.0 feature |
+| Starting Age (Adult starts as adult Link at the Temple of Time's Prelude of Light spot, with the Master Sword) | Child, Adult, Random | 🟢 Stable |
 
 ### Items
 
@@ -92,6 +92,7 @@ When only some choices of an option have a different status, they're named in th
 | Item Pool | Balanced | 🟢 Stable |
 | | Scarce, Minimal | 🔴 Not tested |
 | Refills Need Their Item (ammo chests give rupees until you have the bag or weapon) | Off, On | 🟢 Stable |
+| Progressive Items (upgrades come in order; Off: the Hookshot, scales, strength and bomb bags can be in any check) | On, Off | 🟢 Stable |
 
 ### Dungeon Items
 
@@ -107,13 +108,13 @@ When only some choices of an option have a different status, they're named in th
 | | Own Dungeon (can fail to place items with some settings) | 🔴 Not tested |
 | | Removed (the five temples start with their boss key) | 🔴 Not tested |
 | | Any Dungeon, Anywhere (each temple's boss key becomes an item of its own) | 🔴 Not tested |
-| Barren Dungeons (only rupees in them; the Temple of Time altar names them) | Off, 1–5, Random | 🟣 0.8.0 feature |
+| Barren Dungeons (only rupees in them; the Temple of Time altar names them) | Off, 1–5, Random | 🟢 Stable |
 
 ### Starting Inventory
 
 | Feature | Choices | Status |
 |---|---|---|
-| Starting Inventory (items a new game starts with; the logic counts them and the seed won't hide a second copy) | Equipment, items, upgrades, songs, hearts | 🟣 0.8.0 feature |
+| Starting Inventory (items a new game starts with; the logic counts them and the seed won't hide a second copy) | Equipment, items, upgrades, songs, hearts | 🟢 Stable |
 
 ### Hints
 
@@ -132,15 +133,15 @@ When only some choices of an option have a different status, they're named in th
 | Skip the Great Deku Tree's Talk | Off, On | 🟢 Stable |
 | Skip Kaepora Gaebora | Off, On | 🟢 Stable |
 | Chests Without Cutscene (big chests) | Off, On | 🟢 Stable |
-| Skip Cutscenes (was Skip Story Scenes; takes in Skip Area Intro Cutscenes since 0.8.0) | On | 🟣 0.8.0 feature (a few scenes and most area intros confirmed; the Royal Family's Tomb added in 0.7.4) |
-| Skip NPC Dialogs (story talks that only talk; will join Skip Cutscenes) | Off, On | 🟣 0.8.0 feature |
+| Skip Cutscenes (was Skip Story Scenes; takes in Skip Area Intro Cutscenes since 0.8.0) | On | 🟡 Semi-tested (a few scenes and most area intros confirmed; the Royal Family's Tomb added in 0.7.4) |
+| Skip NPC Dialogs (story talks that only talk; will join Skip Cutscenes) | Off, On | 🟡 Semi-tested |
 | Bag Bombs without Goron Bracelet | Off, On | 🟢 Stable |
 | Bag Bombs Open Dodongo's Cavern (no cutscene) | Off, On | 🟡 Semi-tested |
 | Gold Skulltulas Day and Night, Any Age | Off, On | 🟢 Stable |
 | Skip Ganon's Trials | Off, On | 🟢 Stable |
 | Saria's Song With Just an Ocarina | Off, On | 🟢 Stable |
 | Anju Needs Only 1 Cucco | Off, On | 🟢 Stable |
-| Poe shop requires only 1 Big Poe | On | 🔴 Not tested |
+| Poe shop requires only 1 Big Poe | On | 🟢 Stable |
 | The Lost Woods ocarina game gives all its rewards for one won song | always on | 🟢 Stable |
 
 ### The program
@@ -308,8 +309,12 @@ If macOS says the app **can't be opened** because it's from an unidentified deve
 **Open**, then **Open** again (once). Move it out of your Downloads folder first: macOS runs apps opened from there
 from a read-only copy, where your settings can't be saved.
 
-**Updating:** download the new build and copy your `user_settings.toml` into the new folder. Keep your output folder
-with your seeds. (The Python version's git auto-updater isn't part of the Zig version.)
+**Updating:** the window checks GitHub for a newer release when it opens (General Settings, **Updates** card; switch it
+off there, or press **Check for Updates** any time). When one is out it asks you first, then downloads the build for
+your system, installs it in the randomizer's folder and opens again as the new version. Your `user_settings.toml`,
+presets, cache and seeds are kept. You can still update by hand: download the new build and copy your
+`user_settings.toml` into the new folder. Builds made from source (debug builds) only say that a release is out; they
+never replace themselves.
 
 ### If something goes wrong
 
@@ -317,11 +322,12 @@ with your seeds. (The Python version's git auto-updater isn't part of the Zig ve
 |---|---|
 | "Raven could not start (a Vulkan driver is required)" | Update your graphics driver from NVIDIA, AMD or Intel. |
 | "The randomizer couldn't open" | It names an `error_log.txt` next to the program. Attach it when you [open an issue](#opening-an-issue). |
-| The game line on ROM Options is red | Your game version isn't supported: see [Supported game versions](#supported-game-versions). |
+| "The randomizer crashed and has to close" | A crash report was saved in the `crash_logs` folder next to the program (the message names the file). Attach it when you [open an issue](#opening-an-issue). |
+| The game line on General Settings is red | Your game version isn't supported: see [Supported game versions](#supported-game-versions). |
 
 ## Making a seed
 
-1. **ROM Options** tab: choose your game and an **output folder**.
+1. **General Settings** tab: choose your game and an **output folder**.
    - **Browse .nup** picks the game's `.nup` file (its own exefs is used for the version check).
    - **Browse folder** picks the extracted romfs folder (or the folder holding `romfs` and `exefs`). The output
      folder can't be inside the romfs.
@@ -346,7 +352,7 @@ with your seeds. (The Python version's git auto-updater isn't part of the Zig ve
     checklist.xlsx    <- test checklist (see below)
 ```
 
-The spoiler and checklist are only written with **Create Spoiler Log** on (ROM Options tab).
+The spoiler and checklist are only written with **Create Spoiler Log** on (General Settings tab).
 
 **Sharing a seed:** the same **version + seed + settings string** always makes the same mod. Send the seed and the
 settings string (copy it from the window or `settings.txt`) so others can make it from their own game files.
@@ -408,7 +414,7 @@ and the randomizer installs seeds and manages saves for you.
 | An emulator's `load/0400486024DEC000` folder | **The emulator**: the program in the **Emulator** path, else the one next to a portable emulator's `user` folder |
 | Anything else | Nothing (neither would load the seed from there); the window says so |
 
-Set the paths on the **ROM Options** tab's **Launch Game** card (they're kept in `user_settings.toml`):
+Set the paths on the **General Settings** tab's **Launch Game** card (they're kept in `user_settings.toml`):
 
 - **Longshot**: the Longshot game folder (with `longshot.exe` and `mods`) or the program. Empty: the game whose
   `mods` folder is the output folder. A path to another Longshot game is used, with a note in the log that it won't
@@ -423,7 +429,7 @@ close it first, so a new seed and its saves are loaded.
 
 ### Per-seed saves
 
-With **Per-Seed Saves** on (ROM Options > Output, on by default), every seed keeps its own six save slots. It works
+With **Per-Seed Saves** on (General Settings > Output, on by default), every seed keeps its own six save slots. It works
 when the output folder is:
 
 - Longshot's `mods` folder (saves in `%APPDATA%\Longshot\save\<account>`, on Linux `~/.local/share/Longshot/save`), or
@@ -434,7 +440,7 @@ when the output folder is:
 **Close the game first.** Then:
 
 - **Generating** stores your current slots with the seed they belong to and gives the new seed empty slots.
-- **Play This Seed** (ROM Options > Seeds and saves, or double-click a seed) switches that seed on, all others off,
+- **Play This Seed** (General Settings > Seeds and saves, or double-click a seed) switches that seed on, all others off,
   and brings its slots back. ▶ marks the seed that's on, ★ the one whose saves are in the game.
 - **Rebuild Seed** makes the selected seed again with this version's fixes (same items, same places) and keeps
   its saves; see [Versions](#versions). A rebuild never empties the game's slots or switches them away for that
@@ -469,6 +475,23 @@ get its start.
 `start_spots.txt` (with their coordinates), `boot_events.txt`, `quests.txt` (with every step), `cutscenes.txt`,
 `locations.txt` and `items.txt`. A plan with a wrong name stops before anything is written and says what the
 choices are.
+
+#### Test Seeds tab (debug builds only)
+
+The window also has a **Test Seeds** tab that does all of this without the command line: every part of a test
+plan as a form, drop-downs filled from your scanned game (scenes, start spots, quests, flags, cutscenes, locations
+and items), loading and saving plans, and a **Generate Test Seed** button. It makes the same seed as `goggles_cli
+test`.
+
+The tab is only in **debug builds**. The releases on GitHub are release builds and don't have it. To get it,
+build the randomizer from source (see [Building](#building)) with Zig's debug build, the plain build command:
+
+```bash
+zig build        # debug build: zig-out/<system>, with the Test Seeds tab
+zig build run    # the same, and opens the window
+```
+
+A debug build says "(Debug Build)" after the name at the top of the window.
 
 ### The checklist
 
@@ -507,7 +530,8 @@ Open an issue on the repository's **Issues** tab (search existing ones first) an
 - **Version, seed and settings string** (top of the checklist, or `settings.txt`)
 - **Your emulator and its version**, and the game's version
 - **What went wrong and where:** the location name, what you expected, what happened
-- **Attachments:** the exported checklist `.csv`, `error_log.txt` if the randomizer crashed, and `spoiler.txt` if
+- **Attachments:** the exported checklist `.csv`, the crash report from `crash_logs` (or `error_log.txt`) if the
+  randomizer crashed, and `spoiler.txt` if
   you have it
 
 ## Settings
@@ -519,9 +543,9 @@ not confirmed). For a drop-down, the badge follows the chosen option (Item Pool 
 
 | Tab | What you can change |
 |---|---|
-| **ROM Options** | Game and output folders, mod name, seed, spoiler log, per-seed saves, the file cache |
+| **General Settings** | Game and output folders, mod name, seed, spoiler log, per-seed saves, the file cache |
 | **World** | Logic (glitchless or none); open Kokiri Forest, Door of Time, Zora's Fountain and Death Mountain; the Rainbow Bridge requirement (vanilla, medallions, Spiritual Stones or Gold Skulltula tokens, shown at the Temple of Time altar); skip child Zelda; skip Epona's race |
-| **Items** | Songs, Spiritual Stones and Medallions, ocarinas, Kokiri Sword, Weird Egg; freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards, Great Fairies, Skulltula House, Tokensanity, items shuffled per shop, Business Scrubs; item pool size; ammo chests needing their bag |
+| **Items** | Songs, Spiritual Stones and Medallions, ocarinas, Kokiri Sword, Weird Egg; freestanding items and rupees, boss Heart Containers, character gifts and minigames, quest rewards, Great Fairies, Skulltula House, Tokensanity, items shuffled per shop, Business Scrubs; item pool size; ammo chests needing their bag; progressive items |
 | **Dungeon Items** | Maps & Compasses; small keys (also removed, or as key rings in any dungeon, the overworld or anywhere) and which dungeons get key rings; boss keys (also removed, or anywhere as items of their own); barren dungeons |
 | **Starting Inventory** | Items a new game starts with (double-click to add or take away) |
 | **Hints** | Gossip Stone hints (none, balanced, strong, useless) and whether stones need the Mask of Truth |
@@ -583,6 +607,7 @@ goggles_cli vanilla-test <.nup or romfs>        logic test on the unshuffled gam
 goggles_cli dump-world <game> <out.jsonl>       every location, for tools
 goggles_cli dump-plan <game> <settings> <out>   the item pool a settings string makes
 goggles_cli selftest <game>                     read and rewrite every event flow, byte for byte
+goggles_cli crash-test [segfault]               crash on purpose, to check that a report lands in crash_logs
 ```
 
 **Test seeds:** `--place "Kokiri Forest Chest 4=Bomb Bag" --place "Kokiri Forest Chest 5=Goron Bracelet"` puts
@@ -707,7 +732,7 @@ Goggles of Truth Randomizer 0.8.0
 Placement version: 0.8.0
 ```
 
-**Getting a fix into a seed you're playing:** select the seed under ROM Options > Seeds and saves and click
+**Getting a fix into a seed you're playing:** select the seed under General Settings > Seeds and saves and click
 **Rebuild Seed** (or run `goggles_cli generate --game <game> --rebuild <seed folder>`). The seed is made again
 with the new version into its own folder: the same items in the same places, with the fixes, and your save loads
 as before (its stored per-seed saves are kept). Only seeds with the same placement version can be rebuilt; the

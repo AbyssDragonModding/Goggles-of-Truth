@@ -3,7 +3,8 @@
 //! doesn't export).
 //!
 //! The picker shows like a drop-down: a field with the chosen row and a ▾. Clicking it opens the shared `Popup`
-//! right under it: a search field (with the keyboard focus) over the list. Typing narrows the list as you type, Up
+//! right under it: a search field (with the keyboard focus) over the list. When the window has no room for it under
+//! the field, it opens above instead, flipped: the search field next to the field, the list over the search field. Typing narrows the list as you type, Up
 //! and Down move in it, Enter or a click picks a row and closes the popup, Escape or a click outside closes it. An
 //! editable picker also takes a typed text that is no row (Enter), for names the list doesn't know.
 //!
@@ -12,16 +13,18 @@
 
 const std = @import("std");
 const r = @import("raven");
+const themes = @import("themes.zig");
 const Allocator = std.mem.Allocator;
 
 const SearchPicker = @This();
 
+/// the space between the field and its popup
+const popup_gap: f32 = 2;
+/// widgets.xml's SearchPopup: its padding, the search field, the spacing and the list's MinHeight (260)
+const popup_usual_height: f32 = 330;
+
 /// the row standing for "none" in the popup's rows
 const none_row = std.math.maxInt(usize);
-
-/// the field's text colours: a choice, and the placeholder when nothing is chosen
-const value_color = r.Color.rgba(0.902, 0.918, 0.941, 1.0);
-const placeholder_color = r.Color.rgba(0.78, 0.82, 0.86, 0.6);
 
 face: r.Widget,
 label: r.Label,
@@ -113,22 +116,32 @@ fn setTypedText(self: *SearchPicker, text: []const u8) void {
     self.typed = copy;
 }
 
+/// Sets the field's text colour again after the window's theme changed.
+pub fn refreshColors(self: *SearchPicker) void {
+    self.showChoice();
+}
+
+/// A choice is drawn in the theme's text colour (the colour the placeholder set is removed).
+fn showValueColor(self: *SearchPicker) void {
+    self.label.widget().clearColor(.text);
+}
+
 /// The field: the chosen row, the typed text, or the placeholder.
 fn showChoice(self: *SearchPicker) void {
     if (self.chosen) |i| {
         self.label.setText(self.labels[i]);
-        self.label.setColor(value_color);
+        self.showValueColor();
     } else if (self.typed.len > 0) {
         const z = std.fmt.allocPrintSentinel(self.gpa, "{s}", .{self.typed}, 0) catch return;
         defer self.gpa.free(z);
         self.label.setText(z);
-        self.label.setColor(value_color);
+        self.showValueColor();
     } else if (self.none_label) |none| {
         self.label.setText(none);
-        self.label.setColor(value_color);
+        self.showValueColor();
     } else {
         self.label.setText(self.placeholder);
-        self.label.setColor(placeholder_color);
+        self.label.setColor(themes.codeColors().placeholder);
     }
 }
 
@@ -147,13 +160,17 @@ fn finish(self: *SearchPicker, index: ?usize, typed: []const u8) void {
     if (self.on_change) |f| f(self.context.?);
 }
 
-/// The one popup every picker opens: a search field over the list, under the clicked field.
+/// The one popup every picker opens: a search field over the list, under the clicked field (or flipped above it).
 pub const Popup = struct {
     gpa: Allocator,
     window: r.Window,
     content: r.Widget,
     input: r.TextInput,
     list: r.ListView,
+    /// the box holding the search field and the list (their order flips with the popup)
+    stack: r.Widget,
+    /// open above the field: the list first, the search field last
+    flipped: bool = false,
     /// the picker the popup is open for
     owner: ?*SearchPicker = null,
     /// the source index of each row shown (`none_row` for the none row)
@@ -166,7 +183,8 @@ pub const Popup = struct {
         const content = r.Widget.createFromXml("<SearchPopup InputName=\"search_popup_input\" ListName=\"search_popup_list\"/>") catch return error.PopupNotMade;
         const input = (content.find("search_popup_input") orelse return error.PopupNotMade).as(r.TextInput) orelse return error.PopupNotMade;
         const list = (content.find("search_popup_list") orelse return error.PopupNotMade).as(r.ListView) orelse return error.PopupNotMade;
-        return .{ .gpa = gpa, .window = window, .content = content, .input = input, .list = list };
+        const stack = input.widget().getParent() orelse return error.PopupNotMade;
+        return .{ .gpa = gpa, .window = window, .content = content, .input = input, .list = list, .stack = stack };
     }
 
     /// Connects the popup's field and list. `self` must stay where it is from now on.
@@ -181,7 +199,8 @@ pub const Popup = struct {
         self.visible.deinit(self.gpa);
     }
 
-    /// Opens under `picker`'s field, as wide as it, with every row listed and the picked one selected.
+    /// Opens under `picker`'s field (above it, flipped, when the window has no room under it), as wide as it, with
+    /// every row listed and the picked one selected.
     fn open(self: *Popup, picker: *SearchPicker) void {
         self.owner = picker;
         const rect = picker.face.getRect();
@@ -192,8 +211,32 @@ pub const Popup = struct {
         if (typed_z) |t| self.gpa.free(t);
         self.syncing = false;
         self.refilter(picker.typed);
-        r.popupOpen(self.window, self.content, rect.x, rect.y + rect.height + 2, self, onClosed);
+        const popup_height = self.height();
+        const window_height = if (self.window.getContent()) |root| root.getRect().height else 0;
+        const below_y = rect.y + rect.height + popup_gap;
+        const above_y = rect.y - popup_gap - popup_height;
+        const room_below = window_height - below_y;
+        const room_above = rect.y - popup_gap;
+        // under the field when it fits there; otherwise above when it fits there, or else on the roomier side
+        const open_above = window_height > 0 and room_below < popup_height and (room_above >= popup_height or room_above > room_below);
+        self.setFlipped(open_above);
+        r.popupOpen(self.window, self.content, rect.x, if (open_above) @max(above_y, 0) else below_y, self, onClosed);
         self.input.widget().focus();
+    }
+
+    /// The popup's height: as laid out, or its usual height before it was ever shown.
+    fn height(self: *Popup) f32 {
+        const desired = self.content.getDesiredSize().height;
+        return if (desired > 0) desired else popup_usual_height;
+    }
+
+    /// Puts the search field under the list (flipped) or over it.
+    fn setFlipped(self: *Popup, flipped: bool) void {
+        if (self.flipped == flipped) return;
+        self.flipped = flipped;
+        const field = self.input.widget();
+        self.stack.removeChild(field);
+        _ = self.stack.insertChild(field, if (flipped) 1 else 0);
     }
 
     fn close(self: *Popup) void {

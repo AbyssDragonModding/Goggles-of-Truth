@@ -10,19 +10,21 @@
 
   Look: Kokiri-green accent, Triforce-gold card titles, frosted glass cards over a generated night sky.
 -->
-<Window Title="Goggles of Truth Randomizer" Width="1000" Height="800" MinWidth="760" MinHeight="560" Theme="Dark">
-	<VBox Spacing="14" Theme="Dark">
-		<!-- Header: title, Open Folder, Launch Game, Generate Mod -->
-		<HBox Spacing="12" Slot.Auto="true" Slot.Padding="24,18,24,0" Theme="Dark">
-			<VBox Spacing="2" Slot.Fill="1" Theme="Dark">
-				<Label Text="Goggles of Truth Randomizer" TextSize="28" Theme="Dark"/>
-				<Label Name="subtitle" Text="OOT 2026 edition" TextSize="13" Color="#C7D1DBD9" Theme="Dark"/>
+<Window Title="Goggles of Truth Randomizer" Width="1000" Height="800" MinWidth="760" MinHeight="560">
+	<VBox Spacing="14">
+		<!-- Header: title, Theme (src/ui/themes.zig; saved to user_settings.toml), Open Folder, Launch Game, Generate Mod -->
+		<HBox Spacing="12" Slot.Auto="true" Slot.Padding="24,18,24,0">
+			<VBox Spacing="2" Slot.Fill="1">
+				<Label Name="app_title" Text="Goggles of Truth Randomizer" TextSize="28"/>
+				<Label Name="subtitle" Text="OOT 2026 edition" TextSize="13" Class="Muted"/>
 			</VBox>
-			<Button Name="open_folder" Text="  Open Folder  " OnClicked="rando.open_folder" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Open the output folder, where your generated seeds are" Theme="Dark"/>
-			<Button Name="launch_game" Text="  Launch Game  " OnClicked="rando.launch_game" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Start Longshot or the emulator the output folder belongs to (set their paths on the ROM Options tab's Launch Game card). Generate first: the newest seed is the one switched on." Theme="Dark"/>
-			<Button Name="generate" Text="  Generate Mod  " Style="Primary" OnClicked="rando.generate" Slot.Auto="true" Slot.VAlign="Center" Theme="Dark"/>
+			<Label Text="Theme" TextSize="13" Class="Muted" Slot.Auto="true" Slot.VAlign="Center" Tooltip="How the randomizer window looks: its own Goggles of Truth theme, or one of the looks of Raven (the window's toolkit): light or dark, glass, high contrast, or the look of Windows, macOS or GNOME. It changes right away and is saved to user_settings.toml."/>
+			<SearchPicker FaceName="theme_in" LabelName="theme_in_label" Placeholder="Goggles of Truth (default)" Slot.Fill="0.35" Slot.MaxSize="230" Slot.VAlign="Center"/>
+			<Button Name="open_folder" Text="  Open Folder  " OnClicked="rando.open_folder" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Open the output folder, where your generated seeds are"/>
+			<Button Name="launch_game" Text="  Launch Game  " OnClicked="rando.launch_game" Slot.Auto="true" Slot.VAlign="Center" Tooltip="Start Longshot or the emulator the output folder belongs to (set their paths on the General Settings tab's Launch Game card). Generate first: the newest seed is the one switched on."/>
+			<Button Name="generate" Text="  Generate Mod  " Style="Primary" OnClicked="rando.generate" Slot.Auto="true" Slot.VAlign="Center"/>
 		</HBox>
-		<TabView Name="tabs" Slot.Fill="1" Slot.Padding="18,0,18,0" Theme="Dark">
+		<TabView Name="tabs" Slot.Fill="1" Slot.Padding="18,0,18,0">
 			<!--@@page rom_options@@-->
 			<!--@@page world@@-->
 			<!--@@page items@@-->
@@ -34,28 +36,28 @@
 			<!--@@page test_seeds@@-->
 		</TabView>
 		<!-- Footer: settings string, progress, log -->
-		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="18,0,18,18" Theme="Dark">
-			<VBox Spacing="10" Theme="Dark">
-				<HBox Spacing="10" Theme="Dark">
-					<Label Text="Seed preset" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center" Tooltip="@@preset_tip@@" Theme="Dark"/>
-					<SearchPicker FaceName="preset_in" LabelName="preset_in_label" Placeholder="Custom" Slot.Fill="0.5" Theme="Dark"/>
-					<Label Name="preset_lab" Text="" TextSize="12" Color="#C7D1DBD9" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Your settings are saved to user_settings.toml next to the program. Delete that file (or press Reset) to go back to the defaults." Theme="Dark"/>
+		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="18,0,18,18">
+			<VBox Spacing="10">
+				<HBox Spacing="10">
+					<Label Text="Seed preset" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center" Tooltip="@@preset_tip@@"/>
+					<SearchPicker FaceName="preset_in" LabelName="preset_in_label" Placeholder="Custom" Slot.Fill="0.5"/>
+					<Label Name="preset_lab" Text="" TextSize="12" Class="Muted" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Your settings are saved to user_settings.toml next to the program. Delete that file (or press Reset) to go back to the defaults."/>
 				</HBox>
-				<HBox Spacing="10" Theme="Dark">
-					<Label Text="Your presets" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center" Tooltip="Save the settings you have now as your own preset. It shows in the Seed preset list with a star, after the built-in ones, and is kept in custom_presets.toml next to the program." Theme="Dark"/>
-					<TextInput Name="preset_name_in" Placeholder="Name for your preset" Slot.Fill="0.5" Theme="Dark"/>
-					<Button Text="Save Preset" OnClicked="rando.save_preset" Slot.Auto="true" Tooltip="Save every gameplay setting you have now under this name (a preset with the same name is updated). Excluded Locations, Create Spoiler Log and Per-Seed Saves aren't part of a preset." Theme="Dark"/>
-					<Button Text="Delete Preset" Style="Flat" OnClicked="rando.delete_preset" Slot.Auto="true" Tooltip="Delete the saved preset chosen in the Seed preset list (the built-in presets can't be deleted)." Theme="Dark"/>
+				<HBox Spacing="10">
+					<Label Text="Your presets" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center" Tooltip="Save the settings you have now as your own preset. It shows in the Seed preset list with a star, after the built-in ones, and is kept in custom_presets.toml next to the program."/>
+					<TextInput Name="preset_name_in" Placeholder="Name for your preset" Slot.Fill="0.5"/>
+					<Button Text="Save Preset" OnClicked="rando.save_preset" Slot.Auto="true" Tooltip="Save every gameplay setting you have now under this name (a preset with the same name is updated). Excluded Locations, Create Spoiler Log and Per-Seed Saves aren't part of a preset."/>
+					<Button Text="Delete Preset" Style="Flat" OnClicked="rando.delete_preset" Slot.Auto="true" Tooltip="Delete the saved preset chosen in the Seed preset list (the built-in presets can't be deleted)."/>
 				</HBox>
-				<HBox Spacing="10" Theme="Dark">
-					<Label Text="Settings string" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center" Theme="Dark"/>
-					<TextInput Name="sstr_in" Slot.Fill="1" Theme="Dark"/>
-					<Button Text="Import" OnClicked="rando.import_string" Slot.Auto="true" Theme="Dark"/>
-					<Button Text="Copy" OnClicked="rando.copy_string" Slot.Auto="true" Theme="Dark"/>
-					<Button Text="Reset" Style="Flat" OnClicked="rando.reset" Slot.Auto="true" Tooltip="Every setting back to its default (your game and output folders are kept)." Theme="Dark"/>
+				<HBox Spacing="10">
+					<Label Text="Settings string" TextSize="14" Slot.Fill="0.25" Slot.VAlign="Center"/>
+					<TextInput Name="sstr_in" Slot.Fill="1"/>
+					<Button Text="Import" OnClicked="rando.import_string" Slot.Auto="true"/>
+					<Button Text="Copy" OnClicked="rando.copy_string" Slot.Auto="true"/>
+					<Button Text="Reset" Style="Flat" OnClicked="rando.reset" Slot.Auto="true" Tooltip="Every setting back to its default (your game and output folders are kept)."/>
 				</HBox>
-				<ProgressBar Name="progress" Value="0" Theme="Dark"/>
-				<ListView Name="log" Slot.Fill="1" Slot.MaxSize="130" Theme="Dark"/>
+				<ProgressBar Name="progress" Value="0"/>
+				<ListView Name="log" Slot.Fill="1" Slot.MaxSize="130"/>
 			</VBox>
 		</Border>
 	</VBox>

@@ -63,6 +63,22 @@ const shop_template = "Shop_ArrowBundle_01";
 const shop_prefix = "Shop_Rando_";
 const shop_refs = [_][]const u8{ "ModelInfoRef", "AnimationRef", "ActorNameRef", "ASRef" };
 
+/// World pickups take the rupee's physics instead of the Fire Arrows': Obj_Arrow_Fire's body is a solid object
+/// that blocks the player (LayerEntity Object, contact HitToBlockable), so an item under water (Kokiri Forest's
+/// rupees by Mido) had a box Link stood on above it and couldn't swim down to (test report: the Ocarina in the
+/// Kokiri Forest water; only the Boomerang got it). A rupee's body (DropItem_0: SmallObject, HitOnlyGroundAndObject)
+/// only rests on the ground; its pickup area (Rupee_Tgt_0) is a little larger than the arrows'.
+const world_physics_source = "Obj_Rupee_Green";
+const world_physics_ref = "?Component/Physics/Rupee.engine__component__PhysicsParam.bgyml";
+const world_physics_files = [_][]const u8{
+    "Component/Physics/Rupee.engine__component__PhysicsParam.bgyml",
+    "Phive/ControllerSetParam/Rupee.phive__ControllerSetParam.bgyml",
+    "Phive/RigidBodyEntityParam/DropItem_0.phive__RigidBodyEntityParam.bgyml",
+    "Phive/ShapeParam/Rupee_Body_0.phive__ShapeParam.bgyml",
+    "Phive/ShapeParam/Rupee_Tgt_0.phive__ShapeParam.bgyml",
+    "Phive/ContactCollectionEntityParam/HitOnlyGroundAndObject.phive__ContactCollectionEntityParam.bgyml",
+};
+
 const auto_prefix = "Obj_RandoAuto_";
 const auto_source = "Obj_Rupee_Green";
 const auto_attention = "Component/AttentionSenderParam/AutoPickUpItem.game__component__AttentionSenderParam.bgyml";
@@ -589,8 +605,23 @@ pub const PickupCloner = struct {
         try comps.put(a, "PouchContentRef", .{ .string = std.fmt.allocPrint(a, "?{s}", .{pouch_path}) catch return error.OutOfMemory });
 
         var add: std.ArrayList(sarc.NewFile) = .empty;
+        if (!token and !shop) {
+            // a world pickup: the rupee's physics (world_physics_source says why)
+            const physics_pack = try listFiles(a, (try self.patches.read(try packOf(a, world_physics_source))).data);
+            for (world_physics_files) |name| {
+                if (tmpl.has(name)) continue;
+                const d = physics_pack.get(name) orelse return self.progress.fail(error.NotAsExpected, "{s} has no {s}", .{ world_physics_source, name });
+                add.append(a, .{ .name = name, .data = d }) catch return error.OutOfMemory;
+            }
+            try comps.put(a, "PhysicsRef", .{ .string = world_physics_ref });
+        }
         for (item.entries) |e| {
             if (tmpl.has(e.name) or std.mem.startsWith(u8, e.name, "Actor/") or std.mem.startsWith(u8, e.name, "AI/")) continue;
+            var already_added = false;
+            for (add.items) |f| if (std.mem.eql(u8, f.name, e.name)) {
+                already_added = true;
+            };
+            if (already_added) continue;
             add.append(a, .{ .name = e.name, .data = e.data }) catch return error.OutOfMemory;
         }
         const table_path = std.fmt.allocPrint(a, "GameParameter/GameParameterTable/{s}.engine__actor__GameParameterTable.bgyml", .{clone}) catch return error.OutOfMemory;

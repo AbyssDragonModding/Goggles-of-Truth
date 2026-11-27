@@ -343,6 +343,15 @@ pub fn bombs(s: *State) bool {
     // Bag bombs are lifted objects in the remake: without the bomb patch they need the Goron Bracelet.
     return bag and (s.options.bag_bombs_no_bracelet or str1(s));
 }
+/// Bombs in child Link's hands: a bag, and with bag bombs lifted, the Goron Bracelet itself (childStr1).
+pub fn childBombs(s: *State) bool {
+    const bag = bombBagTiers(s) >= 1;
+    return bag and (s.options.bag_bombs_no_bracelet or childStr1(s));
+}
+/// Bombs at `age` (childBombs for child Link).
+pub fn bombsAt(s: *State, age: Age) bool {
+    return if (age == .child) childBombs(s) else bombs(s);
+}
 pub fn hookshot(s: *State) bool {
     return hookshotTiers(s) >= 1;
 }
@@ -367,6 +376,14 @@ pub fn goldenScale(s: *State) bool {
 /// The Goron Bracelet, or better (a progressive line's first copy is always the bracelet).
 pub fn str1(s: *State) bool {
     return strengthTiers(s) >= 1;
+}
+/// Child Link's strength: the Goron Bracelet itself, or a Progressive Strength copy (the first one is always the
+/// bracelet). Why not any tier: the Silver and Golden Gauntlets are adult Link's equipment
+/// (Armor_Adult_Gauntlet_*), so a child holding only those lifts nothing, and with Progressive Items off (or a
+/// Gauntlet kept in a big chest) they can be found before the bracelet. str1 counting them for a child spot could
+/// put the only way to bombs behind a bomb flower he can't lift, as the Lost Woods rock once did.
+pub fn childStr1(s: *State) bool {
+    return s.has(.Gauntlet_Goron) or s.count(Item.Progressive_Strength.id()) >= 1;
 }
 pub fn str2(s: *State) bool {
     return strengthTiers(s) >= 2;
@@ -452,9 +469,9 @@ fn evalDerived(s: *State, d: Derived) bool {
         .zelda_met => o.skip_child_zelda or (s.is(.hf_child) and s.has(.WeirdEgg)),
         // the Kakariko gate
         .dmt_child => s.is(.hf_child) and (o.open_dmt or s.has(.ZeldaLetter)),
-        .dmc_child => s.is(.dmt_child) and bombs(s),
+        .dmc_child => s.is(.dmt_child) and childBombs(s),
         .dmc_adult => s.is(.adult) and (bombs(s) or s.has(.Hammer)),
-        .zr_child => s.is(.hf_child) and bombs(s),
+        .zr_child => s.is(.hf_child) and childBombs(s),
         .zd_child => s.is(.zr_child) and song(s, .Melody_ZeldaLullaby),
         .zd_adult => s.is(.adult) and song(s, .Melody_ZeldaLullaby),
         .zf_child => s.is(.zd_child) and (o.open_zora or s.has(.Bottle_Letter)),
@@ -473,11 +490,12 @@ fn evalDerived(s: *State, d: Derived) bool {
         .dodongo_done => blk: {
             // The entrance boulder only reacts to the special bomb flower next to it (Goron Bracelet), unless the
             // bag-bomb patch is on; inside, bombs or bomb flowers both work.
-            const entry = str1(s) or (o.dodongo_bag_bombs and bombs(s));
+            // a child dungeon in the logic: child Link's bracelet and bombs
+            const entry = childStr1(s) or (o.dodongo_bag_bombs and childBombs(s));
             break :blk s.is(.dmt_child) and entry;
         },
         .jabu_done => s.is(.zf_child) and bottle(s) and s.has(.Boomerang),
-        .botw_done => s.is(.hf_child) and song(s, .Melody_StormSong) and lens(s) and bombs(s) and dungeonKeys(s, 5),
+        .botw_done => s.is(.hf_child) and song(s, .Melody_StormSong) and lens(s) and childBombs(s) and dungeonKeys(s, 5),
         .forest_done => s.is(.adult) and hookshot(s) and bow(s) and dungeonKeys(s, 0),
         .fire_done => s.is(.dmc_adult) and s.is(.goron_tunic) and s.has(.Hammer) and bombs(s) and hookshot(s) and
             bow(s) and song(s, .Melody_TimeSong) and dungeonKeys(s, 1),
@@ -581,20 +599,20 @@ pub fn regionAccess(s: *State, region: Region, age: Age) bool {
 pub fn regionExtra(s: *State, region: Region, age: Age) bool {
     const child = age == .child;
     return switch (region) {
-        .KokiriForest => bombs(s) and song(s, .Melody_StormSong),
-        .LostWood, .SacredForestMeadow, .HyruleCastle, .DeathMountainTrail => bombs(s),
-        .HyruleField => bombs(s) and scale(s) and (child or hookshot(s)),
+        .KokiriForest => bombsAt(s, age) and song(s, .Melody_StormSong),
+        .LostWood, .SacredForestMeadow, .HyruleCastle, .DeathMountainTrail => bombsAt(s, age),
+        .HyruleField => bombsAt(s, age) and scale(s) and (child or hookshot(s)),
         .Market, .ZoraDomain, .HountedWasteland => true,
-        .KakarikoVillage => bombs(s) and (child or hookshot(s)),
-        .Graveyard => bombs(s) and song(s, .Melody_SunSong) and song(s, .Melody_ZeldaLullaby),
-        .DeathMountainCrater => bombs(s) and (child or (s.is(.goron_tunic) and hookshot(s))),
-        .GoronCity => bombs(s) and (child or str2(s)),
-        .ZoraRiver => bombs(s) and (child or s.has(.HoverBoot)),
+        .KakarikoVillage => bombsAt(s, age) and (child or hookshot(s)),
+        .Graveyard => bombsAt(s, age) and song(s, .Melody_SunSong) and song(s, .Melody_ZeldaLullaby),
+        .DeathMountainCrater => bombsAt(s, age) and (child or (s.is(.goron_tunic) and hookshot(s))),
+        .GoronCity => bombsAt(s, age) and (child or str2(s)),
+        .ZoraRiver => bombsAt(s, age) and (child or s.has(.HoverBoot)),
         .ZoraFountain => if (child) scale(s) else s.has(.HeavyBoot),
-        .GerudoValley => bombs(s) and (if (child) scale(s) else (s.has(.Hammer) and hookshot(s))),
+        .GerudoValley => bombsAt(s, age) and (if (child) scale(s) else (s.has(.Hammer) and hookshot(s))),
         // the fortress's spots are adult Link's (the Hookshot); child Link has none there
         .GerudoFortress => !child and hookshot(s) and s.is(.card),
-        .DesertColossus => bombs(s) and (child or longshot(s)),
+        .DesertColossus => bombsAt(s, age) and (child or longshot(s)),
     };
 }
 
@@ -696,23 +714,23 @@ pub fn special(s: *State, key: Special) bool {
         .song_requiem => s.is(.adult) and s.is(.wasteland),
         .song_prelude => s.is(.adult) and s.is(.forest_done),
         .adult => s.is(.adult),
-        .fairy_dmt => (s.is(.dmt_child) or s.is(.adult)) and bombs(s) and song(s, .Melody_ZeldaLullaby),
+        .fairy_dmt => ((s.is(.dmt_child) and childBombs(s)) or (s.is(.adult) and bombs(s))) and song(s, .Melody_ZeldaLullaby),
         .fairy_dmc => s.is(.dmc_adult) and s.has(.Hammer) and song(s, .Melody_ZeldaLullaby),
         .fairy_ogc => s.is(.adult) and str3(s) and song(s, .Melody_ZeldaLullaby),
-        .fairy_hc => s.is(.hf_child) and bombs(s) and song(s, .Melody_ZeldaLullaby),
-        .fairy_zf => s.is(.zf_child) and bombs(s) and song(s, .Melody_ZeldaLullaby),
-        .fairy_colossus => s.is(.colossus_child) and bombs(s) and song(s, .Melody_ZeldaLullaby),
+        .fairy_hc => s.is(.hf_child) and childBombs(s) and song(s, .Melody_ZeldaLullaby),
+        .fairy_zf => s.is(.zf_child) and childBombs(s) and song(s, .Melody_ZeldaLullaby),
+        .fairy_colossus => s.is(.colossus_child) and childBombs(s) and song(s, .Melody_ZeldaLullaby),
         .hc_child => s.options.skip_child_zelda or s.is(.hf_child),
         .zelda => s.is(.zelda_met),
         .darunia => s.is(.dmt_child) and song(s, .Melody_ZeldaLullaby) and song(s, .Melody_SariaSong),
         .zd_child => s.is(.zd_child),
         // stop him with a bomb as child
-        .rolling_goron => s.is(.dmt_child) and bombs(s),
+        .rolling_goron => s.is(.dmt_child) and childBombs(s),
         // Deku Scrub targets in the Lost Woods (child)
         .lw_target => s.has(.Range_SlingShot),
         .market_gallery => s.is(.hf_child) and s.has(.Range_SlingShot),
         .kak_gallery => s.is(.adult) and bow(s),
-        .bowling => s.is(.hf_child) and bombs(s),
+        .bowling => s.is(.hf_child) and childBombs(s),
         .gerudo_card => s.is(.gf_adult) and hookshot(s),
         .light_arrows => s.is(.adult) and s.is(.shadow_done) and s.is(.spirit_done),
         .kak_child, .llr_child, .fishing_child, .graveyard_child, .market_child => s.is(.hf_child),
@@ -752,11 +770,11 @@ pub fn special(s: *State, key: Special) bool {
         .scrub_lw_bridge => true,
         // Both grottos are under a cracked rock: bombs, or the Megaton Hammer, which only adult Link can swing (a
         // child-reachable Hammer once let a seed hide its only Bomb Bag under the Lost Woods rock)
-        .scrub_lw_nuts => bombs(s) or (s.is(.adult) and s.has(.Hammer)),
+        .scrub_lw_nuts => childBombs(s) or (s.is(.adult) and (bombs(s) or s.has(.Hammer))),
         // The remake's Hyrule Field scrub only sells for a password (Enemy_Scrub_Business_Common: HaveReadHrlField_Note07,
         // Enemy_Scrub_Business_Secret_*), written on a Fairy Thought outside that adult Link reads; then child Link
         // buys it (guides). Not confirmed which ages can buy, so the rule asks for both, which works either way.
-        .scrub_hf => s.is(.adult) and s.is(.hf_child) and bombs(s),
+        .scrub_hf => s.is(.adult) and s.is(.hf_child) and childBombs(s),
         // child crater only
         .scrub_dmc => s.is(.dmc_child),
         .rutos_letter => s.is(.hf_child) and scale(s),
@@ -823,7 +841,7 @@ fn overworldCheck(s: *State, o: LocationRule.Overworld, age: Age) bool {
     if (!regionAccess(s, o.region, age)) return false;
     if (o.kf_free) return true;
     if (o.is_gs) {
-        if (age == .child and !(s.has(.Boomerang) and bombs(s) and (!o.bean_gs or bottle(s)))) return false;
+        if (age == .child and !(s.has(.Boomerang) and childBombs(s) and (!o.bean_gs or bottle(s)))) return false;
         if (age == .adult and !(hookshot(s) and bombs(s))) return false;
     }
     return regionExtra(s, o.region, age);
@@ -973,6 +991,27 @@ test "child spots never need an adult item, adult spots never a child item" {
             return error.TestUnexpectedResult;
         }
     }
+}
+
+test "child Link's strength and bombs need the Goron Bracelet, not the Gauntlets" {
+    const allocator = std.testing.allocator;
+    // bag bombs lifted (the bomb patch off): they need the bracelet
+    var options = Options{ .bag_bombs_no_bracelet = false };
+    // everything, but the strength line only as the adult Gauntlets (found first with Progressive Items off)
+    var gauntlets_only = try stateWithout(allocator, &options, &.{ .Gauntlet_Goron, .Progressive_Strength });
+    defer gauntlets_only.deinit(allocator);
+    try std.testing.expect(str1(&gauntlets_only) and !childStr1(&gauntlets_only));
+    try std.testing.expect(bombs(&gauntlets_only) and !childBombs(&gauntlets_only));
+    // child spots that need bombs: not with the Gauntlets alone
+    try std.testing.expect(!regionExtra(&gauntlets_only, .LostWood, .child));
+    try std.testing.expect(regionExtra(&gauntlets_only, .LostWood, .adult));
+    try std.testing.expect(!special(&gauntlets_only, .rolling_goron));
+    try std.testing.expect(!evalDerived(&gauntlets_only, .dodongo_done));
+    // the bracelet, or a progressive copy (the first is the bracelet), is enough
+    gauntlets_only.add(Item.Progressive_Strength.id());
+    gauntlets_only.clearCache();
+    try std.testing.expect(childStr1(&gauntlets_only) and childBombs(&gauntlets_only));
+    try std.testing.expect(regionExtra(&gauntlets_only, .LostWood, .child));
 }
 
 test "progressive copies count as the line's first tiers" {

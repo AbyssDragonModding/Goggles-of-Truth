@@ -465,7 +465,7 @@ fn switchOtherSeeds(a: Allocator, env: *const Env, out_dir: []const u8, name: []
         const switched = if (rebuild) saves.keepSavesForRebuild(a, env, target, name, &msg) else saves.switchSaves(a, env, target, name, &msg);
         switched catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
-            error.SaveFailed => progress.log("WARNING: per-seed saves not switched ({s}). Your saves weren't changed; once the game is closed, use Play This Seed on the ROM Options tab.", .{msg.failure}),
+            error.SaveFailed => progress.log("WARNING: per-seed saves not switched ({s}). Your saves weren't changed; once the game is closed, use Play This Seed on the General Settings tab.", .{msg.failure}),
         };
         for (msg.lines.items) |line| progress.log("Per-seed saves: {s}", .{line});
     }

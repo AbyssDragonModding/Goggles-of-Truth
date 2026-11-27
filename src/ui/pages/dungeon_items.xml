@@ -7,7 +7,7 @@
 	<VBox Spacing="14">
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,10,6,0">
 			<VBox Spacing="10">
-				<Label Text="Dungeon Items" TextSize="16" Color="#F5CC61"/>
+				<Label Text="Dungeon Items" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Label Text="Maps &amp; Compasses" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Vanilla: maps and compasses stay in their usual chests.&#10;Own Dungeon: maps and compasses are shuffled among the chests of their own dungeon.&#10;Remove: their chests hold a Blue Rupee and you never get them.&#10;Start With: a new save already has every dungeon's map and compass, and the chests that held them&#10;are randomized like any other check (a bonus item joins the pool for each: rupees up to Gold,&#10;Bombchus, ammo, sometimes a Piece of Heart)."/>
 					<ComboBox Name="set_maps_compasses" OnChanged="set.maps_compasses" Slot.Fill="0.9" Items="Vanilla|Own Dungeon|Remove (replaced by junk)|Start With" Tooltip="Vanilla: maps and compasses stay in their usual chests.&#10;Own Dungeon: maps and compasses are shuffled among the chests of their own dungeon.&#10;Remove: their chests hold a Blue Rupee and you never get them.&#10;Start With: a new save already has every dungeon's map and compass, and the chests that held them&#10;are randomized like any other check (a bonus item joins the pool for each: rupees up to Gold,&#10;Bombchus, ammo, sometimes a Piece of Heart)."/>
@@ -32,7 +32,7 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Key Ring Dungeons" TextSize="16" Color="#F5CC61"/>
+				<Label Text="Key Ring Dungeons" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Checkbox Name="set_key_ring_forest" Style="Switch" Text="Forest Temple" OnChanged="set.key_ring_forest" Slot.Fill="1" Tooltip="With Key Ring Dungeons: Chosen Dungeons, whether the Forest Temple gets a key ring. Without one its small&#10;keys stay where they are in the original."/>
 					<StableBadge Name="badge_key_ring_forest" LabelName="badgelab_key_ring_forest"/>
@@ -69,11 +69,11 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Barren Dungeons" TextSize="16" Color="#F5CC61"/>
+				<Label Text="Barren Dungeons" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Label Text="Barren Dungeons" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="This many dungeons, chosen by the seed, are barren: nothing in them is needed to finish the game.&#10;Their shuffled checks hold rupees only: no key items, songs, boss rewards, key rings or other&#10;junk. A barren dungeon's own keys stay in it when keys stay in their own dungeons. The dungeon's&#10;boss reward, boss Heart Container and song (Sheik in the Ice Cavern) are put somewhere else in the&#10;seed, whatever the reward, song and heart settings; their checks hold rupees too.&#10;Dungeons that can be barren: the Deku Tree, Dodongo's Cavern, Jabu-Jabu's Belly, the Forest, Fire,&#10;Water, Shadow and Spirit Temples, the Bottom of the Well, the Ice Cavern and the Gerudo Training&#10;Ground (never Ganon's Castle).&#10;The altar in the Temple of Time names the barren dungeons."/>
 					<ComboBox Name="set_barren_dungeons" OnChanged="set.barren_dungeons" Slot.Fill="0.9" Items="Off|1|2|3|4|5|Random (1 to 5)" Tooltip="This many dungeons, chosen by the seed, are barren: nothing in them is needed to finish the game.&#10;Their shuffled checks hold rupees only: no key items, songs, boss rewards, key rings or other&#10;junk. A barren dungeon's own keys stay in it when keys stay in their own dungeons. The dungeon's&#10;boss reward, boss Heart Container and song (Sheik in the Ice Cavern) are put somewhere else in the&#10;seed, whatever the reward, song and heart settings; their checks hold rupees too.&#10;Dungeons that can be barren: the Deku Tree, Dodongo's Cavern, Jabu-Jabu's Belly, the Forest, Fire,&#10;Water, Shadow and Spirit Temples, the Bottom of the Well, the Ice Cavern and the Gerudo Training&#10;Ground (never Ganon's Castle).&#10;The altar in the Temple of Time names the barren dungeons."/>
-					<NewFeatureBadge Name="badge_barren_dungeons" LabelName="badgelab_barren_dungeons"/>
+					<StableBadge Name="badge_barren_dungeons" LabelName="badgelab_barren_dungeons"/>
 				</HBox>
 			</VBox>
 		</Border>

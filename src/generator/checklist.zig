@@ -101,6 +101,10 @@ fn settingTest(a: Allocator, key: Key, st: *const Settings) error{OutOfMemory}!?
             .how = "Kill a Gold Skulltula on a vine and touch its drop while climbing; kill one, leave without the drop, come back",
         } else null,
         .skip_cutscenes => if (on) Test{ .expected = "Every cutscene can be skipped (opening, credits too)", .how = "Press the skip button in the opening" } else null,
+        .progressive_items => if (on)
+            Test{ .expected = "Each copy of a Progressive item gives the next tier you don't have (Hookshot, then Longshot); they are only in small chests and character / minigame / scrub checks", .how = "Open two chests holding a Progressive Hookshot (see Check rows) and check the pause menu after each" }
+        else
+            Test{ .expected = "The Hookshot, scales, strength upgrades and bomb bags are their own items and can be anywhere; the Ocarinas, wallets, seed bags and quivers stay Progressive", .how = "Find a Longshot or Golden Scale in the spoiler and pick it up; note what the pause menu shows if you get the stronger one first" },
         .refill_needs_item => if (on) Test{ .expected = "Arrow / bomb / Bombchu / seed / nut / stick chests give a blue rupee without the Bow / Bomb Bag / Slingshot / a Deku Nut / a Deku Stick picked up first", .how = "Open a refill chest (see Check rows) before owning its item" } else null,
         .big_poe_one => if (on) Test{ .expected = "The Big Poe buyer gives his reward for a single Big Poe", .how = "Adult: catch one Big Poe in Hyrule Field, sell it in the Market ghost shop" } else null,
         .skip_kaepora => if (on) Test{ .expected = "Kaepora doesn't stop you outside Kokiri Forest, in the Lost Woods after Saria's Song, in Hyrule Field (also towards Lake Hylia), in front of Hyrule Castle or at Zora's River; the quest menu and the field music work", .how = "Leave Kokiri Forest, go back into the Lost Woods after Saria's Song, cross Hyrule Field towards the castle and Lake Hylia, go up Zora's River" } else null,
@@ -271,7 +275,7 @@ pub fn write(a: Allocator, world: *World, plan: *fill.Plan, filler: *fill.Filler
         if (loc.kind == .shop) {
             name = if (item == loc.vanilla or world.items.isJunk(item)) "(normal shop goods)" else try std.fmt.allocPrint(a, "{s} ({d} rupees)", .{ name, plan.shop_prices[i].? });
         }
-        if (st.flag(.refill_needs_item) and loc.kind == .chest) {
+        if (st.flag(.refill_needs_item) and loc.can_check_owned) {
             if (fill.refillContainer(world.items.name(item))) |need| {
                 const short = if (std.mem.startsWith(u8, need, "Item_")) need["Item_".len..] else need;
                 name = try std.fmt.allocPrint(a, "{s} (Blue Rupee without the {s})", .{ name, try world.itemName(a, short) });

@@ -1,0 +1,27 @@
+# Progressive Items off: each upgrade is its own item and can lie anywhere, here on Kokiri Forest's freestanding
+# rupee spots (as a child, with Shuffle Freestanding Rupees on).
+#   Rupee 8 (in the water next to Mido): the Goron Bracelet.
+#   Rupee 5 (in the water) and rupee 1: the Golden Scale and the Silver Scale. Get the Golden Scale first, then the
+#                                       Silver one: does the pause menu keep the Golden Scale?
+#   Rupees 2 and 3: the Bomb Bag and the Bigger Bomb Bag.
+#   Rupees 4 and 6: the Longshot and the Hookshot. Get the Longshot first, then the Hookshot: which one do you keep?
+# The randomizer itself only puts a stronger upgrade where you need the weaker one first, when the logic allows it;
+# this plan places them by hand to see what the game does when you find them out of order. (The Ocarinas stay
+# progressive with this setting off: an Ocarina lying in the world would come without its tutorial.)
+name = "PROGOFF1"
+
+[settings]
+progressive_items = false
+starting_age = "child"
+barren_dungeons = "off"
+shuffle_freestanding = true
+shuffle_rupees = true
+
+[place]
+"Kokiri Forest Freestanding Rupee 8" = "Goron Bracelet"
+"Kokiri Forest Freestanding Rupee 5" = "Golden Scale"
+"Kokiri Forest Freestanding Rupee 1" = "Silver Scale"
+"Kokiri Forest Freestanding Rupee 2" = "Bomb Bag"
+"Kokiri Forest Freestanding Rupee 3" = "Bigger Bomb Bag"
+"Kokiri Forest Freestanding Rupee 4" = "Longshot"
+"Kokiri Forest Freestanding Rupee 6" = "Hookshot"

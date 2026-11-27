@@ -1,0 +1,18 @@
+# The medallions menu after a reward from an event check: the Fire Temple's ending in the Chamber of Sages (the sage's
+# scene, then the trip to Death Mountain Crater) plays as soon as the new game starts and hands over the Shadow Medallion. Check: the "You got" window names the Shadow
+# Medallion, then the medallions menu opens with the line "Added to Key Items", then the scene goes on and takes Link to the crater (the Bolero of Fire spot).
+name = "REWARDMENU2"
+
+[settings]
+shuffle_rewards = "reward"
+starting_age = "child"
+barren_dungeons = "off"
+skip_story_scenes = false
+
+[place]
+"Volvagia (Fire Medallion)" = "Shadow Medallion"
+
+[start]
+age = "adult"
+scene = "SageRoom"
+boot_event = "FireTemple_SageOfFire_SageRoom"

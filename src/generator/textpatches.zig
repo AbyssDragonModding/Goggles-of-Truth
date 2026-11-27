@@ -378,3 +378,99 @@ pub fn writeBridgeText(world: *World, patches: *patchset.PatchSet, st: *const se
     try patches.emitZs(bridge_flow, orig, new);
     progress.log("Temple of Time altar: shows the Rainbow Bridge requirement{s} ({d} languages)", .{ if (barren.len > 0) " and the barren dungeons" else "", done });
 }
+
+// ===================================================================================== The medallions menu's line
+// The medallions menu the new game opens at its start (teststart.OpeningStart.open_important_menu) is the Deku Tree's
+// "important item" display. Its line, T_Message_00 in LayoutMsg/ImportantMenu_01.msbt, is fixed text: "Kokiri Emerald
+// added to Key Items" (test report, ADULTINPLACE1: the start gave the Fire Medallion, the menu named the Kokiri
+// Emerald). Each language's line gets the rewards the seed starts with in place of its own Kokiri Emerald name, taken
+// from the item names of that language (ActorMsg/PouchContent.msbt, <actor>_Name), so every language keeps its own
+// wording. When the menu also opens after rewards found later (rewardmenu.zig), the line names none: "Added to Key
+// Items". Without a reward at the start the start doesn't open it (patches.zig). The Deku Tree's scene shows the same line, so it then shows
+// the normal item window instead (npcrewards.useItemWindowForKeptImportantDisplays).
+
+const important_menu_messages = "LayoutMsg/ImportantMenu_01.msbt";
+const important_menu_label = "T_Message_00";
+const item_name_messages = "ActorMsg/PouchContent.msbt";
+/// the reward the line names in the game
+const important_menu_vanilla_reward = "Item_Stone_Forest";
+const reward_name_separator = ", ";
+
+/// True for a Spiritual Stone or a medallion (the Key Items the medallions menu shows).
+pub fn isDungeonReward(actor: []const u8) bool {
+    return std.mem.startsWith(u8, actor, "Item_Stone_") or std.mem.startsWith(u8, actor, "Item_Medal_");
+}
+
+/// The text of `label` without its terminator, or null.
+fn textWithoutTerminator(r: *const msbt.Raw, label: []const u8) ?[]const u8 {
+    const t = r.text(label) orelse return null;
+    return std.mem.trimEnd(u8, t, "\x00");
+}
+
+/// Makes the medallions menu's line name `start_rewards` (reward actors, in order; empty: no name, "Added to Key
+/// Items", for a menu that also opens after rewards found later: rewardmenu.zig) in every
+/// UTF-8 language archive. Returns how many archives changed; a language whose files aren't as expected is skipped
+/// with a warning (its line stays the game's).
+pub fn writeStartRewardText(world: *World, patches: *patchset.PatchSet, start_rewards: []const []const u8, progress: *Progress) PatchError!usize {
+    var done: usize = 0;
+    for (try messageArchives(patches.allocator, world)) |fname| {
+        var file_arena = patches.fileArena();
+        defer file_arena.deinit();
+        const a = file_arena.allocator();
+        const rel = std.fmt.allocPrint(a, "Mals/{s}", .{fname}) catch return error.OutOfMemory;
+        const orig = try patches.readInto(a, rel);
+        const menu_entry = (try sarc.find(a, orig.data, important_menu_messages)) orelse continue;
+        const names_entry = (try sarc.find(a, orig.data, item_name_messages)) orelse continue;
+        if (!msbt.isUtf8(menu_entry.data) or !msbt.isUtf8(names_entry.data)) {
+            progress.log("warning: {s} medallions menu text is not UTF-8; skipped for it", .{fname});
+            continue;
+        }
+        const menu = msbt.raw(a, menu_entry.data) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.InvalidData => return progress.fail(error.NotAsExpected, "{s} in {s} is not as expected", .{ important_menu_messages, fname }),
+        };
+        const names = msbt.raw(a, names_entry.data) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.InvalidData => return progress.fail(error.NotAsExpected, "{s} in {s} is not as expected", .{ item_name_messages, fname }),
+        };
+        const line = textWithoutTerminator(&menu, important_menu_label) orelse {
+            progress.log("warning: {s} has no medallions menu line; skipped for it", .{fname});
+            continue;
+        };
+        var new_line: std.ArrayList(u8) = .empty;
+        const vanilla_label = std.fmt.allocPrint(a, "{s}_Name", .{important_menu_vanilla_reward}) catch return error.OutOfMemory;
+        const vanilla_name = textWithoutTerminator(&names, vanilla_label) orelse "";
+        const at = if (vanilla_name.len > 0) std.mem.indexOf(u8, line, vanilla_name) else null;
+        if (at == null) {
+            progress.log("warning: {s} medallions menu line doesn't name the Kokiri Emerald; skipped for it", .{fname});
+            continue;
+        }
+        if (start_rewards.len > 0) {
+            new_line.appendSlice(a, line[0..at.?]) catch return error.OutOfMemory;
+            for (start_rewards, 0..) |reward, k| {
+                const label = std.fmt.allocPrint(a, "{s}_Name", .{reward}) catch return error.OutOfMemory;
+                const name = textWithoutTerminator(&names, label) orelse return progress.fail(error.NotAsExpected, "{s} in {s} has no {s}", .{ item_name_messages, fname, label });
+                if (k > 0) new_line.appendSlice(a, reward_name_separator) catch return error.OutOfMemory;
+                new_line.appendSlice(a, name) catch return error.OutOfMemory;
+            }
+            new_line.appendSlice(a, line[at.? + vanilla_name.len ..]) catch return error.OutOfMemory;
+        } else {
+            // no name: the line without the Kokiri Emerald ("Added to Key Items"), its first letter a capital
+            const rest = std.mem.trimStart(u8, line[at.? + vanilla_name.len ..], " ");
+            new_line.appendSlice(a, rest) catch return error.OutOfMemory;
+            if (new_line.items.len > 0) new_line.items[0] = std.ascii.toUpper(new_line.items[0]);
+        }
+        new_line.append(a, 0) catch return error.OutOfMemory;
+        const msg = msbt.setRaw(a, menu_entry.data, &.{.{ .label = important_menu_label, .text = new_line.items }}) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.InvalidData => return progress.fail(error.NotAsExpected, "{s} in {s} is not as expected", .{ important_menu_messages, fname }),
+        };
+        const archive = sarc.rebuild(a, orig.data, &.{.{ .name = important_menu_messages, .data = msg }}, &.{}) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return error.InvalidData,
+        };
+        try patches.emitZs(rel, orig, archive);
+        done += 1;
+    }
+    return done;
+}

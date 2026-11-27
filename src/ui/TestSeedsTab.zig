@@ -129,7 +129,7 @@ pub fn init(gpa: Allocator, root: r.Widget) App.AppError!TestSeedsTab {
     };
 }
 
-fn allPickers(self: *TestSeedsTab) [11]*SearchPicker {
+pub fn allPickers(self: *TestSeedsTab) [11]*SearchPicker {
     return .{ &self.locations, &self.items, &self.scenes_picker, &self.spots_picker, &self.boots, &self.start_items, &self.quests_picker, &self.steps_picker, &self.flags, &self.flag_values, &self.cutscenes };
 }
 

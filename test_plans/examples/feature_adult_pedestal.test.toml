@@ -1,7 +1,7 @@
 # Starting Age: Adult at the Temple of Time's LightPrelude spot (no sword pull scene). Check: the screen fades in,
 # Skip Child Zelda's items show their windows, Sheik waits by the sword room's door, and the pedestal takes the sword
 # back (child again) before the Forest Temple. Then do the Forest Temple and get the Prelude of Light as usual.
-name = "ADULTPEDESTAL3"
+name = "ADULTINPLACE1"
 
 [settings]
 starting_age = "adult"

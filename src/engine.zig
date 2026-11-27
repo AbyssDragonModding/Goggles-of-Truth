@@ -12,6 +12,7 @@ pub const Progress = @import("core/Progress.zig");
 pub const version = @import("version.zig");
 pub const seedinfo = @import("core/seedinfo.zig");
 pub const testplan = @import("core/testplan.zig");
+pub const crashlog = @import("core/crashlog.zig");
 
 // ---- file formats
 pub const zstd = @import("formats/zstd.zig");
@@ -52,12 +53,15 @@ pub const Env = @import("platform/Env.zig");
 pub const longshot = @import("platform/longshot.zig");
 pub const saves = @import("platform/saves.zig");
 pub const launcher = @import("platform/launcher.zig");
+pub const updater = @import("platform/updater.zig");
 
 test {
+    _ = updater;
     _ = bytes;
     _ = threads;
     _ = seedinfo;
     _ = testplan;
+    _ = crashlog;
     _ = testseed;
     _ = host;
     _ = hash;

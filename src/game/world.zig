@@ -219,6 +219,9 @@ pub const Location = struct {
     presence: []const u8 = "",
     get_event: []const u8 = "",
     conditional: bool = false,
+    /// a chest the game has a conditional version of (conditionalChestActor), so it can give one item or another by
+    /// what the player owns: a progressive item's next tier, a refill only with its container
+    can_check_owned: bool = false,
     room: ?i128 = null,
     /// explicit logic rule for events and special spots
     rule_key: ?logic.Special = null,
@@ -261,6 +264,18 @@ fn isGiftSubFlow(name: []const u8) bool {
 }
 
 // ---------------------------------------------------------------------------------------------- stage kinds
+
+/// The game's conditional chest for chest actor `chest_actor`, or null when it has none. Only Obj_TBox_A_06 reads
+/// Drop__CheckActor (its own AI asks the pouch for it: owned -> Drop__DropActor_Substitute, else Drop__DropActor);
+/// every other chest ignores those fields and always gives Drop__DropActor (test report, PROGKOKIRI1: two Progressive
+/// Hookshots in Mido's plain chests gave two Hookshots). Obj_TBox_A_06 uses the small chest's model
+/// (Obj_TBox_A_01), so only the small chests have one; big and invisible chests have none (dump:
+/// Pack/Actor/Obj_TBox_A_06.pack).
+pub fn conditionalChestActor(chest_actor: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, chest_actor, "Obj_TBox_A_01") or std.mem.eql(u8, chest_actor, "Obj_TBox_A_06")) return "Obj_TBox_A_06";
+    if (std.mem.eql(u8, chest_actor, "Obj_TBox_A_01_NoBake") or std.mem.eql(u8, chest_actor, "Obj_TBox_A_06_NoBake")) return "Obj_TBox_A_06_NoBake";
+    return null;
+}
 
 const StageKind = struct { kind: Kind, label: []const u8 };
 
@@ -700,6 +715,7 @@ pub const World = struct {
         presence: []const u8,
         get_event: []const u8,
         conditional: bool,
+        can_check_owned: bool,
         pos: [3]f64,
         room: ?i128,
         skip: bool = false,
@@ -829,6 +845,7 @@ pub const World = struct {
                             .presence = a.dupe(u8, flag_name) catch return error.OutOfMemory,
                             .get_event = a.dupe(u8, get_event) catch return error.OutOfMemory,
                             .conditional = if (dyn) |dd| dd.contains("Drop__CheckActor") else false,
+                            .can_check_owned = sk.kind == .chest and conditionalChestActor(g) != null,
                             .pos = .{ round2(pos[0]), round2(pos[1]), round2(pos[2]) },
                             .room = if (dyn) |dd| dd.getInt("DefaultDungeonRoomIndex") else null,
                         };
@@ -839,6 +856,8 @@ pub const World = struct {
                     const m = loc.?;
                     m.ages.child = m.ages.child or ages.child;
                     m.ages.adult = m.ages.adult or ages.adult;
+                    // every copy of the chest (child and adult files) must have a conditional version
+                    if (conditionalChestActor(g) == null) m.can_check_owned = false;
                     m.refs.append(a, StageRef{ .rel = rel, .hash = h }) catch return error.OutOfMemory;
                 }
             }
@@ -886,6 +905,7 @@ pub const World = struct {
                 .presence = m.presence,
                 .get_event = m.get_event,
                 .conditional = m.conditional,
+                .can_check_owned = m.can_check_owned,
                 .room = m.room,
                 .rule_key = specialRule(m.actor),
             }) catch return error.OutOfMemory;

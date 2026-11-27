@@ -18,6 +18,7 @@ const qol = @import("qol.zig");
 const storyskip = @import("storyskip.zig");
 const hints = @import("hints.zig");
 const npcrewards = @import("npcrewards.zig");
+const rewardmenu = @import("rewardmenu.zig");
 const textpatches = @import("textpatches.zig");
 const ocarina_handover = @import("ocarina_handover.zig");
 const teststart = @import("teststart.zig");
@@ -216,7 +217,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     for (placed, 0..) |maybe, i| {
         const item = maybe orelse continue;
         const loc = &locs[i];
-        const needs = if (refills and loc.kind == .chest) fill.refillContainer(items.name(item)) else null;
+        const needs = if (refills and loc.can_check_owned) fill.refillContainer(items.name(item)) else null;
         if (item == loc.vanilla and !loc.conditional and needs == null and !quick_vanilla[i]) continue;
         if (loc.kind == .shop and items.isJunk(item)) continue; // junk on a shelf: the shelf keeps its normal goods
         for (loc.stage_refs) |r| try appendTo(StageEdit, &stage_edits, a, r.rel, .{ .hash = r.hash, .loc = i, .item = item });
@@ -402,7 +403,9 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     };
     var flow_edits: std.ArrayList(FlowEdit) = .empty;
     if (st.is(.gossip_stones, "no_mask")) flow_edits.append(a, .{ .what = "Gossip Stones: No Mask of Truth", .rel = hints.gossip_flow, .kind = .stones_without_mask }) catch return error.OutOfMemory;
-    if (st.flag(.skip_opening)) flow_edits.append(a, .{ .what = "Skip Opening Movie", .rel = faststart.opening_flow, .kind = .opening_without_movie }) catch return error.OutOfMemory;
+    // Starting Age: Adult loads the Temple of Time itself (teststart.zig): the Kokiri movie never plays then
+    const adult_in_place = plan.options.start_adult and !(if (inputs.test_start) |t| t.warp != null else false);
+    if (st.flag(.skip_opening) or adult_in_place) flow_edits.append(a, .{ .what = "Skip Opening Movie", .rel = faststart.opening_flow, .kind = .opening_without_movie }) catch return error.OutOfMemory;
     // every seed: a new game starts outside the Kokiri Shop, without Navi's flight and wake-up scene
     flow_edits.append(a, .{ .what = "New game start", .rel = faststart.opening_flow, .kind = .start_outside }) catch return error.OutOfMemory;
     // every seed: the Lost Woods ocarina game gives its three rewards for one won song
@@ -525,6 +528,8 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     var start_gifts: std.ArrayList([]const u8) = .empty;
     var start_items: std.ArrayList([]const u8) = .empty;
     var start_ids: std.ArrayList(usize) = .empty;
+    // the Spiritual Stones and medallions a new game starts with, in hand-over order (the medallions menu names them)
+    var start_rewards: std.ArrayList([]const u8) = .empty;
     for (plan.start_locs, 0..) |is_start, i| if (is_start) start_ids.append(a, i) catch return error.OutOfMemory;
     std.mem.sort(usize, start_ids.items, locs, struct {
         fn less(l: []world_mod.Location, x: usize, y: usize) bool {
@@ -552,6 +557,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             item = try items.intern(tier.key);
         }
         const actor = try requireActor(a, world, item, .event, progress);
+        if (textpatches.isDungeonReward(actor) and !flows.contains(start_rewards.items, actor)) start_rewards.append(a, actor) catch return error.OutOfMemory;
         if (flows.contains(&faststart.start_by_event, actor)) {
             start_by_event.append(a, actor) catch return error.OutOfMemory;
         } else if (plan.grantable(item) catch |err| return mapFill(err)) {
@@ -594,12 +600,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         else => return err,
     };
     patches.endStep();
-    // Starting Age: Adult hands the gifts over when it arrives (teststart.giveOnArrival), unless a test plan's
-    // own spawn replaces the adult one (then the normal opening hands them over)
-    const test_spawn = if (inputs.test_start) |t| t.warp != null else false;
-    const adult_arrival = start_adult and !test_spawn;
-    const arrival_gifts: []const []const u8 = if (adult_arrival) start_gifts.items else &.{};
-    const opening_gifts: []const []const u8 = if (adult_arrival) &.{} else start_gifts.items;
+    const opening_gifts: []const []const u8 = start_gifts.items;
     if (start_by_event.items.len > 0 or opening_gifts.len > 0) {
         defer patches.endStep();
         const rel = faststart.start_item_flow;
@@ -622,30 +623,24 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         all.appendSlice(a, opening_gifts) catch return error.OutOfMemory;
         progress.log("Start items handed over when a new game starts: {s}", .{std.mem.join(a, ", ", all.items) catch return error.OutOfMemory});
     }
-    // the new game's start: Starting Age: Adult and a test plan's start (a test plan's spawn wins over the adult
-    // spawn; the adult start's quests, flags and Master Sword stay)
-    var opening_start = teststart.OpeningStart{};
+    // the new game's start: the medallions menu, Starting Age: Adult and a test plan's start (a test plan's spawn wins
+    // over the adult start's place; the adult start's quests, flags and Master Sword stay)
+    // the medallions menu only opens when the start hands over a Spiritual Stone or a medallion: without one its
+    // "added to Key Items" line would be empty (test report: the menu played with an empty text box)
+    var opening_start = teststart.OpeningStart{ .open_important_menu = start_rewards.items.len > 0 };
     if (start_adult) {
-        opening_start.warp = teststart.adult_start_warp;
         opening_start.quest_steps = &teststart.adult_start_quests;
         opening_start.flags = &teststart.adult_start_flags;
         opening_start.equip = &teststart.adult_start_equip;
-        opening_start.arrival = teststart.adult_start_arrival;
-        // the arrival adds the Master Sword as adult (teststart.giveOnArrival), so it always boots its entry
-        opening_start.arrival_boots_entry = true;
-        opening_start.equip = &.{};
+        if (adult_in_place) opening_start.in_place = teststart.adult_start_place;
     }
     if (inputs.test_start) |test_start| {
-        if (test_start.warp) |w| {
-            // a test plan's own spawn: the normal opening, with the change at its end
-            opening_start.warp = w;
-            opening_start.arrival = null;
-            opening_start.arrival_boots_entry = false;
-            // no arrival: the opening adds the Master Sword
-            if (start_adult) opening_start.equip = &teststart.adult_start_equip;
-        }
+        // a test plan's own spawn: the normal opening, with the change at its end
+        if (test_start.warp) |w| opening_start.warp = w;
         opening_start.time_hour = test_start.time_hour;
     }
+    // nothing to add (a child start without a Stone or medallion at the start, no test plan start): the opening
+    // stays the game's (startAtSpawn refuses an empty start)
     if (!opening_start.isEmpty()) {
         // after the start items' edit of the same flow, so the scene change comes after the items are handed over
         defer patches.endStep();
@@ -655,27 +650,52 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             else => return err,
         };
         try patches.emitZs(teststart.opening_flow, orig, new.data);
-        if (opening_start.arrival_boots_entry) {
-            // the start items' windows come on arrival, in the game's own first-arrival event
-            const arrival = teststart.adult_start_arrival;
-            const arrival_orig = try patches.read(arrival.flow);
-            const arrival_new = teststart.giveOnArrival(s, arrival_orig.data, arrival, &teststart.adult_start_equip, arrival_gifts, progress) catch |err| switch (err) {
-                error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: {s} is not as expected ({s}); start as child", .{ arrival.flow, progress.failureMessage() }),
-                else => return err,
-            };
-            try patches.emitZs(arrival.flow, arrival_orig, arrival_new);
-            const doc = try evfl.read(s, arrival_new);
-            _ = storyskip.updateEventInfo(s, world, &patches, &.{.{ .name = arrival.flowchart, .flowchart = doc.flowchart.? }}, progress) catch |err| switch (err) {
-                error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: the arrival's event info could not be updated ({s}); start as child", .{progress.failureMessage()}),
-                else => return err,
-            };
-            teststart.addArrivalScene(s, world, &patches, arrival, progress) catch |err| switch (err) {
-                error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "Starting Age: Adult: the event tables are not as expected ({s}); start as child", .{progress.failureMessage()}),
-                else => return err,
-            };
-            progress.log("Adult start arrival: the Master Sword equipped{s}{s}", .{ if (arrival_gifts.len > 0) "; start items handed over: " else "", std.mem.join(a, ", ", arrival_gifts) catch return error.OutOfMemory });
+        if (opening_start.open_important_menu and opening_start.warp == null) progress.log("New game: the medallions menu opens once at the start", .{});
+    }
+    // the event checks that hand over a Spiritual Stone or a medallion: the medallions menu opens after them too
+    // (rewardmenu.zig); a check handed over at the start is the start's
+    var reward_hand_overs: std.ArrayList(rewardmenu.RewardHandOver) = .empty;
+    for (locs, 0..) |l, i| {
+        if (l.event_refs.len == 0 or plan.start_locs[i]) continue;
+        const item = placed[i] orelse plan.fixed[i] orelse l.vanilla;
+        const actor = (try world.handedOutActorForId(a, item, .event)) orelse continue;
+        if (!textpatches.isDungeonReward(actor)) continue;
+        var rels: std.ArrayList([]const u8) = .empty;
+        for (l.event_refs) |r| if (!flows.contains(rels.items, r.rel)) rels.append(a, r.rel) catch return error.OutOfMemory;
+        reward_hand_overs.append(a, .{ .location = l.name, .rels = rels.items, .actor = actor }) catch return error.OutOfMemory;
+    }
+    const start_menu = opening_start.open_important_menu and opening_start.warp == null;
+    // the menu's line: the start's rewards when only the start opens it; "Added to Key Items" when rewards found
+    // later open it too (textpatches.writeStartRewardText)
+    const menu_line_names_start = start_menu and reward_hand_overs.items.len == 0;
+    const menu_line_changed = start_menu or reward_hand_overs.items.len > 0;
+    if (menu_line_changed) {
+        defer patches.endStep();
+        const named: []const []const u8 = if (menu_line_names_start) start_rewards.items else &.{};
+        _ = textpatches.writeStartRewardText(world, &patches, named, progress) catch |err| switch (err) {
+            error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "The medallions menu's text: {s}", .{progress.failureMessage()}),
+            else => return err,
+        };
+        if (menu_line_names_start) {
+            progress.log("New game: the medallions menu names {s}", .{std.mem.join(a, ", ", start_rewards.items) catch return error.OutOfMemory});
+        } else {
+            progress.log("The medallions menu says \"Added to Key Items\" (it opens after Spiritual Stones and medallions from event checks)", .{});
         }
-        if (start_adult) progress.log("Starting Age: Adult (a new game starts in the Temple of Time, at the Prelude of Light spot, with the Master Sword)", .{});
+    }
+    if (adult_in_place) {
+        // the new game loads adult Castle Town instead of Kokiri Forest (teststart.firstAreaAdult)
+        defer patches.endStep();
+        const rel = teststart.first_area_sequence;
+        const orig = patches.read(rel) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return progress.fail(error.SettingFailed, "Starting Age: Adult: {s} couldn't be read; start as child", .{rel}),
+        };
+        const new = teststart.firstAreaAdult(s, orig.data, progress) catch |err| switch (err) {
+            error.NotAsExpected => return progress.fail(error.SettingFailed, "Starting Age: Adult: {s}; start as child", .{progress.failureMessage()}),
+            else => return err,
+        };
+        try patches.emit(rel, orig.data, new, null, false);
+        progress.log("Starting Age: Adult (a new game loads the Temple of Time as adult, at the Prelude of Light spot, with the Master Sword)", .{});
     }
 
     if (st.flag(.saria_song_ocarina)) {
@@ -729,6 +749,14 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     // character gifts and minigames: the model they show and the lines that name the reward follow the shuffled item
     // (the list is used by both steps, so it is in the generation arena)
     const changed = npcrewards.changedLocations(a, plan, placed) catch return error.OutOfMemory;
+    if (menu_line_names_start) {
+        // the Deku Tree's display shares the medallions menu's line, which then names the start's rewards
+        _ = npcrewards.useItemWindowForKeptImportantDisplays(world, &patches, changed, progress) catch |err| switch (err) {
+            error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "The Deku Tree's reward window: {s}", .{progress.failureMessage()}),
+            else => return err,
+        };
+        patches.endStep();
+    }
     if (changed.len > 0) {
         _ = npcrewards.swapModels(world, &patches, changed, progress) catch |err| switch (err) {
             error.NotAsExpected, error.InvalidData => progress.log("warning: reward models left as they are ({s})", .{progress.failureMessage()}),
@@ -740,6 +768,15 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
             else => return err,
         };
         patches.endStep();
+    }
+    // after the reward displays above: the medallions menu after each Stone and medallion an event check hands over
+    if (reward_hand_overs.items.len > 0) {
+        const with_menu = rewardmenu.addMenuAfterRewardHandOvers(&patches, reward_hand_overs.items, progress) catch |err| switch (err) {
+            error.NotAsExpected, error.InvalidData => return progress.fail(error.SettingFailed, "The medallions menu after rewards: {s}", .{progress.failureMessage()}),
+            else => return err,
+        };
+        patches.endStep();
+        progress.log("Medallions menu: opens after {d} Spiritual Stone / medallion hand-overs", .{with_menu});
     }
 
     // last of the flow edits, so every other change to DoorOfTime is in: the altar tells the bridge requirement
@@ -809,7 +846,13 @@ fn patchActor(
                     _ = dyn.remove("GetEventName");
                 }
             }
+            // the game's conditional chest in this chest's place, for a check of what the player owns: the other
+            // chests ignore Drop__CheckActor (world.conditionalChestActor)
+            const conditional_actor = world_mod.conditionalChestActor(actor.getString("Gyaml") orelse "");
             if (fill.progressiveChainOf(plan, item)) |chain| {
+                const chest_actor = conditional_actor orelse
+                    return progress.fail(error.NotAsExpected, "{s} can't choose a tier of {s} (no conditional version of its chest)", .{ loc.name, name });
+                try actor.put(a, "Gyaml", .{ .string = chest_actor });
                 // the game's conditional chest makes one check (logic/progressive.zig): own the tier below the top
                 // one -> the top one, else that tier below. Two tiers: exact. Three: the fill only puts a copy in a
                 // chest the logic can't reach without the first tier
@@ -820,9 +863,10 @@ fn patchActor(
                 try dyn.put(a, "Drop__DropActor_Substitute", .{ .string = try chestShownActorOf(a, world, plan, cloner, top.key, progress) });
                 return;
             }
-            const needs = if (refills) fill.refillContainer(name) else null;
+            const needs = if (refills and conditional_actor != null) fill.refillContainer(name) else null;
             if (needs) |container| {
                 if (world.actorExists(container)) {
+                    try actor.put(a, "Gyaml", .{ .string = conditional_actor.? });
                     // the game's own conditional chest: owns CheckActor -> Substitute, else DropActor
                     const fallback = (try world.actorFor(a, fill.refill_fallback, .chest)) orelse return progress.fail(error.NotAsExpected, "no chest actor for {s}", .{fill.refill_fallback});
                     try dyn.put(a, "Drop__DropActor", .{ .string = fallback });

@@ -1,0 +1,11 @@
+# Starting Age: Adult with a Medallion at the start (Rauru's check, handed over at once). Check: no child Link at
+# the start, the item windows, then the medallions menu says "Forest Medallion added to Key Items" (plus any other
+# Stone or Medallion the start hands over), then the autosave.
+name = "ADULTMENUREWARD1"
+
+[settings]
+starting_age = "adult"
+skip_child_zelda = true
+
+[place]
+"Rauru (Light Medallion)" = "Forest Medallion"
