@@ -1,0 +1,43 @@
+# Progressive items on the ground and on Gold Skulltulas, with the Kokiri Shop's shelves shuffled, all in Kokiri
+# Forest as child (new in 0.8.3). A progressive item on the ground or dropped by a Skulltula looks like the first
+# upgrade of its kind; picking it up shows "You got a Progressive <item>!", then the window of the next upgrade you
+# don't have yet. The Kokiri Shop sells other shuffled items here (feature_progressive_shop_kokiri has progressive ones on shelves):
+# check that buying one still works next to all this (and the shelf is gone once bought).
+#   Gold Skulltulas 1, 2 and 3:   Progressive Wallet, Progressive Quiver, Progressive Deku Seed Bag (each the first
+#                                 of its line: Adult's Wallet, Big Quiver, Big Deku Seed Bag). Day and night, any
+#                                 age is on, so all three are there as child; the one in the soft soil needs bugs.
+# The second copy of each line lies on a Freestanding Rupee spot. Collect them in any order: the second copy of a line
+# should give its second upgrade, whichever one you find first.
+#   Rupee 1: Progressive Wallet          Rupee 2: Progressive Quiver        Rupee 3: Progressive Deku Seed Bag
+#   Rupees 4 and 5: Progressive Hookshot (Hookshot, then Longshot)
+#   Rupees 6 and 7: Progressive Ocarina (the Ocarina button must work after the first; its tutorial shows once)
+#   Rupees 9 and 10: Progressive Strength Upgrade (Goron Bracelet, then Silver Gauntlets)
+name = "PROGKOKIRI2"
+
+[settings]
+# your own window settings are the base: no random starting items, they could take the copies placed here
+random_start_items = "off"
+# No logic: the logic counts Kokiri Forest's rupee spots as needing bombs and the Song of Storms (an Ocarina), so with
+# the Ocarinas there the seed can't be made. Only these spots matter here.
+logic_rules = "none"
+shuffle_ocarinas = true
+shuffle_rupees = true
+tokensanity = "overworld"
+gs_any_time = true
+shopsanity = "4"
+starting_age = "child"
+barren_dungeons = "off"
+
+[place]
+"Kokiri Forest Gold Skulltula 1" = "Progressive Wallet"
+"Kokiri Forest Gold Skulltula 2" = "Progressive Quiver"
+"Kokiri Forest Gold Skulltula 3" = "Progressive Deku Seed Bag"
+"Kokiri Forest Freestanding Rupee 1" = "Progressive Wallet"
+"Kokiri Forest Freestanding Rupee 2" = "Progressive Quiver"
+"Kokiri Forest Freestanding Rupee 3" = "Progressive Deku Seed Bag"
+"Kokiri Forest Freestanding Rupee 4" = "Progressive Hookshot"
+"Kokiri Forest Freestanding Rupee 5" = "Progressive Hookshot"
+"Kokiri Forest Freestanding Rupee 6" = "Progressive Ocarina"
+"Kokiri Forest Freestanding Rupee 7" = "Progressive Ocarina"
+"Kokiri Forest Freestanding Rupee 9" = "Progressive Strength Upgrade"
+"Kokiri Forest Freestanding Rupee 10" = "Progressive Strength Upgrade"

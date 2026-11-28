@@ -41,7 +41,6 @@ pub const Key = enum {
     shop_prices,
     item_pool,
     refill_needs_item,
-    progressive_items,
     chest_size_matches,
     maps_compasses,
     small_keys,
@@ -381,7 +380,7 @@ pub const specs = [_]Spec{
         .tip =
             \\The Fairy Ocarina and the Ocarina of Time are found in random checks. Saria doesn't hand you the
             \\Fairy Ocarina on the forest bridge, and Zelda's Ocarina of Time at the castle moat becomes a check.
-            \\With Progressive Items they are two Progressive Ocarinas: the first one you find is the Fairy
+            \\They are two Progressive Ocarinas: the first one you find is the Fairy
             \\Ocarina, the second the Ocarina of Time. Either ocarina plays every song and opens the Door of Time.
         ,
     },
@@ -638,25 +637,6 @@ pub const specs = [_]Spec{
         ,
     },
     .{
-        .key = .progressive_items,
-        .tab = "Items",
-        .group = "Item Pool",
-        .label = "Progressive Items",
-        .kind = .boolean,
-        .default = .{ .boolean = true },
-        .tip =
-            \\On: upgrades come in order, whichever copy you find first. The first Progressive Hookshot is the
-            \\Hookshot and the second the Longshot; the same goes for the Ocarinas, strength, scales, wallets,
-            \\bomb bags, Deku Seed bags and quivers. They are only in small chests (big ones too with Chest Size
-            \\Matches Contents) and given by characters, minigames and Business Scrubs: items lying in the world,
-            \\Gold Skulltulas, shop shelves and invisible chests can't choose the tier.
-            \\Off: the Hookshot, scales, strength upgrades and bomb bags are items of their own (Hookshot,
-            \\Longshot, ...) and can be in any check. A stronger one goes where you need the weaker one first
-            \\when the logic allows it, so you may still find one first. The Ocarinas, wallets, Deku Seed bags
-            \\and quivers stay progressive.
-        ,
-    },
-    .{
         .key = .chest_size_matches,
         .tab = "Items",
         .group = "Item Pool",
@@ -910,7 +890,7 @@ pub const specs = [_]Spec{
         .key = .random_start_items,
         .tab = "Starting Inventory",
         .group = "Random Items",
-        .label = "Random Starting Items (needs further testing)",
+        .label = "Random Starting Items",
         .kind = .choice,
         .options = &.{
             .{ .value = "off", .label = "Off" },
@@ -1283,7 +1263,6 @@ pub const presets = [_]Preset{
             .{ .key = .shop_prices, .value = .{ .choice = "random" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
-            .{ .key = .progressive_items, .value = .{ .boolean = true } },
             .{ .key = .chest_size_matches, .value = .{ .boolean = false } },
             .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
@@ -1360,7 +1339,6 @@ pub const presets = [_]Preset{
             .{ .key = .shop_prices, .value = .{ .choice = "random" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
-            .{ .key = .progressive_items, .value = .{ .boolean = true } },
             .{ .key = .chest_size_matches, .value = .{ .boolean = false } },
             .{ .key = .maps_compasses, .value = .{ .choice = "own" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
@@ -1440,7 +1418,6 @@ pub const presets = [_]Preset{
             .{ .key = .shop_prices, .value = .{ .choice = "random_wallet" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
-            .{ .key = .progressive_items, .value = .{ .boolean = true } },
             .{ .key = .chest_size_matches, .value = .{ .boolean = false } },
             .{ .key = .maps_compasses, .value = .{ .choice = "vanilla" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },
@@ -1519,7 +1496,6 @@ pub const presets = [_]Preset{
             .{ .key = .shop_prices, .value = .{ .choice = "random" } },
             .{ .key = .item_pool, .value = .{ .choice = "balanced" } },
             .{ .key = .refill_needs_item, .value = .{ .boolean = true } },
-            .{ .key = .progressive_items, .value = .{ .boolean = true } },
             .{ .key = .chest_size_matches, .value = .{ .boolean = false } },
             .{ .key = .maps_compasses, .value = .{ .choice = "start_with" } },
             .{ .key = .small_keys, .value = .{ .choice = "vanilla" } },

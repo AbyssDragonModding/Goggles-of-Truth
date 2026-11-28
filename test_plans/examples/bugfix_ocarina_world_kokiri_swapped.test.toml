@@ -1,0 +1,20 @@
+# OCARINAKF1 with the two Ocarinas swapped (see bugfix_ocarina_world_kokiri.test.toml for the bug and the cause).
+# Start: outside the Kokiri Shop, as child. Check:
+#   Freestanding Rupee 1 (dry ground): the Fairy Ocarina. Walk into it: picked up like a rupee, nothing solid.
+#   Freestanding Rupee 8 (the pond next to Mido): the Ocarina of Time. Swim down and pick it up, nothing to stand
+#   on above it (the spot of the first report).
+#   After both: the Ocarina button works (play a song), and the pause menu shows the Ocarina of Time.
+name = "OCARINAKF2"
+
+[settings]
+# No logic (see bugfix_ocarina_world_kokiri.test.toml): only these two spots matter here.
+logic_rules = "none"
+shuffle_ocarinas = true
+starting_age = "child"
+barren_dungeons = "off"
+shuffle_freestanding = true
+shuffle_rupees = true
+
+[place]
+"Kokiri Forest Freestanding Rupee 1" = "Fairy Ocarina"
+"Kokiri Forest Freestanding Rupee 8" = "Ocarina of Time"

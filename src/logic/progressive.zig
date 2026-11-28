@@ -9,8 +9,13 @@
 //!   makes one check. Two tiers: "own tier 1 -> tier 2, else tier 1", exact. Three tiers: "own tier 2 -> tier 3,
 //!   else tier 2", exact only when the player owns tier 1 already, so the fill only puts a three-tier copy in a
 //!   chest that the logic can't reach without one copy of the line (generator/fill.zig).
-//! - Everything else (freestanding items, Gold Skulltulas, shop shelves, ...) can't branch: no progressive item is
-//!   placed there.
+//! - Items lying in the world (freestanding spots, rupee spots, boss Heart Container spots, Gold Skulltula drops):
+//!   the pickup is a new item of its own per line, "Progressive <line>" (Chain.ground_pickup_item, with the first
+//!   tier's model; generator/progressive_pickups.zig). Every item get ends in ActionGuide:ActionGuide, which then
+//!   checks each such item got: it clears its saved IsGet flag and hands over the next tier, asking the same pouch
+//!   query as the event flows. Any number of tiers works.
+//! - Shop shelves: the same, with a stand-in item of each shelf's own, applied once when bought
+//!   (generator/progressive_pickups.zig).
 //!
 //! The logic counts copies: owning any n copies of a line (or n of its tiers) means owning its first n tiers.
 
@@ -33,13 +38,12 @@ pub const Chain = struct {
     display_name: []const u8,
     /// lowest tier first
     tiers: []const Tier,
-    /// With Progressive Items off, each tier is its own item and the fill keeps them in order: a stronger tier only
-    /// goes where the logic needs the weaker one (generator/fill.zig, 0.7.8's rule). False for the lines nothing in
-    /// the logic needs the weaker tier of (the wallets, Deku Seed bags and quivers): no spot could keep their stronger
-    /// tier from being found first, so they stay progressive items either way. The Ocarinas too: an Ocarina lying in
-    /// the world comes without its tutorial and Ocarina button (generator/ocarina_handover.zig only fixes hand-overs
-    /// and chests), and a progressive one is never placed there.
-    separate_without_progressive: bool = false,
+    /// The item a copy lying in the world is (generator/progressive_pickups.zig builds it): "Item_Prog_<line>". Short
+    /// on purpose: a generated item over 25 characters crashed its item get (pickups.max_key_item_name).
+    ground_pickup_item: []const u8,
+    /// The actor whose model that pickup shows: the first tier's item. The Fairy Ocarina's is its Pouch_ actor, the
+    /// same model with the item-get animations (its Item_ actor is the equipment Link wears, world.actorFor).
+    ground_pickup_model: []const u8,
 
     /// The tier a chest shows when it has no check to make: the tier below the last one (chests make one check,
     /// see the module comment).
@@ -54,54 +58,49 @@ pub const Chain = struct {
 };
 
 pub const chains = [_]Chain{
-    .{ .key = "Progressive_Ocarina", .display_name = "Progressive Ocarina", .tiers = &.{
+    .{ .key = "Progressive_Ocarina", .display_name = "Progressive Ocarina", .ground_pickup_item = "Item_Prog_Ocarina", .ground_pickup_model = "Pouch_Ocarina_Fairy", .tiers = &.{
         .{ .key = "Ocarina_Fairy", .pouch_actor = "Item_Ocarina_Fairy" },
         .{ .key = "Ocarina_Time", .pouch_actor = "Item_Ocarina_Time" },
     } },
-    .{ .key = "Progressive_Hookshot", .display_name = "Progressive Hookshot", .separate_without_progressive = true, .tiers = &.{
+    .{ .key = "Progressive_Hookshot", .display_name = "Progressive Hookshot", .ground_pickup_item = "Item_Prog_Hookshot", .ground_pickup_model = "Item_Hookshot", .tiers = &.{
         .{ .key = "Hookshot", .pouch_actor = "Item_Hookshot" },
         .{ .key = "Longshot", .pouch_actor = "Item_Longshot" },
     } },
-    .{ .key = "Progressive_Strength", .display_name = "Progressive Strength Upgrade", .separate_without_progressive = true, .tiers = &.{
+    .{ .key = "Progressive_Strength", .display_name = "Progressive Strength Upgrade", .ground_pickup_item = "Item_Prog_Strength", .ground_pickup_model = "Item_Gauntlet_Goron", .tiers = &.{
         .{ .key = "Gauntlet_Goron", .pouch_actor = "Armor_Child_Gauntlet_Goron" },
         .{ .key = "Gauntlet_Silver", .pouch_actor = "Armor_Adult_Gauntlet_Silver" },
         .{ .key = "Gauntlet_Gold", .pouch_actor = "Armor_Adult_Gauntlet_Gold" },
     } },
-    .{ .key = "Progressive_Scale", .display_name = "Progressive Scale", .separate_without_progressive = true, .tiers = &.{
+    .{ .key = "Progressive_Scale", .display_name = "Progressive Scale", .ground_pickup_item = "Item_Prog_Scale", .ground_pickup_model = "Item_Scale_Silver", .tiers = &.{
         .{ .key = "Scale_Silver", .pouch_actor = "Item_Scale_Silver" },
         .{ .key = "Scale_Gold", .pouch_actor = "Item_Scale_Gold" },
     } },
     // the game has no Tycoon's Wallet (dump: Item_Wallet_Small / _Medium / _Large only); the Kokiri Wallet is owned
     // from the start
-    .{ .key = "Progressive_Wallet", .display_name = "Progressive Wallet", .tiers = &.{
+    .{ .key = "Progressive_Wallet", .display_name = "Progressive Wallet", .ground_pickup_item = "Item_Prog_Wallet", .ground_pickup_model = "Item_Wallet_Medium", .tiers = &.{
         .{ .key = "Wallet_Medium", .pouch_actor = "Item_Wallet_Medium" },
         .{ .key = "Wallet_Large", .pouch_actor = "Item_Wallet_Large" },
     } },
-    .{ .key = "Progressive_BombBag", .display_name = "Progressive Bomb Bag", .separate_without_progressive = true, .tiers = &.{
+    .{ .key = "Progressive_BombBag", .display_name = "Progressive Bomb Bag", .ground_pickup_item = "Item_Prog_BombBag", .ground_pickup_model = "Item_BombBag_Small", .tiers = &.{
         .{ .key = "BombBag_Small", .pouch_actor = "Item_BombBag_Small" },
         .{ .key = "BombBag_Medium", .pouch_actor = "Item_BombBag_Medium" },
         .{ .key = "BombBag_Large", .pouch_actor = "Item_BombBag_Large" },
     } },
     // a new save already has the base seed bag and quiver (generator/faststart.zig base_bags_at_start): these lines
     // are their upgrades
-    .{ .key = "Progressive_BulletBag", .display_name = "Progressive Deku Seed Bag", .tiers = &.{
+    .{ .key = "Progressive_BulletBag", .display_name = "Progressive Deku Seed Bag", .ground_pickup_item = "Item_Prog_BulletBag", .ground_pickup_model = "Item_BulletBag_Medium", .tiers = &.{
         .{ .key = "BulletBag_Medium", .pouch_actor = "Item_BulletBag_Medium" },
         .{ .key = "BulletBag_Large", .pouch_actor = "Item_BulletBag_Large" },
     } },
-    .{ .key = "Progressive_Quiver", .display_name = "Progressive Quiver", .tiers = &.{
+    .{ .key = "Progressive_Quiver", .display_name = "Progressive Quiver", .ground_pickup_item = "Item_Prog_Quiver", .ground_pickup_model = "Item_Quiver_Medium", .tiers = &.{
         .{ .key = "Quiver_Medium", .pouch_actor = "Item_Quiver_Medium" },
         .{ .key = "Quiver_Large", .pouch_actor = "Item_Quiver_Large" },
     } },
 };
 
-/// The tier just below tier `key` of a line that stays separate items with Progressive Items off
-/// (Chain.separate_without_progressive), or null: "Longshot" -> "Hookshot", "BombBag_Large" -> "BombBag_Medium".
-pub fn weakerTierOf(key: []const u8) ?[]const u8 {
-    const chain = chainOfTierItem(key) orelse return null;
-    if (!chain.separate_without_progressive) return null;
-    for (chain.tiers[1..], 1..) |tier, i| {
-        if (std.mem.eql(u8, tier.key, key)) return chain.tiers[i - 1].key;
-    }
+/// The line whose ground pickup item (Chain.ground_pickup_item) is actor `actor`, or null.
+pub fn chainOfGroundPickupItem(actor: []const u8) ?*const Chain {
+    for (&chains) |*chain| if (std.mem.eql(u8, chain.ground_pickup_item, actor)) return chain;
     return null;
 }
 
@@ -133,9 +132,16 @@ test "every line has two or three tiers and unique keys" {
     try std.testing.expectEqualStrings("Longshot", chainOfProgressiveItem("Progressive_Hookshot").?.tiers[1].key);
     try std.testing.expect(chainOfProgressiveItem("Hookshot") == null);
     try std.testing.expect(chainOfProgressiveItem("Progressive_Strength").?.chestNeedsOneCopy());
-    try std.testing.expectEqualStrings("Hookshot", weakerTierOf("Longshot").?);
-    try std.testing.expectEqualStrings("Gauntlet_Goron", weakerTierOf("Gauntlet_Silver").?);
-    try std.testing.expect(weakerTierOf("Hookshot") == null);
-    try std.testing.expect(weakerTierOf("Wallet_Large") == null);
     try std.testing.expectEqualStrings("Gauntlet_Silver", chainOfProgressiveItem("Progressive_Strength").?.chestFallbackTier().key);
+    try std.testing.expectEqualStrings("Progressive_Scale", chainOfGroundPickupItem("Item_Prog_Scale").?.key);
+    try std.testing.expect(chainOfGroundPickupItem("Item_Scale_Silver") == null);
+}
+
+test "ground pickup items are short, unique and named Item_" {
+    for (chains, 0..) |chain, i| {
+        // pickups.max_key_item_name: a longer generated item crashed its item get
+        try std.testing.expect(chain.ground_pickup_item.len <= 25);
+        try std.testing.expect(std.mem.startsWith(u8, chain.ground_pickup_item, "Item_"));
+        for (chains[i + 1 ..]) |other| try std.testing.expect(!std.mem.eql(u8, chain.ground_pickup_item, other.ground_pickup_item));
+    }
 }

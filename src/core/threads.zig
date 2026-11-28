@@ -1,6 +1,6 @@
 //! How many threads the randomizer's parallel work uses.
 //!
-//! Agents.md: use about 75% of the CPU cores and leave about 25% free, so the computer stays responsive while a seed
+//! AGENTS.md: use about 75% of the CPU cores and leave about 25% free, so the computer stays responsive while a seed
 //! is made. There is no fixed upper limit: a bigger computer gets more threads. Every parallel step asks here
 //! instead of choosing its own number.
 

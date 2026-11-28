@@ -668,11 +668,19 @@ pub const World = struct {
     /// using the item itself, so placements don't change.
     pub fn handedOutActorForId(self: *const Self, allocator: Allocator, id: ItemId, context: Context) error{OutOfMemory}!?[]const u8 {
         const key = self.items.name(id);
-        for (handed_out_as) |entry| {
-            if (!std.mem.eql(u8, entry.item, key)) continue;
-            if (try self.actorFor(allocator, entry.given, context)) |given_actor| return given_actor;
+        if (!std.mem.eql(u8, handedOutKey(key), key)) {
+            if (try self.actorFor(allocator, handedOutKey(key), context)) |given_actor| return given_actor;
         }
         return self.actorFor(allocator, key, context);
+    }
+
+    /// The item key item `key` is handed out as (handed_out_as): "WeirdEgg" -> "AlarmCucco", any other key itself.
+    /// For the patches that look an actor up by key (a chest's shown actor) rather than by item id.
+    pub fn handedOutKey(key: []const u8) []const u8 {
+        for (handed_out_as) |entry| {
+            if (std.mem.eql(u8, entry.item, key)) return entry.given;
+        }
+        return key;
     }
 
     pub fn location(self: *Self, id: []const u8) ?*Location {
@@ -1321,4 +1329,9 @@ test "canon" {
     try std.testing.expectEqualStrings("Heart_Piece", canon("Obj_GerudoValley_Heart_Piece"));
     try std.testing.expectEqual(@as(f64, 2), roundHalfEven(2.5));
     try std.testing.expectEqual(@as(f64, 4), roundHalfEven(3.5));
+}
+
+test "the Weird Egg is handed out as the Cucco" {
+    try std.testing.expectEqualStrings("AlarmCucco", World.handedOutKey("WeirdEgg"));
+    try std.testing.expectEqualStrings("Hookshot", World.handedOutKey("Hookshot"));
 }

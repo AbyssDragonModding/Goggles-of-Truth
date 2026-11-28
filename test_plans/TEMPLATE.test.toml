@@ -36,6 +36,9 @@ name = "MYTEST1"                 # letters, digits, - and _ only; the seed folde
 [place]
 # "location" = "item", names as the spoiler log and locations.txt / items.txt show them.
 # The location must be shuffled with these settings. Each item copy can be placed once.
+# A tier of a progressive item ("Ocarina of Time", "Longshot") placed where no tier can be chosen (an item lying in
+# the world, a Gold Skulltula, a shop shelf, a big or invisible chest) takes one progressive copy out of the pool and
+# gives exactly that tier: test seeds only, normal seeds never put a progressive item there.
 # "Kokiri Forest Chest 1" = "Hookshot"
 
 [forbid]

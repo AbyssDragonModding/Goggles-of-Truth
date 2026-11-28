@@ -110,7 +110,9 @@ pub fn keyName(key: Key) []const u8 {
 /// Settings that were renamed (old name, new name), and settings now part of every seed or removed.
 pub const renamed = [_][2][]const u8{.{ "free_bombs", "bag_bombs_no_bracelet" }};
 /// cache_files (Cache Compressed Files, 0.7.2) is always on since 0.7.3: an old user_settings.toml line is ignored.
-pub const built_in = [_][]const u8{ "skip_saria_intro", "cache_files" };
+/// progressive_items (Progressive Items, 0.8.0) is always on since 0.8.3, now that progressive items can lie on the
+/// ground and be sold (generator/progressive_pickups.zig): an old settings string or file with it off is read as on.
+pub const built_in = [_][]const u8{ "skip_saria_intro", "cache_files", "progressive_items" };
 pub const removed = [_][]const u8{"unrestricted_items"};
 
 /// Settings merged into another (old name, new name): an old settings string or file with the old one on turns

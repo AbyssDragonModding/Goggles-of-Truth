@@ -1,0 +1,41 @@
+# Progressive items on shop shelves (new in 0.8.3), in the Kokiri Shop, with the other copy of each line on the
+# ground in Kokiri Forest, as child. A shelf shows "Progressive <item>" with the first upgrade's look. Buying it gives
+# the next upgrade you don't have yet, with its item window, and the shelf is gone after that (also after leaving and
+# coming back). You start with the Giant Wallet and 500 rupees, so every shelf is affordable.
+#   Kokiri Shop shelves 3 and 4:  Progressive Hookshot (Hookshot, then Longshot: both from the shop)
+#   Kokiri Shop shelf 5 and Freestanding Rupee 1:  Progressive Strength Upgrade (Goron Bracelet, then Silver
+#                                                  Gauntlets, whichever you get first)
+#   Kokiri Shop shelf 6 and Freestanding Rupee 2:  Progressive Ocarina (Fairy Ocarina, then Ocarina of Time; the
+#                                                  Ocarina button must work after the first, its tutorial shows once)
+# Also check: buying the second Hookshot copy gives the Longshot (not a second Hookshot), the shop's other shelves
+# still sell their normal goods, and the pause menu never lists a "Progressive ..." item.
+name = "PROGSHOP1"
+seed = "PROGSHOP01"
+
+[settings]
+# your own window settings are the base: no random starting items, they could take the copies placed here
+random_start_items = "off"
+# No logic: the logic counts Kokiri Forest's rupee spots as needing bombs and the Song of Storms (an Ocarina), so with
+# an Ocarina there the seed can't be made. Only these spots matter here.
+logic_rules = "none"
+shuffle_ocarinas = true
+shuffle_rupees = true
+shopsanity = "4"
+shop_prices = "random"
+starting_age = "child"
+barren_dungeons = "off"
+
+[place]
+"Kokiri Shop Item 3" = "Progressive Hookshot"
+"Kokiri Shop Item 4" = "Progressive Hookshot"
+"Kokiri Shop Item 5" = "Progressive Strength Upgrade"
+"Kokiri Shop Item 6" = "Progressive Ocarina"
+"Kokiri Forest Freestanding Rupee 1" = "Progressive Strength Upgrade"
+"Kokiri Forest Freestanding Rupee 2" = "Progressive Ocarina"
+
+[start]
+# the Giant Wallet: a progressive item listed twice gives its second tier
+items = ["Progressive Wallet", "Progressive Wallet"]
+
+[flags]
+"PlayerStatus.CurrentRupee" = 500

@@ -75,16 +75,6 @@
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
 			<VBox Spacing="10">
-				<Label Text="Updates" TextSize="16" Class="Heading"/>
-				<HBox Spacing="10">
-					<Checkbox Name="auto_update_in" Style="Switch" Text="Check for updates when the window opens" OnChanged="rando.auto_update" Slot.Fill="1" Slot.VAlign="Center" Tooltip="Asks GitHub for a newer release of the randomizer when the window opens. When there is one, the window asks you first, then downloads the version made for your system, installs it in this folder and opens again. Your settings, presets and seeds are kept."/>
-					<Button Text="Check for Updates" OnClicked="rando.check_updates" Slot.Auto="true" Tooltip="Ask GitHub now whether a newer release is out."/>
-				</HBox>
-				<Label Name="update_lab" Text="" TextSize="12" Class="Muted" Wrap="true"/>
-			</VBox>
-		</Border>
-		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,0">
-			<VBox Spacing="10">
 				<Label Text="Output" TextSize="16" Class="Heading"/>
 				<HBox Spacing="12">
 					<Checkbox Name="set_create_spoiler" Style="Switch" Text="Create Spoiler Log" OnChanged="set.create_spoiler" Slot.Fill="1" Tooltip="Writes spoiler.txt and spoiler.json next to the mod: where every item is, the hints and the&#10;settings."/>

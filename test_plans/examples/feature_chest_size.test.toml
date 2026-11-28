@@ -10,7 +10,6 @@ name = "CHESTSIZE1"
 
 [settings]
 chest_size_matches = true
-progressive_items = true
 starting_age = "child"
 barren_dungeons = "off"
 shuffle_kokiri_sword = true

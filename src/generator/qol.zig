@@ -317,9 +317,51 @@ pub fn patchOpenForestMido(patches: *PatchSet, progress: *Progress) PatchError!b
 // Saria's goodbye (which gives the Fairy Ocarina) is requested by the bridge area trigger only while Dm_Kokiri_0150
 // hasn't been played. That check now reads Dm_Kokiri_0045 instead, the greeting outside Link's house that always
 // plays first, so the trigger never fires. (Marking 0150 as seen also made Saria's schedule treat her as gone.)
+// The trigger area is also moved out of reach (moveOcarinaBridgeTrigger): the check alone wasn't enough in-game.
 const ocarina_bridge_ainb = "Logic/KokiriForest_Child_Level_All_02_ddcd.logic.module.ainb";
 
+/// The bridge trigger itself (Area_aaaa of that module, on the bridge out of the forest): moved deep under the forest
+/// too, so nothing can touch it. Why both: a player's seed (DRRM5M4L2E, 0.8.0) still had the goodbye play every
+/// time they crossed the bridge, an invisible Saria handing over a Fairy Ocarina and sending Link back to Hyrule
+/// Field, so Kokiri Forest couldn't be entered that way. The played check alone left the trigger in place.
+const ocarina_bridge_stage = "Banc/KokiriForest/KokiriForest_Child_Static.bcett.byml.zs";
+const ocarina_bridge_area_hash: u64 = 0x24BAF051D146E617;
+/// how far down the trigger is moved: well below the forest floor (about 114 m up), out of reach of anything
+const ocarina_bridge_area_drop: f64 = 300.0;
+
 pub fn patchOcarinaBridge(world: *World, patches: *PatchSet, progress: *Progress) PatchError!bool {
+    const trigger_moved = try moveOcarinaBridgeTrigger(world, patches, progress);
+    const check_repointed = try repointOcarinaBridgeCheck(world, patches, progress);
+    return trigger_moved or check_repointed;
+}
+
+fn moveOcarinaBridgeTrigger(world: *World, patches: *PatchSet, progress: *Progress) PatchError!bool {
+    if (!world.files.exists(ocarina_bridge_stage)) return false;
+    const a = patches.allocator;
+    const orig = try patches.read(ocarina_bridge_stage);
+    const root = byml.loadDict(a, orig.data) catch return error.InvalidData;
+    const actors = root.getArray("Actors") orelse return error.InvalidData;
+    var moved: usize = 0;
+    for (actors.items.items) |v| {
+        const actor = v.asDict() orelse continue;
+        const hash: u64 = @truncate(@as(u128, @bitCast(actor.getInt("Hash") orelse continue)));
+        if (hash != ocarina_bridge_area_hash) continue;
+        if (!std.mem.eql(u8, actor.getString("Gyaml") orelse "", "Area")) continue;
+        const translate = actor.getArray("Translate") orelse continue;
+        if (translate.items.items.len != 3) continue;
+        const height = translate.items.items[1].asFloat() orelse continue;
+        translate.items.items[1] = .{ .float = @floatCast(height - ocarina_bridge_area_drop) };
+        moved += 1;
+    }
+    if (moved != 1) {
+        progress.log("note: forest bridge trigger area not found ({d} matches); left where it is", .{moved});
+        return false;
+    }
+    try patches.emitZs(ocarina_bridge_stage, orig, try byml.dumpDefault(a, .{ .dict = root }));
+    return true;
+}
+
+fn repointOcarinaBridgeCheck(world: *World, patches: *PatchSet, progress: *Progress) PatchError!bool {
     if (!world.files.exists(ocarina_bridge_ainb)) return false;
     const orig = try patches.read(ocarina_bridge_ainb);
     const r = try ainb.repointStringConst(patches.allocator, orig.data, "EventName", "Dm_Kokiri_0150", "Dm_Kokiri_0045");

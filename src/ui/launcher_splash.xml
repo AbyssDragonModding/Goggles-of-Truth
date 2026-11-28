@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The launcher's splash screen (goggles_launcher, src/launcher_window.zig), in Raven's XML layout like the
+  randomizer's window (src/ui/main.xml). A small frameless window in the middle of the screen while the launcher checks
+  for a newer version, downloads and installs it, then opens the randomizer.
+
+  src/launcher_window.zig finds the widgets by Name and shows its model in them (the ELM view):
+    splash_status    what the launcher is doing ("Downloading version 0.8.2...")
+    splash_progress  the download (0..1), full once installed
+    splash_detail    a second line: the bytes downloaded, or what went wrong
+    splash_version   the installed version
+  Look: the randomizer's own theme (src/ui/themes.zig), glass card over the generated night sky.
+
+  The root is the splash screen's content, not a <Window>: src/launcher_window.zig makes the window itself (480 x 230)
+  with Raven's splash-screen flag (no frame, centred, above the other windows, out of the task bar), which a <Window>
+  element can't set.
+-->
+<Border CornerRadius="18" Padding="26,22,26,22" Shadow="18,0,4">
+	<VBox Spacing="10">
+		<HBox Spacing="10" Slot.Auto="true">
+			<Label Name="splash_title" Text="Goggles of Truth Randomizer" TextSize="22" Class="Heading" Slot.Fill="1"/>
+			<Label Name="splash_version" Text="" TextSize="12" Class="Muted" Slot.Auto="true" Slot.VAlign="Center"/>
+		</HBox>
+		<Label Name="splash_status" Text="Starting..." TextSize="15" Wrap="true" Slot.Auto="true"/>
+		<ProgressBar Name="splash_progress" Slot.Auto="true" Slot.MinSize="10"/>
+		<Label Name="splash_detail" Text="" TextSize="12" Class="Muted" Wrap="true" Slot.Fill="1"/>
+	</VBox>
+</Border>
