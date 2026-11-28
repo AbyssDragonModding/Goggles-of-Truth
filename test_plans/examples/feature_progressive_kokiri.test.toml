@@ -1,6 +1,7 @@
 # Progressive items, in Kokiri Forest's small chests and the Lost Woods chest so they're quick to collect as child.
-# Only small chests and character / event checks can choose the tier (an item lying in the world, a Gold Skulltula,
-# a shop shelf, a big chest or an invisible chest can't, so the randomizer never puts a progressive item there). A chest makes one check, so a three-tier line (Bomb Bag,
+# Small chests, character / event checks and (since 0.8.3) items lying in the world can choose the tier; a shop shelf,
+# a big chest or an invisible chest can't (feature_progressive_ground.test.toml has the ones on the ground). A chest
+# makes one check, so a three-tier line (Bomb Bag,
 # Strength) starts from the copy you own at the start here. Collect them in any order: each copy should give the
 # next tier you don't have yet, with that tier in its item window and the pause menu.
 #   Mido's house:  chests 4 and 5: Progressive Hookshot (Hookshot, then Longshot)
@@ -11,7 +12,8 @@
 name = "PROGKOKIRI1"
 
 [settings]
-progressive_items = true
+# your own window settings are the base: no random starting items, they could take the copies placed here
+random_start_items = "off"
 starting_age = "child"
 barren_dungeons = "off"
 shuffle_kokiri_sword = true

@@ -1,0 +1,60 @@
+# Progressive items on shop shelves, in chests and lying in the world / dropped by Gold Skulltulas, all in Kokiri
+# Forest and the Market as child (0.8.3). Every line has its copies in different kinds of places, so each kind gives
+# the right upgrade whichever copy you get first. Start: outside the Kokiri Shop, the forest open, the Giant Wallet
+# and 500 rupees for the shelves.
+#   Progressive Hookshot:   Kokiri Forest Chest 4, Kokiri Shop shelf 1
+#   Progressive Scale:      Kokiri Forest Chest 6, Kokiri Forest Freestanding Rupee 1
+#   Progressive Deku Seed Bag: Kokiri Forest Chest 7, Market Potion Shop shelf 2
+#   Progressive Ocarina:    Kokiri Forest Freestanding Rupee 2, Market Potion Shop shelf 3 (the Ocarina button must
+#                           work after the first one; its tutorial shows once)
+#   Progressive Strength Upgrade (three): Kokiri Forest Freestanding Rupee 3, Market Bazaar shelf 1, the Gold
+#                           Skulltula in the Market (Goron Bracelet, Silver Gauntlets, Golden Gauntlets)
+#   Progressive Quiver:     Kokiri Shop shelf 2, Market Bazaar shelf 4
+#   Progressive Bomb Bag (three): Market Bazaar shelves 5 and 8, Market Potion Shop shelf 4 (not on Kokiri Forest's
+#                           ground or Skulltulas: the logic counts those as behind a bombable rock)
+# Check each time: the right upgrade's window and the pause menu; things on the ground and on shelves sit as high as
+# the same item always did (not floating, not sunk in); the "You got a Progressive ..." window has one box, with no
+# second line under it; a bought shelf is gone, also after leaving and coming back.
+name = "PROGFINAL1"
+seed = "PROGFINAL01"
+
+[settings]
+# your own window settings are the base: no random starting items, they could take the copies placed here
+random_start_items = "off"
+# No logic: the logic counts Kokiri Forest's rupee spots as needing bombs and the Song of Storms (an Ocarina), so with
+# an Ocarina there the seed can't be made. Only these spots matter here.
+logic_rules = "none"
+shuffle_ocarinas = true
+shuffle_rupees = true
+tokensanity = "overworld"
+gs_any_time = true
+shopsanity = "4"
+shop_prices = "random"
+starting_age = "child"
+barren_dungeons = "off"
+open_forest = "open"
+
+[place]
+"Kokiri Forest Chest 4" = "Progressive Hookshot"
+"Kokiri Shop Item 1" = "Progressive Hookshot"
+"Kokiri Forest Chest 6" = "Progressive Scale"
+"Kokiri Forest Freestanding Rupee 1" = "Progressive Scale"
+"Kokiri Forest Chest 7" = "Progressive Deku Seed Bag"
+"Market Potion Shop Item 2" = "Progressive Deku Seed Bag"
+"Kokiri Forest Freestanding Rupee 2" = "Progressive Ocarina"
+"Market Potion Shop Item 3" = "Progressive Ocarina"
+"Kokiri Forest Freestanding Rupee 3" = "Progressive Strength Upgrade"
+"Market Bazaar Item 1" = "Progressive Strength Upgrade"
+"Hyrule Castle Town Gold Skulltula 1" = "Progressive Strength Upgrade"
+"Kokiri Shop Item 2" = "Progressive Quiver"
+"Market Bazaar Item 4" = "Progressive Quiver"
+"Market Bazaar Item 5" = "Progressive Bomb Bag"
+"Market Bazaar Item 8" = "Progressive Bomb Bag"
+"Market Potion Shop Item 4" = "Progressive Bomb Bag"
+
+[start]
+# the Giant Wallet: a progressive item listed twice gives its second tier
+items = ["Progressive Wallet", "Progressive Wallet"]
+
+[flags]
+"PlayerStatus.CurrentRupee" = 500

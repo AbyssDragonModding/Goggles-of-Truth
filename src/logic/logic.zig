@@ -225,6 +225,9 @@ pub const Options = struct {
     /// child Link is one trip to the Temple of Time away: putting the Master Sword back, he walks out of the
     /// Temple of Time into Castle Town (and the Kokiri boy at the forest exit is gone, gamedata.zig).
     start_adult: bool = false,
+    /// Child Link only: adult Link is never reachable, so no adult equipment or adult place counts. The fill's
+    /// check for the items child Link must find himself (fill.Plan.mustBeFoundAsChild); never set for a seed's logic.
+    child_only: bool = false,
     /// per key_dungeons entry: the dungeon's small keys are its key ring (the Plan sets these: Random Dungeons
     /// depends on the seed)
     key_ring: [key_dungeons.len]bool = @splat(false),
@@ -431,7 +434,7 @@ pub fn str1(s: *State) bool {
 }
 /// Child Link's strength: the Goron Bracelet itself, or a Progressive Strength copy (the first one is always the
 /// bracelet). Why not any tier: the Silver and Golden Gauntlets are adult Link's equipment
-/// (Armor_Adult_Gauntlet_*), so a child holding only those lifts nothing, and with Progressive Items off (or a
+/// (Armor_Adult_Gauntlet_*), so a child holding only those lifts nothing, and with a test plan placing one (or a
 /// Gauntlet kept in a big chest) they can be found before the bracelet. str1 counting them for a child spot could
 /// put the only way to bombs behind a bomb flower he can't lift, as the Lost Woods rock once did.
 pub fn childStr1(s: *State) bool {
@@ -517,6 +520,8 @@ fn evalDerived(s: *State, d: Derived) bool {
         // the exit blocker stays until Gohma
         .child_out => o.open_forest != .closed or o.start_adult or s.is(.deku_done),
         .adult => blk: {
+            // the fill's child-only check (Options.child_only)
+            if (o.child_only) break :blk false;
             // Starting Age: Adult
             if (o.start_adult) break :blk true;
             // Door of Time starts open

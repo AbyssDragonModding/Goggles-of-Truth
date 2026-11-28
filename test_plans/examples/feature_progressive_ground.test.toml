@@ -1,0 +1,37 @@
+# Progressive items lying on the ground (new in 0.8.3), on Kokiri Forest's rupee spots so they're quick to collect as
+# child. Each copy on the ground is a "Progressive <item>" pickup with the first tier's look. Picking one up shows
+# "You got a Progressive <item>!", then the window of the tier you got: the next one you don't have yet, whatever
+# order you find them in. Check each line twice (tier 1, then tier 2), and the pause menu after each:
+#   Freestanding Rupees 1 and 2:     Progressive Hookshot (Hookshot, then Longshot)
+#   Freestanding Rupees 3, 4 and 5:  Progressive Strength Upgrade (Goron Bracelet, Silver Gauntlets, Golden
+#                                    Gauntlets: a line of three, every tier from the ground)
+#   Freestanding Rupees 6 and 7:     Progressive Ocarina (Fairy Ocarina, then Ocarina of Time). The Ocarina button
+#                                    must work after the first one (play a song), and its tutorial shows once.
+#   (no Bomb Bags: the logic counts every Kokiri Forest rupee spot as behind a bombable rock, so none may hold the
+#   Bomb Bag; feature_progressive_everywhere_kokiri_market has them on Gold Skulltulas)
+#   Freestanding Rupees 11 and 12:   Progressive Scale (Silver Scale, then Golden Scale)
+# Also check: the pickups lie on the ground and are collected by walking into them (nothing solid around them), and
+# the menu doesn't list a "Progressive ..." item afterwards.
+name = "PROGGROUND1"
+
+[settings]
+# your own window settings are the base: no random starting items, they could take the copies placed here
+random_start_items = "off"
+# No logic: the logic counts Kokiri Forest's rupee spots as needing bombs and the Song of Storms (an Ocarina), so with
+# the Ocarinas there the seed can't be made. Only these spots matter here.
+logic_rules = "none"
+shuffle_ocarinas = true
+shuffle_rupees = true
+starting_age = "child"
+barren_dungeons = "off"
+
+[place]
+"Kokiri Forest Freestanding Rupee 1" = "Progressive Hookshot"
+"Kokiri Forest Freestanding Rupee 2" = "Progressive Hookshot"
+"Kokiri Forest Freestanding Rupee 3" = "Progressive Strength Upgrade"
+"Kokiri Forest Freestanding Rupee 4" = "Progressive Strength Upgrade"
+"Kokiri Forest Freestanding Rupee 5" = "Progressive Strength Upgrade"
+"Kokiri Forest Freestanding Rupee 6" = "Progressive Ocarina"
+"Kokiri Forest Freestanding Rupee 7" = "Progressive Ocarina"
+"Kokiri Forest Freestanding Rupee 11" = "Progressive Scale"
+"Kokiri Forest Freestanding Rupee 12" = "Progressive Scale"

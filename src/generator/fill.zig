@@ -144,11 +144,22 @@ const start_with_bonus = [_]BonusItem{
     .{ .item = "DekuNutBundle", .weight = 1 },        .{ .item = "Heart_Piece", .weight = 1 },
 };
 
-/// Can this location hand out a progressive item? Only event hand-overs (they branch on what the player owns) and
-/// chests that check what the player owns (world.chestCanCheckOwned: the small ones, and with Chest Size Matches
-/// Contents the big ones too) can; see logic/progressive.zig.
+/// Can this location hand out a progressive item? Event hand-overs (they branch on what the player owns), chests
+/// that check what the player owns (world.chestCanCheckOwned: the small ones, and with Chest Size Matches Contents
+/// the big ones too), items lying in the world and shop shelves (isGroundSpot, .shop: a stand-in item whose item get or
+/// purchase hands over the next tier, generator/progressive_pickups.zig) can; the other big chests and the invisible
+/// ones can't. See logic/progressive.zig.
 pub fn canGiveProgressive(st: *const Settings, loc: *const world_mod.Location) bool {
-    return loc.kind == .event or world_mod.chestCanCheckOwned(loc, st.flag(.chest_size_matches));
+    return loc.kind == .event or loc.kind == .shop or isGroundSpot(loc) or world_mod.chestCanCheckOwned(loc, st.flag(.chest_size_matches));
+}
+
+/// An item lying in the world: a freestanding spot, a rupee spot, a boss Heart Container spot or a Gold Skulltula's
+/// drop. A progressive item there is its line's own pickup (logic/progressive.zig Chain.ground_pickup_item).
+pub fn isGroundSpot(loc: *const world_mod.Location) bool {
+    return switch (loc.kind) {
+        .freestanding, .rupee, .heart_container, .gs => true,
+        .chest, .event, .shop => false,
+    };
 }
 
 /// The upgrade line of a progressive item, or null for any other item.
@@ -502,14 +513,16 @@ pub const Plan = struct {
         }
     }
 
+    /// Does a new game start with a Bomb Bag (Starting Inventory)?
+    fn startsWithBombBag(self: *const Self) bool {
+        for (self.start_inventory) |item| if (self.isFirstBombBag(item)) return true;
+        return false;
+    }
+
     /// The first Bomb Bag: the first tier, or any copy of the Progressive Bomb Bag (whichever is found first is it).
-    /// With Progressive Items off the bags are their own items and a bigger one may be found first (the fill keeps
-    /// them in order only when the logic allows it), so every bag counts.
     fn isFirstBombBag(self: *const Self, item: ItemId) bool {
         const name = self.itemName(item);
-        if (std.mem.eql(u8, name, @tagName(logic.Item.BombBag_Small)) or std.mem.eql(u8, name, @tagName(logic.Item.Progressive_BombBag))) return true;
-        if (self.st.flag(.progressive_items)) return false;
-        return std.mem.eql(u8, name, @tagName(logic.Item.BombBag_Medium)) or std.mem.eql(u8, name, @tagName(logic.Item.BombBag_Large));
+        return std.mem.eql(u8, name, @tagName(logic.Item.BombBag_Small)) or std.mem.eql(u8, name, @tagName(logic.Item.Progressive_BombBag));
     }
 
     fn addRestriction(self: *Self, location_index: usize, item: ItemId) FillError!void {
@@ -676,6 +689,7 @@ pub const Plan = struct {
             } else {
                 return std.fmt.allocPrint(allocator, "no location named \"{s}\" (use the name the spoiler log shows)", .{request.location}) catch error.OutOfMemory;
             };
+            if (!self.is_shuffled[location_index]) try self.chooseShelfForTest(location_index);
             if (!self.is_shuffled[location_index]) {
                 return std.fmt.allocPrint(allocator, "\"{s}\" isn't shuffled with these settings, so it can't take a chosen item", .{request.location}) catch error.OutOfMemory;
             }
@@ -687,7 +701,7 @@ pub const Plan = struct {
                     break;
                 }
             }
-            const ground_tier = if (pool_index == null) try self.takeTierForSpotThatCantChooseTier(request.item, location_index) else null;
+            const ground_tier = if (pool_index == null) try self.takeExactTierForGroundOrFixedSpot(request.item, location_index) else null;
             const item = if (pool_index) |chosen_index| self.pool.orderedRemove(chosen_index) else ground_tier orelse (try self.takeItemFromOutsideThePool(request.item)) orelse {
                 // a tier of an upgrade line isn't in the pool with Progressive Items: say what to place instead
                 if (try self.progressiveLineOfName(request.item)) |chain| {
@@ -696,10 +710,16 @@ pub const Plan = struct {
                 return std.fmt.allocPrint(allocator, "no \"{s}\" left in the item pool (use the name the spoiler log shows; each copy can be placed once)", .{request.item}) catch error.OutOfMemory;
             };
             // why refused: a spot that can't choose the tier would give the first tier every time (test report,
-            // PROGKOKIRI1 plan: progressive items on Kokiri Forest's rupee spots). The fill never puts them there
+            // PROGKOKIRI1 plan, before ground spots got the line's own pickup). The fill never puts them there
             // (allowed(), logic/progressive.zig).
             if (progressiveChainOf(self, item) != null and !canGiveProgressive(self.st, self.location(location_index))) {
-                return std.fmt.allocPrint(allocator, "\"{s}\" can't hold \"{s}\": an item lying in the world, a Gold Skulltula, a shop shelf, a big chest or an invisible chest can't choose the tier, so it would always give the first one (put progressive items in small chests or character/event checks)", .{ request.location, request.item }) catch error.OutOfMemory;
+                return std.fmt.allocPrint(allocator, "\"{s}\" can't hold \"{s}\": this big chest or invisible chest can't choose the tier, so it would always give the first one (put progressive items in small chests, items lying in the world, shop shelves or character/event checks)", .{ request.location, request.item }) catch error.OutOfMemory;
+            }
+            // why refused: a Bomb Bag behind a bombable rock can't be reached without itself, and a test seed with its
+            // logic off softlocked that way (the base rule every seed keeps: markSpotsBehindBombRocks). Unless the game
+            // starts with a bag (Starting Inventory)
+            if (self.behind_bomb_rock[location_index] and self.isFirstBombBag(item) and !self.startsWithBombBag()) {
+                return std.fmt.allocPrint(allocator, "\"{s}\" can't hold \"{s}\": it is behind a bombable rock, so it would need bombs to get the Bomb Bag", .{ request.location, request.item }) catch error.OutOfMemory;
             }
             // why refused: a test plan that forbids and places the same pair contradicts itself
             if (self.isRestricted(location_index, item)) {
@@ -714,6 +734,24 @@ pub const Plan = struct {
             self.forced[location_index] = item;
         }
         return null;
+    }
+
+    /// Test seeds only: a shop shelf Items Shuffled Per Shop didn't choose, asked for by a test placement, is shuffled
+    /// too, with its price, and its own goods join the pool for the placement's item, so the pool still fits the
+    /// locations. Why: which shelves are chosen comes from the seed and the settings, so a plan naming a shelf broke
+    /// whenever either changed (the player's own window settings are a plan's base). Nothing for any other location,
+    /// with Items Shuffled Per Shop off, or for a shelf only there under a story condition the logic doesn't know.
+    fn chooseShelfForTest(self: *Self, location_index: usize) FillError!void {
+        const loc = self.location(location_index);
+        if (loc.kind != .shop or std.mem.eql(u8, self.st.choice(.shopsanity), "off")) return;
+        if (self.world.shop_conditional.contains(loc.id)) return;
+        self.shop_chosen[location_index] = true;
+        self.shop_prices[location_index] = price(self.st.choice(.shop_prices), "shop", self.seed_key, loc.id, shop_price, 5);
+        self.needsWalletFor(location_index, self.shop_prices[location_index].?);
+        self.fixed[location_index] = null;
+        self.shuffled.append(self.allocator, location_index) catch return error.OutOfMemory;
+        self.is_shuffled[location_index] = true;
+        self.pool.append(self.allocator, loc.vanilla) catch return error.OutOfMemory;
     }
 
     /// Test seeds only: a requested item the pool doesn't hold but the game has (by its key, e.g. "Bottle_BigPoe" for
@@ -735,15 +773,17 @@ pub const Plan = struct {
         return null;
     }
 
-    /// Test seeds only: a tier of an upgrade line ("Ocarina of Time") asked for at a spot that can't choose the tier
-    /// (an item lying in the world, a Gold Skulltula, a shop shelf, a big or invisible chest). One copy of the line's
-    /// progressive item leaves the pool and that exact tier is placed instead, so the pool still fits the locations and
-    /// the logic counts the tier as owned there (progressive.tiersOwned). Why: the Ocarinas are always progressive, so
-    /// no seed puts one on the ground, but how an Ocarina lies on the ground still needs checking in-game (test
-    /// report: an Ocarina in Kokiri Forest behind an invisible block, from a 0.7.x seed). Null for any other request:
-    /// a spot that can choose the tier gets the "place the progressive item" message instead.
-    fn takeTierForSpotThatCantChooseTier(self: *Self, requested_name: []const u8, location_index: usize) FillError!?ItemId {
-        if (canGiveProgressive(self.st, self.location(location_index))) return null;
+    /// Test seeds only: a tier of an upgrade line ("Ocarina of Time") asked for at an item lying in the world or a spot
+    /// that can't choose the tier (a big or invisible chest). One copy of the line's progressive item
+    /// leaves the pool and that exact tier is placed instead, so the pool still fits the locations and the logic
+    /// counts the tier as owned there (progressive.tiersOwned). Why: the Ocarinas are always progressive, so no seed
+    /// puts the Ocarina of Time itself on the ground (a progressive copy there is the line's own pickup), but how that
+    /// Ocarina lies on the ground still needs checking in-game (test report: an Ocarina in Kokiri Forest behind an
+    /// invisible block, from a 0.7.x seed). Null for any other request: a chest or event that can choose the tier
+    /// gets the "place the progressive item" message instead.
+    fn takeExactTierForGroundOrFixedSpot(self: *Self, requested_name: []const u8, location_index: usize) FillError!?ItemId {
+        const spot = self.location(location_index);
+        if (!isGroundSpot(spot) and canGiveProgressive(self.st, spot)) return null;
         const chain = (try self.progressiveLineOfName(requested_name)) orelse return null;
         const line_item = self.world.items.lookup(chain.key) orelse return null;
         const tier_item = for (0..self.world.items.count()) |i| {
@@ -1019,12 +1059,9 @@ pub const Plan = struct {
     /// that hands out one of its tiers and can branch (it is patched like a placement: forced). Why the unshuffled
     /// ones too: a vanilla Golden Scale at the fishing pond, caught before both shuffled copies are found, would have
     /// left the line one tier short. A line with nothing shuffled keeps its vanilla items, found in the game's order.
-    /// With Progressive Items off, a line marked Chain.separate_without_progressive keeps its tiers as their own items
-    /// (Filler.keepWhereWeakerTierIsNeeded keeps them in order); the other lines become progressive either way.
+    /// Always on since 0.8.3 (the Progressive Items setting is built in: settings.built_in).
     fn makeLinesProgressive(self: *Self) FillError!void {
-        const progressive_items = self.st.flag(.progressive_items);
         for (&progressive.chains) |*chain| {
-            if (!progressive_items and chain.separate_without_progressive) continue;
             var tier_in_pool = false;
             for (self.pool.items) |item| {
                 if (self.isTierOf(item, chain)) tier_in_pool = true;
@@ -1038,7 +1075,8 @@ pub const Plan = struct {
                 const vanilla_tier = fixed_item.* orelse continue;
                 if (!self.isTierOf(vanilla_tier, chain)) continue;
                 // a location that can't branch keeps its own tier (the logic counts it as one tier of the line)
-                if (!canGiveProgressive(self.st, self.location(i))) continue;
+                // a shop shelf too: an unshuffled shelf keeps selling its own goods
+                if (!canGiveProgressive(self.st, self.location(i)) or self.location(i).kind == .shop) continue;
                 fixed_item.* = copy;
                 self.forced[i] = copy;
             }
@@ -1169,6 +1207,25 @@ pub const Plan = struct {
         return v;
     }
 
+    /// Must `item` be placed where child Link reaches it by himself (Filler.keepSpotsChildReaches)? Why (a player's
+    /// report): the logic let the Kokiri Sword lie on the Death Mountain Crater Piece of Heart, which takes adult Link
+    /// and the Hover Boots, because with an adult start or an open Door of Time adult Link counts as reachable.
+    /// - The Kokiri Sword, always: child Link's sword.
+    /// - With the Door of Time closed, what opens it (the Song of Time, an Ocarina, the three Spiritual Stones) and
+    ///   child Link's equipment (the Slingshot, the Boomerang, the Bomb Bag): found as child, before the door.
+    pub fn mustBeFoundAsChild(self: *const Self, item: ItemId) bool {
+        const name = self.itemName(item);
+        const always = [_]logic.Item{.Sword_Kokiri};
+        for (always) |child_item| if (std.mem.eql(u8, name, @tagName(child_item))) return true;
+        if (self.options.open_door) return false;
+        const before_the_door = [_]logic.Item{
+            .Melody_TimeSong, .Progressive_Ocarina, .Ocarina_Fairy, .Ocarina_Time,
+            .Range_SlingShot, .Boomerang,           .Progressive_BombBag, .BombBag_Small,
+        } ++ logic.child_stones;
+        for (before_the_door) |child_item| if (std.mem.eql(u8, name, @tagName(child_item))) return true;
+        return false;
+    }
+
     /// May shuffled location `i` receive `item`?
     pub fn allowed(self: *Self, i: usize, item: ItemId) FillError!bool {
         const st = self.st;
@@ -1231,6 +1288,9 @@ pub const Plan = struct {
             // a shelf needs a pouch actor with its own pack
             if (world_mod.isJunkName(name)) return true; // the shelf keeps its normal goods
             if (inList(name, &shop_forbidden) or isReward(name)) return false;
+            // a progressive item: the shelf sells a stand-in item of its own, so any number of copies can be on shelves
+            // (generator/progressive_pickups.zig)
+            if (progressive.chainOfProgressiveItem(name) != null) return true;
             return self.soldOnce(item);
         }
         return true;
@@ -1337,7 +1397,13 @@ pub const Filler = struct {
 
     /// Collects everything reachable starting from `base` items, with the items at `contents`.
     pub fn sweep(self: *Self, base: []const ItemId, items_at: []const ?ItemId) FillError!Sweep {
-        var s = try logic.State.init(self.allocator, self.plan.world.items.count(), &self.plan.options);
+        return self.sweepWith(base, items_at, &self.plan.options);
+    }
+
+    /// A sweep under other logic options than the seed's (keepSpotsChildReaches: child Link only). `options` must
+    /// outlive the returned state.
+    fn sweepWith(self: *Self, base: []const ItemId, items_at: []const ?ItemId, options: *const logic.Options) FillError!Sweep {
+        var s = try logic.State.init(self.allocator, self.plan.world.items.count(), options);
         // Starting Inventory: owned from the start, in every sweep (the fill's, the checks', the hints')
         for (self.plan.start_inventory) |item| s.addKeepingCache(item);
         for (base) |item| s.addKeepingCache(item);
@@ -1390,8 +1456,6 @@ pub const Filler = struct {
         if (progressiveChainOf(plan, item)) |chain| {
             if (chain.chestNeedsOneCopy()) return 0;
         }
-        // Progressive Items off: the stronger tiers (they only go where the weaker one is needed)
-        if (weakerTierItem(plan, item) != null) return 0;
         if (logic.isProgression(item)) return 1;
         return 2;
     }
@@ -1434,11 +1498,28 @@ pub const Filler = struct {
                 if (progressiveChainOf(plan, item)) |chain| {
                     if (chain.chestNeedsOneCopy() and cands.items.len > 0) try self.keepChestsThatNeedOneCopy(&cands, &result.state, item, chain);
                 }
-                if (cands.items.len > 0) try self.keepWhereWeakerTierIsNeeded(&cands, &result.state, item);
                 if (cands.items.len == 0) return self.progress.fail(error.PlacementFailed, "no reachable location for {s}", .{plan.itemName(item)});
+                if (plan.mustBeFoundAsChild(item)) {
+                    try self.keepSpotsChildReaches(&cands, base.items);
+                    if (cands.items.len == 0) return self.progress.fail(error.PlacementFailed, "no location child Link can reach for {s}", .{plan.itemName(item)});
+                }
             }
             try self.place(cands.items[self.rng.below(cands.items.len)], item);
         }
+    }
+
+    /// Keeps the candidates child Link reaches by himself, with every item still to place (`base`) but no adult Link
+    /// and so no adult place or equipment (logic.Options.child_only), whatever the Starting Age or the Door of Time.
+    fn keepSpotsChildReaches(self: *Self, cands: *std.ArrayList(usize), base: []const ItemId) FillError!void {
+        var child_options = self.plan.options;
+        child_options.child_only = true;
+        // an adult start's way back to child Link (out of the Temple of Time) needs adult Link first
+        child_options.start_adult = false;
+        var child = try self.sweepWith(base, try self.contents(), &child_options);
+        var kept: std.ArrayList(usize) = .empty;
+        for (cands.items) |i| if (self.plan.reachable(i, &child.state)) try appendItem(usize, &kept, self.allocator, i);
+        cands.clearRetainingCapacity();
+        cands.appendSlice(self.allocator, kept.items) catch return error.OutOfMemory;
     }
 
     /// A three-tier line's chest copy: the chest's one check ("own tier 2 -> tier 3, else tier 2") gives the right
@@ -1461,40 +1542,6 @@ pub const Filler = struct {
         if (kept.items.len == 0) {
             return self.progress.fail(error.PlacementFailed, "no location for {s}: its chests need one copy found first", .{plan.itemName(item)});
         }
-        cands.clearRetainingCapacity();
-        cands.appendSlice(self.allocator, kept.items) catch return error.OutOfMemory;
-    }
-
-    /// The weaker tier the fill must keep `item` behind, or null: only with Progressive Items off, for a tier of a line
-    /// that stays separate items (progressive.weakerTierOf).
-    fn weakerTierItem(plan: *const Plan, item: ItemId) ?ItemId {
-        if (plan.st.flag(.progressive_items)) return null;
-        const weaker = progressive.weakerTierOf(plan.itemName(item)) orelse return null;
-        return plan.world.items.lookup(weaker);
-    }
-
-    /// Progressive Items off (0.7.8's rule): a stronger tier only stays at the candidates the logic can't reach
-    /// without the weaker tier, so it isn't found first. Why every tier from the weaker one up is taken away: the logic
-    /// counts any n tiers of a line as its first n (logic.tiersOwned), so a Golden Gauntlet still owned would stand in
-    /// for the Silver one. A weaker tier the new game starts with (Starting Inventory) is always owned: no rule then.
-    /// When no candidate needs the weaker tier (almost nothing needs the Silver Gauntlets: test generation, every seed
-    /// failed with the rule strict), the candidates all stay and that tier may be found first.
-    fn keepWhereWeakerTierIsNeeded(self: *Self, cands: *std.ArrayList(usize), state: *const logic.State, item: ItemId) FillError!void {
-        const plan = self.plan;
-        const lower = weakerTierItem(plan, item) orelse return;
-        if (std.mem.indexOfScalar(ItemId, plan.start_inventory, lower) != null) return;
-        const chain = progressive.chainOfTierItem(plan.itemName(item)) orelse return;
-        var without = try state.clone(self.allocator);
-        var from_weaker = false;
-        for (chain.tiers) |tier| {
-            const tier_item = plan.world.items.lookup(tier.key) orelse continue;
-            if (tier_item == lower) from_weaker = true;
-            if (from_weaker and tier_item < without.counts.len) without.counts[tier_item] = 0;
-        }
-        without.clearCache();
-        var kept: std.ArrayList(usize) = .empty;
-        for (cands.items) |i| if (!plan.reachable(i, &without)) try appendItem(usize, &kept, self.allocator, i);
-        if (kept.items.len == 0) return;
         cands.clearRetainingCapacity();
         cands.appendSlice(self.allocator, kept.items) catch return error.OutOfMemory;
     }

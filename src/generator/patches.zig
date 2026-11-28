@@ -30,6 +30,8 @@ const flows = @import("flows.zig");
 const filecache = @import("filecache.zig");
 const compressor = @import("compressor.zig");
 const keyitems = @import("keyitems.zig");
+const progressive_pickups = @import("progressive_pickups.zig");
+const longshot_vines = @import("longshot_vines.zig");
 const progressive = @import("../logic/progressive.zig");
 const progressive_flows = @import("progressive_flows.zig");
 const zstd = @import("../formats/zstd.zig");
@@ -274,6 +276,12 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     const key_items = try keyitems.build(world, &patches, &cloner, &plan.options, progress);
     patches.endStep();
     if (key_items > 0) progress.log("Dungeon keys: {d} key rings / boss keys made", .{key_items});
+    // the progressive items lying in the world and on shop shelves: their stand-in items (after the key items: both
+    // add to ActionGuide), before the pickups and shelves below are cloned from them
+    const stand_in_needs = try progressive_pickups.needsOf(a, world, placed);
+    const stand_ins = try progressive_pickups.build(world, &patches, &cloner, stand_in_needs, progress);
+    patches.endStep();
+    if (stand_ins > 0) progress.log("Progressive items: {d} stand-in items for copies on the ground and on shop shelves ({d} shelves)", .{ stand_ins, stand_in_needs.shelves.len });
 
     // Chest Size Matches Contents: where each chest of the patched stage files is and its size, for its keep-away
     // area (matchKeepAwayAreasToChests)
@@ -292,7 +300,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
                 for (edits) |edit| {
                     if (edit.hash != h) continue;
                     hits += 1;
-                    try patchActor(s, a, world, plan, &cloner, &shop_presences, actor, edit, quick_vanilla[edit.loc], refills, progress);
+                    try patchActor(s, a, world, plan, &cloner, &shop_presences, &stand_in_needs, actor, edit, quick_vanilla[edit.loc], refills, progress);
                 }
             }
             try hideBoardsOfSoldShelves(s, actors, edits, world, shop_presences.items);
@@ -330,6 +338,10 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         try qol.patchGsAnyTime(world, &patches, progress);
         patches.endStep();
     }
+    // the Lake Hylia tree's vines: their Longshot wall goes with the Longshot owned, not the Water Temple chest opened
+    // (after the item and Skulltula edits of the same stage files)
+    if (try longshot_vines.patch(world, &patches, progress) > 0) progress.log("Lake Hylia tree: the vines take the Longshot once it is owned", .{});
+    patches.endStep();
     if (st.is(.maps_compasses, "own") or st.is(.boss_keys, "own")) {
         // a map, compass or boss key can end up in a small chest, whose opening didn't credit the dungeon
         _ = try qol.patchSmallChestDungeonItems(&patches, progress);
@@ -977,6 +989,8 @@ fn patchActor(
     plan: *fill.Plan,
     cloner: *pickups.PickupCloner,
     shop_presences: *std.ArrayList(gamedata.ShopPresence),
+    /// the stand-in items of the progressive copies on shelves (progressive_pickups.zig)
+    stand_in_needs: *const progressive_pickups.Needs,
     actor: *byml.Dict,
     edit: StageEdit,
     quick_vanilla: bool,
@@ -1043,7 +1057,9 @@ fn patchActor(
         },
         .shop => {
             // a new shelf actor that sells the item once, at its price (pickups.zig, OotrR)
-            const event_actor = try requireActor(a, world, item, .event, progress);
+            // a progressive item: the shelf's own stand-in item, whose purchase hands over the next tier and whose
+            // IsGet flag hides the shelf once bought (progressive_pickups.zig)
+            const event_actor = stand_in_needs.shelfItemAt(edit.loc) orelse try requireActor(a, world, item, .event, progress);
             const shelf_actor = try cloner.shopActor(event_actor, plan.shop_prices[edit.loc].?);
             // a big item (a Heart Container, a permanent upgrade) at half size on the shelf (pickups.shopShelfScale)
             const shelf_scale = try cloner.shopShelfScale(shelf_actor);
@@ -1097,11 +1113,15 @@ fn patchActor(
             // a token-based pickup: floats like a token, is collected by touch, and sets the Skulltula's save flag when
             // collected (pickups.zig), consumables included
             const dyn = try actor.ensureDict(a, "Dynamic");
-            try dyn.put(a, "Drop__DropActor", .{ .string = try cloner.tokenActor(try requireActor(a, world, item, .event, progress)) });
+            // a progressive item: its line's own pickup item, whose item get hands over the next tier
+            // (progressive_pickups.zig)
+            const event_actor = if (fill.progressiveChainOf(plan, item)) |line| line.ground_pickup_item else try requireActor(a, world, item, .event, progress);
+            try dyn.put(a, "Drop__DropActor", .{ .string = try cloner.tokenActor(event_actor) });
         },
         else => {
-            // an unchanged vanilla pickup keeps its own actor (and its own A/walk-over behaviour)
-            const world_actor = try requireActor(a, world, item, .world, progress);
+            // an unchanged vanilla pickup keeps its own actor (and its own A/walk-over behaviour); a progressive item
+            // is its line's own pickup item, whose item get hands over the next tier (progressive_pickups.zig)
+            const world_actor = if (fill.progressiveChainOf(plan, item)) |line| line.ground_pickup_item else try requireActor(a, world, item, .world, progress);
             const placed_actor = try cloner.worldActor(world_actor, item != loc.vanilla);
             try restOnOriginalModelBottom(a, cloner, actor, placed_actor, 1.0, null);
             try actor.put(a, "Gyaml", .{ .string = placed_actor });
@@ -1308,7 +1328,10 @@ fn writeOne(a: Allocator, world: *World, out_romfs: []const u8, rel: []const u8,
 /// The actor a chest drops for item key `key`. An item not drawn held up out of a chest gets a display actor of its
 /// own (pickups.chestDisplayActor): an Ocarina (only in a chest with Shuffle Ocarinas; the check names the setting it
 /// belongs to), or a song with Songs Anywhere (the harp, turning: pickups.songChestActor).
-fn chestShownActorOf(a: Allocator, world: *World, plan: *fill.Plan, cloner: *pickups.PickupCloner, key: []const u8, progress: *Progress) PatchError![]const u8 {
+fn chestShownActorOf(a: Allocator, world: *World, plan: *fill.Plan, cloner: *pickups.PickupCloner, item_key: []const u8, progress: *Progress) PatchError![]const u8 {
+    // what the item is handed out as: a Weird Egg in a chest gave the egg itself, not the Cucco every other spot
+    // hands out (World.handed_out_as says why the Cucco)
+    const key = World.handedOutKey(item_key);
     const chest_actor = (try world.actorFor(a, key, .chest)) orelse
         return progress.fail(error.NotAsExpected, "no actor for item {s} in chest context", .{key});
     if (std.mem.startsWith(u8, chest_actor, "Pouch_") and plan.st.flag(.shuffle_ocarinas)) {

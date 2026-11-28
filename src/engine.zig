@@ -89,6 +89,7 @@ test {
     _ = logic;
     _ = progressive;
     _ = @import("generator/progressive_flows.zig");
+    _ = @import("generator/progressive_pickups.zig");
     _ = @import("generator/ocarina_handover.zig");
     _ = @import("generator/teststart.zig");
     _ = @import("generator/npcdialogs.zig");

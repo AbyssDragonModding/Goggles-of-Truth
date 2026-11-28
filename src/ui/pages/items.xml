@@ -26,7 +26,7 @@
 					<StableBadge Name="badge_shuffle_rewards" LabelName="badgelab_shuffle_rewards"/>
 				</HBox>
 				<HBox Spacing="12">
-					<Checkbox Name="set_shuffle_ocarinas" Style="Switch" Text="Shuffle Ocarinas" OnChanged="set.shuffle_ocarinas" Slot.Fill="1" Tooltip="The Fairy Ocarina and the Ocarina of Time are found in random checks. Saria doesn't hand you the&#10;Fairy Ocarina on the forest bridge, and Zelda's Ocarina of Time at the castle moat becomes a check.&#10;With Progressive Items they are two Progressive Ocarinas: the first one you find is the Fairy&#10;Ocarina, the second the Ocarina of Time. Either ocarina plays every song and opens the Door of Time."/>
+					<Checkbox Name="set_shuffle_ocarinas" Style="Switch" Text="Shuffle Ocarinas" OnChanged="set.shuffle_ocarinas" Slot.Fill="1" Tooltip="The Fairy Ocarina and the Ocarina of Time are found in random checks. Saria doesn't hand you the&#10;Fairy Ocarina on the forest bridge, and Zelda's Ocarina of Time at the castle moat becomes a check.&#10;They are two Progressive Ocarinas: the first one you find is the Fairy&#10;Ocarina, the second the Ocarina of Time. Either ocarina plays every song and opens the Door of Time."/>
 					<StableBadge Name="badge_shuffle_ocarinas" LabelName="badgelab_shuffle_ocarinas"/>
 				</HBox>
 				<HBox Spacing="12">
@@ -113,10 +113,6 @@
 				<HBox Spacing="12">
 					<Checkbox Name="set_refill_needs_item" Style="Switch" Text="Refills Need Their Item" OnChanged="set.refill_needs_item" Slot.Fill="1" Tooltip="A chest with arrows, bombs, Bombchus or Deku seeds gives a blue rupee instead until you own the&#10;Bow, a Bomb Bag (Bombchus go in the Bomb Bag in the remake) or the Slingshot. Deku Nuts and Deku&#10;Sticks work the same way: a bundle only counts once you have picked up a single nut or stick&#10;(that gives you their bag), so until then their chests give a blue rupee too. Refills placed&#10;anywhere other than a chest are always blue rupees."/>
 					<StableBadge Name="badge_refill_needs_item" LabelName="badgelab_refill_needs_item"/>
-				</HBox>
-				<HBox Spacing="12">
-					<Checkbox Name="set_progressive_items" Style="Switch" Text="Progressive Items" OnChanged="set.progressive_items" Slot.Fill="1" Tooltip="On: upgrades come in order, whichever copy you find first. The first Progressive Hookshot is the&#10;Hookshot and the second the Longshot; the same goes for the Ocarinas, strength, scales, wallets,&#10;bomb bags, Deku Seed bags and quivers. They are only in small chests (big ones too with Chest Size&#10;Matches Contents) and given by characters, minigames and Business Scrubs: items lying in the world,&#10;Gold Skulltulas, shop shelves and invisible chests can't choose the tier.&#10;Off: the Hookshot, scales, strength upgrades and bomb bags are items of their own (Hookshot,&#10;Longshot, ...) and can be in any check. A stronger one goes where you need the weaker one first&#10;when the logic allows it, so you may still find one first. The Ocarinas, wallets, Deku Seed bags&#10;and quivers stay progressive."/>
-					<StableBadge Name="badge_progressive_items" LabelName="badgelab_progressive_items"/>
 				</HBox>
 				<HBox Spacing="12">
 					<Checkbox Name="set_chest_size_matches" Style="Switch" Text="Chest Size Matches Contents" OnChanged="set.chest_size_matches" Slot.Fill="1" Tooltip="Chests show what they hold, as in the classic randomizer: key items are in big chests, everything else&#10;in small ones. Key items are what the logic can need (weapons, tools, songs, the Spiritual Stones and&#10;Medallions, bottles, progressive upgrades...) and every Small Key, Key Ring and Boss Key; Gold&#10;Skulltula Tokens, hearts, maps, compasses, rupees and refills are small. A big chest that gives the&#10;next tier of a progressive item is one the randomizer makes for this. Invisible chests keep their look."/>

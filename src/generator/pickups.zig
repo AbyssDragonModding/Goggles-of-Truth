@@ -38,6 +38,7 @@ const patchset = @import("patchset.zig");
 const flows = @import("flows.zig");
 const Progress = @import("../core/Progress.zig");
 const ainb = @import("../formats/ainb.zig");
+const progressive = @import("../logic/progressive.zig");
 const Allocator = std.mem.Allocator;
 const PatchError = patchset.PatchError;
 const World = world_mod.World;
@@ -281,6 +282,8 @@ pub const PickupCloner = struct {
     auto_rows: std.ArrayList(AutoRow),
     /// existing actors given another actor's model (dressInModelOf)
     restyled: std.ArrayList(Restyled) = .empty,
+    /// key item -> the item actor its pickups and shelves rest, scale and are boxed like (restLike)
+    shown_models: std.StringHashMapUnmanaged([]const u8) = .empty,
     /// shop shelf clone -> its price
     prices: std.StringHashMap(i64),
     /// actor -> the lowest point of its model above its origin (ActorInfo's ModelAabbMin.Y), read once (modelBottom)
@@ -425,8 +428,15 @@ pub const PickupCloner = struct {
         const tmpl = try listFiles(a, tmpl_raw.data);
         const model_files = try listFiles(a, (try self.patches.read(try packOf(a, model))).data);
         const tmpl_param_path = try paramOf(a, key_item_template);
-        const model_path = std.fmt.allocPrint(a, "Component/ModelInfo/{s}.engine__component__ModelInfo.bgyml", .{model}) catch return error.OutOfMemory;
         const tmpl_param_bytes = tmpl.get(tmpl_param_path) orelse return self.progress.fail(error.NotAsExpected, "{s} has no ActorParam", .{key_item_template});
+        // the model's ModelInfo: the file named after it, or else the one its ActorParam names. Why: the Fairy
+        // Ocarina's display actor (Pouch_Ocarina_Fairy, a progressive pickup's model) uses Item_Ocarina_Fairy's
+        const named_model_path = std.fmt.allocPrint(a, "Component/ModelInfo/{s}.engine__component__ModelInfo.bgyml", .{model}) catch return error.OutOfMemory;
+        const model_path = if (model_files.has(named_model_path)) named_model_path else blk: {
+            const comps = try resolvedComponents(a, model_files, try paramOf(a, model));
+            const ref = comps.getString("ModelInfoRef") orelse return self.progress.fail(error.NotAsExpected, "{s} has no ModelInfo", .{model});
+            break :blk refFile(ref);
+        };
         const model_bytes = model_files.get(model_path) orelse return self.progress.fail(error.NotAsExpected, "{s} has no ModelInfo", .{model});
 
         const param = try byml.loadDict(a, tmpl_param_bytes);
@@ -637,6 +647,9 @@ pub const PickupCloner = struct {
             }
         }
         try pouch.put(a, "PouchActor", .{ .string = pouch_actor });
+        // a progressive item lying in the world: its item get must play for every copy, as it is what hands over the
+        // next tier (progressive_pickups.zig); a key item's plays once otherwise
+        if (progressive.chainOfGroundPickupItem(src) != null) try pouch.put(a, "PlayGetEventManyTimes", .{ .bool = true });
         if (token) {
             try pouch.put(a, "PlayGetEventManyTimes", .{ .bool = true });
             try pouch.put(a, "IsPlayGetEventPouchMax", .{ .bool = true });
@@ -931,6 +944,20 @@ pub const PickupCloner = struct {
         .{ .model_actor = "Item_BombBag_Small", .lift = 0.05 },
         .{ .model_actor = "Item_BombBag_Medium", .lift = 0.05 },
         .{ .model_actor = "Item_BombBag_Large", .lift = 0.05 },
+        // Estimated from screenshots, to confirm in-game (test report, seed PROGFINAL01). The Quiver is drawn far below
+        // its box (0 to 0.55 m) on a shelf: on the Market Bazaar's arrow shelf (Item 4) only its feather tips showed
+        // above the shelf's "x 10" board, about 0.25 m too low by the shield and nuts next to it. The bigger one is the
+        // same model.
+        .{ .model_actor = "Item_Quiver_Medium", .lift = 0.25 },
+        .{ .model_actor = "Item_Quiver_Large", .lift = 0.25 },
+        // Slightly sunk into the Market Potion Shop's shelves, about 3 cm by the jars next to them: the Fairy Ocarina
+        // lying on the lower left shelf (Item 3), the Deku Seed Bag on the upper one (Item 2), the Stone of Agony on
+        // the upper right (Item 6). The Ocarina of Time and the bigger bag are the same models.
+        .{ .model_actor = "Item_Ocarina_Fairy", .lift = 0.03 },
+        .{ .model_actor = "Item_Ocarina_Time", .lift = 0.03 },
+        .{ .model_actor = "Item_BulletBag_Medium", .lift = 0.03 },
+        .{ .model_actor = "Item_BulletBag_Large", .lift = 0.03 },
+        .{ .model_actor = "Item_AgonyStone", .lift = 0.03 },
     };
 
     /// The shelf-only correction for `actor`'s model (0 when there is none).
@@ -949,7 +976,17 @@ pub const PickupCloner = struct {
         for (self.rows.items) |r| if (std.mem.eql(u8, r.clone, model_actor)) {
             model_actor = self.model_src.get(r.clone) orelse r.src;
         };
+        // a progressive item's stand-in (progressive_pickups.zig) shows the model its key item borrows (the first
+        // tier's): it rests and is boxed like that item. Only these: the key rings' pickups keep resting as they
+        // were tested in-game
+        if (self.shown_models.get(model_actor)) |shown| return shown;
         return model_actor;
+    }
+
+    /// The pickups and shelves made from key item `item` rest, scale and are boxed exactly as those of item actor
+    /// `old_actor` always have (modelActorOf): the height, shelf and box corrections are all keyed by it.
+    pub fn restLike(self: *Self, item: []const u8, old_actor: []const u8) PatchError!void {
+        self.shown_models.put(self.allocator, try self.keepText(item), try self.keepText(old_actor)) catch return error.OutOfMemory;
     }
 
     /// Height corrections measured in the game, for models the model box gets wrong (metres, up), by the actor
@@ -1366,8 +1403,10 @@ pub const PickupCloner = struct {
                         if (self.model_src.get(r.clone)) |m_name| {
                             if (findRow(t.rows, m_name)) |m| for (model_row_keys) |k| if (m.get(k)) |v| try row.put(a, k, try v.clone(a));
                         }
-                        // a model whose item row has its worn box (the Gauntlets): the display actor's box
-                        if (displayBoxActorOf(r.src)) |box_actor| if (findRow(t.rows, box_actor)) |b| {
+                        // a model whose item row has its worn box (the Gauntlets): the display actor's box. By the
+                        // model shown (modelActorOf), so a progressive stand-in's pickup or shelf with the Goron
+                        // Bracelet's model gets the box the Goron Bracelet's own pickup gets
+                        if (displayBoxActorOf(self.modelActorOf(r.clone))) |box_actor| if (findRow(t.rows, box_actor)) |b| {
                             for ([_][]const u8{ "ModelAabbMin", "ModelAabbMax" }) |k| if (b.get(k)) |v| try row.put(a, k, try v.clone(a));
                         };
                         // a worn box with no display actor (the Lens of Truth): moved down onto the origin

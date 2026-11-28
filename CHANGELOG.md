@@ -7,6 +7,36 @@ fix raises the last number (0.7.**5**).
 the same placement version put items in the same places, so you can rebuild an older seed with a newer version and
 keep your saves. When a version changes where items go, it gets a new placement version.
 
+## 0.8.3 - 2026-11-27
+
+New placement version (0.8.3): progressive items can now be in more places, so seeds made with 0.8.2 or 0.8.1
+can't be rebuilt with this version. They still play fine with the version that made them, and your saves are safe.
+Make a new seed to get this change.
+
+### New
+- **Overworld progressive items (MAJOR CHANGE)**: progressive items are no longer restricted to just NPCs/Chests/Minigames, they can now drop in the overworld and shops too. A Progressive Ocarina found this way shows the Ocarina tutorial the first time. The world model will be limited to the base tier of that item (so progressive strength in world will always look like goron bracelets, ect..)
+
+### Changed
+- **Progressive Items is always on**, and its switch is gone from the Items tab, it is now the new behavior of the randomizer: upgrades always come in order now
+  that progressive items can be anywhere.
+- **App Auto-update rework**: Now you run the "goggles_launcher" instead of the other binary which has a small splash screen that checks for updates from github releases, downloads and installs them, then runs the main generator. (Untested on linux and macos, I only have windows)
+- **Closed Door of Time**: the Song of Time, both Ocarinas, the three Spiritual Stones, the Slingshot, the Boomerang
+  and the Bomb Bags are always somewhere child Link can get them without any adult equipment, even with an adult
+  start. With the Door of Time open this doesn't apply.
+- **Random Starting Items** is no longer marked as in testing.
+
+### Fixed 
+- Saria bridge cutscene came back with shuffle ocarinas and caused a cutscene loop when entering/exiting the forest. That cutscene trigger has been moved down off the map so shouldnt happen.
+- Kokiri sword when shuffled should be in a accessable spot with child link. (a user reported it being placed in DM Crater POH and required hover boots)
+- Ocarina picups work (someone reported they had a invisible block over them)
+- Buying a progressive item in a shop that turned into the Golden Gauntlets left the screen black until you left the
+  shop menu.
+- The Quiver, Ocarinas, Deku Seed Bags and Stone of Agony sat too low on shop shelves (the Quiver was almost hidden
+  behind its price board). Not tested in-game yet.
+- A Weird Egg in a chest now hatches into the Cucco right away, like everywhere else it can be found.
+- The Longshot couldn't latch onto the vines of the tree at Lake Hylia (and its Gold Skulltula) unless you had opened
+  the Water Temple's Longshot chest. Now it works as soon as you have the Longshot, wherever you found it (thanks to Kareem for sharing the info, from the Clawshot Rando)
+
 ## 0.8.2 - 2026-11-27
 
 Same placement version as 0.8.1: seeds made with 0.8.1 come out the same, and can be rebuilt with this version.

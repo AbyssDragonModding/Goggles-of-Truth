@@ -14,7 +14,7 @@
 			<HBox Spacing="12">
 				<Label Text="Random Starting Items" TextSize="14" Slot.Fill="1" Slot.VAlign="Center" Tooltip="A new game also starts with this many random items, on top of the ones chosen above: equipment, items,&#10;upgrades, songs or hearts (an upgrade you already start with gives its next tier). The seed picks them;&#10;the spoiler log lists them."/>
 				<ComboBox Name="set_random_start_items" OnChanged="set.random_start_items" Slot.Fill="0.9" Items="Off|1 Item|2 Items|3 Items|4 Items|5 Items|Random (1-5 Items)" Tooltip="A new game also starts with this many random items, on top of the ones chosen above: equipment, items,&#10;upgrades, songs or hearts (an upgrade you already start with gives its next tier). The seed picks them;&#10;the spoiler log lists them."/>
-				<TestingBadge Name="badge_random_start_items" LabelName="badgelab_random_start_items"/>
+				<StableBadge Name="badge_random_start_items" LabelName="badgelab_random_start_items"/>
 			</HBox>
 		</VBox>
 	</Border>
