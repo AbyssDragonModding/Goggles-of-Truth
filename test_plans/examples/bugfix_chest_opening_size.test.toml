@@ -1,0 +1,26 @@
+# 0.8.4 fix for Chest Size Matches Contents: a chest plays the opening of its size. A big chest: Link's long
+# opening; a small chest: the quick one. As child, Kokiri Forest open.
+#   Mido's house, chest 4 (a small chest in the game, quick opening):  Megaton Hammer, now a big chest. It must play
+#                                                                      the long opening.
+#   Deku Tree, first room, the map chest (big in the game, long opening with a Navi comment):  Green Rupee, now a
+#                                                                      small chest. It must play the quick opening.
+#   Deku Tree, the Slingshot chest (long opening with a Navi comment):  Deku Shield, now a small chest. Quick opening.
+#   Deku Tree, the compass chest:  Fairy Bow, a big chest. Long opening (unchanged, a check that nothing broke).
+# Every chest must still give its item and stay open afterwards.
+name = "BUGCHEST1"
+seed = "BUGCHEST01"
+
+[settings]
+random_start_items = "off"
+chest_size_matches = true
+# the map and compass chests take chosen items only when maps and compasses are shuffled
+maps_compasses = "anywhere"
+starting_age = "child"
+open_forest = "open"
+barren_dungeons = "off"
+
+[place]
+"Kokiri Forest Chest 4" = "Megaton Hammer"
+"Great Deku Tree Chest 1 (room 0)" = "Green Rupee"
+"Great Deku Tree Chest 2 (room 2)" = "Deku Shield"
+"Great Deku Tree Chest 5 (room 3)" = "Fairy Bow"

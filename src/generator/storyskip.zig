@@ -701,6 +701,203 @@ pub fn patchStoryScenes(world: *World, patches: *PatchSet, progress: *Progress, 
     }
 }
 
+// ------------------------------------------------------------------------------- the first trip to adult
+// The first pull of the Master Sword (DoorOfTime:DoorOfTime_Draw, before Dm_TimeTemple_0040 has played) plays
+// Dm_TimeTemple_0030, then changes scenes to the Chamber of Sages with Link still a child (EventReserveBancChange,
+// BootEventName SageRoom_MeetGanondorf). There SageRoom_MeetGanondorf plays Dm_TimeTemple_0040 (Ganondorf), waits
+// 180 frames, adds and equips the Master Sword, swaps the equipment for adult (ReplaceEquipmentForEraChange), makes
+// Link adult (Sequence_IsChildhood) and changes scenes again to the Chamber of Sages for Rauru (SageRoom_MeetRauru).
+// With both scenes skipped, child Link stood alone in the Chamber for those 180 frames before the fade to adult (test
+// report, 0.8.3). Now the first pull fades to black in the Temple of Time and goes straight on to the sword, the
+// adult equipment and the scene change for Rauru: the same steps, without the child's stop in the Chamber.
+// The entry SageRoom_MeetGanondorf itself is left as it is.
+
+const first_pull_draw_entry = "DoorOfTime_Draw";
+const meet_ganondorf_boot = "SageRoom_MeetGanondorf";
+const meet_rauru_boot = "SageRoom_MeetRauru";
+const ganondorf_scene_skip_prefix = "RandoSkip_Dm_TimeTemple_0040";
+
+fn isBancChangeTo(fc: *const evfl.Flowchart, e: *const evfl.Event, boot_event: []const u8) bool {
+    if (!fc.isAction(e, "GameSystemActor", "EventReserveBancChange")) return false;
+    const params = e.kind.action.params orelse return false;
+    return params.isString("BootEventName", boot_event);
+}
+
+/// DoorOfTime flow `data` with the first pull going straight to adult (see above). error.NotAsExpected (with the
+/// reason) when the flow isn't as expected, Dm_TimeTemple_0040's skip included.
+fn firstPullStraightToAdult(allocator: Allocator, data: []const u8, progress: *Progress) PatchError![]u8 {
+    var doc = try flows.readFlow(allocator, data, "DoorOfTime", progress);
+    const fc = try flows.expectFlowchart(&doc, "DoorOfTime", progress);
+
+    // the first pull's scene change to the Chamber as child: reached from DoorOfTime_Draw, exactly once in the flow
+    const draw = fc.entryPoint(first_pull_draw_entry) orelse return progress.fail(error.NotAsExpected, "DoorOfTime has no {s} entry", .{first_pull_draw_entry});
+    const reached_from_draw = try fc.reach(allocator, draw.main_event);
+    var child_banc_change: ?u16 = null;
+    for (fc.events.items, 0..) |*e, i| {
+        if (!isBancChangeTo(fc, e, meet_ganondorf_boot)) continue;
+        if (child_banc_change != null) return progress.fail(error.NotAsExpected, "DoorOfTime changes scenes for {s} more than once", .{meet_ganondorf_boot});
+        if (!reached_from_draw[i]) return progress.fail(error.NotAsExpected, "{s} doesn't reach the scene change for {s}", .{ first_pull_draw_entry, meet_ganondorf_boot });
+        child_banc_change = @intCast(i);
+    }
+    const replaced = child_banc_change orelse return progress.fail(error.NotAsExpected, "DoorOfTime has no scene change for {s}", .{meet_ganondorf_boot});
+
+    // SageRoom_MeetGanondorf, step by step: its preload, the skipped Ganondorf scene (flags kept, its fade-in
+    // dropped: the screen stays black), the wait; then the sword, which the new path joins, on to the scene change
+    // for Rauru
+    const meet_ganondorf = fc.entryPoint(meet_ganondorf_boot) orelse return progress.fail(error.NotAsExpected, "DoorOfTime has no {s} entry", .{meet_ganondorf_boot});
+    var flag_events: std.ArrayList(u16) = .empty;
+    var sword_event: ?u16 = null;
+    var current = meet_ganondorf.main_event;
+    var steps: usize = 0;
+    while (current != NONE and sword_event == null) : (steps += 1) {
+        if (steps > 16) return progress.fail(error.NotAsExpected, "{s} is longer than expected", .{meet_ganondorf_boot});
+        const e = &fc.events.items[current];
+        if (e.kind != .action) return progress.fail(error.NotAsExpected, "{s} branches before the Master Sword", .{meet_ganondorf_boot});
+        if (fc.isAction(e, "EventSystemActor", "EventTransition")) {
+            return progress.fail(error.NotAsExpected, "{s} still plays a scene (Dm_TimeTemple_0040 not skipped)", .{meet_ganondorf_boot});
+        }
+        if (fc.isAction(e, "PouchSystemActor", "EventTriggerAddOrRemovePouchContent")) {
+            sword_event = current;
+            break;
+        }
+        const is_preload = fc.isAction(e, "GameSystemActor", "EventTriggerBancRequestBeforehandLoad");
+        const is_wait = fc.isAction(e, "EventSystemActor", "EventWait");
+        const is_skip_step = std.mem.startsWith(u8, e.name, ganondorf_scene_skip_prefix);
+        if (!is_preload and !is_wait and !is_skip_step) return progress.fail(error.NotAsExpected, "{s}: {s} not expected before the Master Sword", .{ meet_ganondorf_boot, e.name });
+        if (is_skip_step and fc.isAction(e, "GameDataActor", "EventTriggerSetGameDataBool")) flag_events.append(allocator, current) catch return error.OutOfMemory;
+        current = e.kind.action.next;
+    }
+    const sword = sword_event orelse return progress.fail(error.NotAsExpected, "{s} adds no Master Sword", .{meet_ganondorf_boot});
+    if (flag_events.items.len == 0) return progress.fail(error.NotAsExpected, "{s}: Dm_TimeTemple_0040 not skipped", .{meet_ganondorf_boot});
+    // and after the sword, the scene change for Rauru as adult
+    const after_sword = try fc.reach(allocator, sword);
+    var reaches_rauru = false;
+    for (fc.events.items, 0..) |*e, i| {
+        if (after_sword[i] and isBancChangeTo(fc, e, meet_rauru_boot)) reaches_rauru = true;
+    }
+    if (!reaches_rauru) return progress.fail(error.NotAsExpected, "{s} doesn't go on to {s}", .{ meet_ganondorf_boot, meet_rauru_boot });
+
+    // the new path, in the child scene change's place: fade to black (the game's own fade-out parameters,
+    // DoorOfTime Event126), the Ganondorf scene's flags, then the sword
+    const fade_out_call = try systemAction(fc, allocator, "UISystemActor", "EventEventFadeOut", progress);
+    var new_path: std.ArrayList(evfl.Event) = .empty;
+    new_path.append(allocator, evfl.makeAction("RandoFirstPull_FadeOut", fade_out_call, NONE, try Container.from(allocator, &.{
+        .{ .name = "Color", .value = .{ .int = 0 } },
+        .{ .name = "IsNoPlayAnime", .value = .{ .bool = false } },
+        .{ .name = "Length", .value = .{ .int = 3 } },
+        .{ .name = "IsWaitEnd", .value = .{ .bool = true } },
+    }))) catch return error.OutOfMemory;
+    for (flag_events.items, 0..) |flag_event, k| {
+        const original = fc.events.items[flag_event].kind.action;
+        const name = std.fmt.allocPrint(allocator, "RandoFirstPull_Flag{d}", .{k}) catch return error.OutOfMemory;
+        const params = if (original.params) |p| try p.clone(allocator) else null;
+        new_path.append(allocator, evfl.makeAction(name, .{ original.actor, original.action }, NONE, params)) catch return error.OutOfMemory;
+    }
+    // the first one takes the scene change's place (what led to it now leads to the fade), the others are added
+    const base: u16 = @intCast(fc.events.items.len);
+    fc.events.items[replaced] = new_path.items[0];
+    for (new_path.items[1..]) |e| _ = try fc.addEvent(allocator, e);
+    const count = new_path.items.len;
+    for (0..count) |k| {
+        const index: u16 = if (k == 0) replaced else base + @as(u16, @intCast(k - 1));
+        const next: u16 = if (k + 1 < count) base + @as(u16, @intCast(k)) else sword;
+        fc.events.items[index].nextPtr().?.* = next;
+    }
+    // DoorOfTime_Draw now calls ReplaceEquipmentForEraChange: the entries list the calls they reach
+    try flows.listAllReachedCalls(allocator, fc);
+    return flows.writeBack(allocator, &doc, "DoorOfTime (first trip to adult)", progress);
+}
+
+test "the first pull fades out and goes straight to the Master Sword" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var progress = Progress.silent();
+
+    // a DoorOfTime with the two entries as patchStoryScenes leaves them
+    var fc = evfl.Flowchart{ .name = "DoorOfTime" };
+    const actor_actions = [_]struct { name: []const u8, actions: []const []const u8 }{
+        .{ .name = "GameSystemActor", .actions = &.{ "EventReserveBancChange", "EventTriggerBancRequestBeforehandLoad" } },
+        .{ .name = "EventSystemActor", .actions = &.{"EventWait"} },
+        .{ .name = "GameDataActor", .actions = &.{"EventTriggerSetGameDataBool"} },
+        .{ .name = "PouchSystemActor", .actions = &.{"EventTriggerAddOrRemovePouchContent"} },
+    };
+    for (actor_actions) |aa| {
+        var actor = evfl.Actor{ .name = aa.name, .params = try Container.create(a) };
+        for (aa.actions) |action| try actor.actions.append(a, action);
+        try fc.actors.append(a, actor);
+    }
+    const banc = [2]u16{ 0, 0 };
+    const preload = [2]u16{ 0, 1 };
+    const wait = [2]u16{ 1, 0 };
+    const set_flag = [2]u16{ 2, 0 };
+    const pouch = [2]u16{ 3, 0 };
+    _ = try fc.addEvent(a, evfl.makeAction("Event99", wait, 1, try Container.from(a, &.{.{ .name = "Frames", .value = .{ .int = 1 } }})));
+    _ = try fc.addEvent(a, evfl.makeAction("Event97", banc, NONE, try Container.from(a, &.{.{ .name = "BootEventName", .value = .{ .string = meet_ganondorf_boot } }})));
+    _ = try fc.addEvent(a, evfl.makeAction("Event143", preload, 3, null));
+    _ = try fc.addEvent(a, evfl.makeAction("RandoSkip_Dm_TimeTemple_0040_0", set_flag, 4, try setFlagParams(a, "HavePlayedEvent.Dm_TimeTemple_0040")));
+    _ = try fc.addEvent(a, evfl.makeAction("Event186", wait, 5, try Container.from(a, &.{.{ .name = "Frames", .value = .{ .int = 180 } }})));
+    _ = try fc.addEvent(a, evfl.makeAction("Event115", pouch, 6, try Container.from(a, &.{.{ .name = "Actor", .value = .{ .string = "Weapon_Sword_Master" } }})));
+    _ = try fc.addEvent(a, evfl.makeAction("Event144", banc, NONE, try Container.from(a, &.{.{ .name = "BootEventName", .value = .{ .string = meet_rauru_boot } }})));
+    try fc.entry_points.append(a, .{ .name = first_pull_draw_entry, .main_event = 0 });
+    try fc.entry_points.append(a, .{ .name = meet_ganondorf_boot, .main_event = 2 });
+    const data = try evfl.write(a, &evfl.Document{ .name = "DoorOfTime", .flowchart = &fc });
+
+    const out = (try evfl.read(a, try firstPullStraightToAdult(a, data, &progress))).flowchart.?;
+    const events = out.events.items;
+    // the pull's wait now leads to the fade-out, then the Ganondorf scene's flag, then the sword
+    const fade_out = events[events[0].kind.action.next];
+    try std.testing.expect(out.isAction(&fade_out, "UISystemActor", "EventEventFadeOut"));
+    const flag = events[fade_out.kind.action.next];
+    try std.testing.expectEqualStrings("HavePlayedEvent.Dm_TimeTemple_0040", flag.kind.action.params.?.getString("GameDataName").?);
+    try std.testing.expectEqualStrings("Event115", events[flag.kind.action.next].name);
+    // no scene change to the Chamber as child is left; SageRoom_MeetGanondorf itself is unchanged
+    for (events) |*e| try std.testing.expect(!isBancChangeTo(out, e, meet_ganondorf_boot));
+    try std.testing.expectEqualStrings("Event143", events[out.entryPoint(meet_ganondorf_boot).?.main_event].name);
+}
+
+test "the first pull is left as it is when the Ganondorf scene still plays" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var progress = Progress.silent();
+    var fc = evfl.Flowchart{ .name = "DoorOfTime" };
+    for ([_][]const u8{ "GameSystemActor", "EventSystemActor" }) |name| {
+        var actor = evfl.Actor{ .name = name, .params = try Container.create(a) };
+        try actor.actions.append(a, if (std.mem.eql(u8, name, "GameSystemActor")) "EventReserveBancChange" else "EventTransition");
+        try fc.actors.append(a, actor);
+    }
+    _ = try fc.addEvent(a, evfl.makeAction("Event97", .{ 0, 0 }, NONE, try Container.from(a, &.{.{ .name = "BootEventName", .value = .{ .string = meet_ganondorf_boot } }})));
+    _ = try fc.addEvent(a, evfl.makeAction("Event94", .{ 1, 0 }, NONE, try Container.from(a, &.{.{ .name = "EventName", .value = .{ .string = "Dm_TimeTemple_0040" } }})));
+    try fc.entry_points.append(a, .{ .name = first_pull_draw_entry, .main_event = 0 });
+    try fc.entry_points.append(a, .{ .name = meet_ganondorf_boot, .main_event = 1 });
+    const data = try evfl.write(a, &evfl.Document{ .name = "DoorOfTime", .flowchart = &fc });
+    try std.testing.expectError(error.NotAsExpected, firstPullStraightToAdult(a, data, &progress));
+}
+
+/// Skip Cutscenes: the first trip to adult no longer stops in the Chamber of Sages as child (see above). Run after
+/// patchStoryScenes, which skips the two scenes. A flow not as expected keeps the stop, with a warning.
+pub fn patchFirstTripToAdult(world: *World, patches: *PatchSet, progress: *Progress) PatchError!void {
+    const a = patches.allocator;
+    const rel = try flowRel(a, "DoorOfTime");
+    if (!world.files.exists(rel)) {
+        progress.log("warning: Skip Cutscenes: DoorOfTime not found; the first trip to adult still stops in the Chamber of Sages as child", .{});
+        return;
+    }
+    const orig = try patches.read(rel);
+    const new = firstPullStraightToAdult(a, orig.data, progress) catch |err| switch (err) {
+        error.NotAsExpected, error.InvalidData => {
+            progress.log("warning: Skip Cutscenes: the first trip to adult still stops in the Chamber of Sages as child ({s})", .{progress.failureMessage()});
+            return;
+        },
+        else => return err,
+    };
+    try patches.emitZs(rel, orig, new);
+    const doc = try evfl.read(a, new);
+    const events = try updateEventInfo(a, world, patches, &.{.{ .name = "DoorOfTime", .flowchart = doc.flowchart.? }}, progress);
+    progress.log("Skip Cutscenes: the first trip to adult goes straight from the Master Sword to Rauru (event info updated for {d} events)", .{events.len});
+}
+
 /// Standalone intro scene `data` with its first entry doing nothing but setting its flags.
 fn emptyIntro(allocator: Allocator, world: *World, data: []const u8, progress: *Progress) PatchError!struct { data: []u8, flags: [][]const u8 } {
     var doc = try flows.readFlow(allocator, data, "intro", progress);

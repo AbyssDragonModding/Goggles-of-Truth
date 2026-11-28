@@ -77,6 +77,7 @@ pub const Key = enum {
     item_restrictions,
     create_spoiler,
     per_seed_saves,
+    title_subtitle,
 };
 
 pub const specs = [_]Spec{
@@ -1215,6 +1216,19 @@ pub const specs = [_]Spec{
             \\Generating a seed, or Play This Seed on the General Settings tab, stores the slots you have now with their
             \\seed and brings in the new seed's (empty slots for a new one). Slots no seed owns are copied to
             \\save_backups first. The game's options are shared. Close the game before switching.
+        ,
+    },
+    .{
+        .key = .title_subtitle,
+        .tab = "General Settings",
+        .group = "Output",
+        .label = "Title Screen Subtitle",
+        .kind = .boolean,
+        .default = .{ .boolean = true },
+        .tip =
+            \\Adds "Goggles of Truth Randomizer" in purple under the title screen's logo (English title screen only),
+            \\so you can tell a seed is loaded. Off: the title screen stays as in the game, and each seed is about
+            \\67 MB smaller.
         ,
     },
 };

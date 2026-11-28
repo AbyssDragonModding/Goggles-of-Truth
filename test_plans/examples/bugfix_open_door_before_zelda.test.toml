@@ -1,0 +1,23 @@
+# Door of Time: Open, before meeting Zelda (0.8.3 report: the door stayed shut until Zelda was met). Child Link starts
+# in the Temple of Time hall facing the Door of Time, nothing else done. Skip Cutscenes is on.
+# Check:
+# - the Door of Time is open; walk through to the pedestal;
+# - pull the sword: the screen fades to black at the pedestal and you meet Rauru as adult (no child Link standing in
+#   the Chamber of Sages); Rauru's item is handed over;
+# - put the sword back and pull it again: plain time travel both ways.
+# Then (optional) go meet Zelda as child and come back: the sword must still work.
+name = "BUGDOOR2"
+seed = "8GPACV7JSU"
+
+[settings]
+random_start_items = "off"
+open_door = "open"
+starting_age = "child"
+skip_child_zelda = false
+skip_story_scenes = true
+
+[start]
+age = "child"
+scene = "Market"
+position = [84.751, 104.232, -34.0]
+facing = 90

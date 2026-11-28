@@ -442,6 +442,14 @@ fn switchOtherSeeds(a: Allocator, env: *const Env, out_dir: []const u8, name: []
         if (left.len > 0) {
             progress.log("WARNING: Longshot would load these seeds too, and they couldn't be renamed (close the game first, then put _ in front of their names): {s}", .{std.mem.join(a, ", ", left) catch return error.OutOfMemory});
         }
+        // the player's other mods are left switched on, but one that replaces the seed's files is named
+        for (longshot.modsReplacingSeedFiles(a, env, out_dir, name) catch return error.OutOfMemory) |clash| {
+            if (clash.replaces_texts) {
+                progress.log("WARNING: the mod {s} is switched on and replaces this seed's game texts (files in common: {d}). New item names show as \"MsgNotFound\" and their item windows can softlock. Switch it off while playing this seed (close the game, then put _ in front of its folder name).", .{ clash.mod, clash.shared_files });
+            } else {
+                progress.log("WARNING: the mod {s} is switched on and replaces some of this seed's game files (files in common: {d}), so parts of the seed may not work. Switch it off while playing this seed (close the game, then put _ in front of its folder name).", .{ clash.mod, clash.shared_files });
+            }
+        }
     }
     const target = (saves.targetFor(a, env, out_dir) catch return error.OutOfMemory) orelse return;
     if (target.note.len > 0) progress.log("WARNING: {s}", .{target.note});

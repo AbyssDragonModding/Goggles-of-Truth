@@ -330,7 +330,7 @@ pub fn applyPreset(st: Settings, preset: *const Preset) Settings {
 
 /// The settings a preset leaves alone: they decide what is excluded and where and how things are written, not how
 /// the seed plays.
-pub const non_gameplay_keys = [_]Key{ .excluded_locations, .item_restrictions, .create_spoiler, .per_seed_saves };
+pub const non_gameplay_keys = [_]Key{ .excluded_locations, .item_restrictions, .create_spoiler, .per_seed_saves, .title_subtitle };
 
 pub fn isGameplayKey(key: Key) bool {
     for (non_gameplay_keys) |k| if (k == key) return false;
@@ -491,8 +491,14 @@ pub fn settingStatus(key: Key, value: ?[]const u8) Status {
 
 // ------------------------------------------------------------------------------------------ settings string
 
-/// Settings that only decide where things are written, not what the seed is: left out of the settings string.
-const not_in_string = [_]Key{.per_seed_saves};
+/// Settings that only decide where and how things are written, not what the seed is: left out of the settings string
+/// (and so of every seed's random stream).
+const not_in_string = [_]Key{ .per_seed_saves, .title_subtitle };
+
+/// `st` (read from a settings string) with the settings the string leaves out taken from `own` (the player's).
+pub fn keepSettingsOutsideString(st: *Settings, own: *const Settings) void {
+    for (not_in_string) |key| st.set(key, own.get(key));
+}
 
 fn lessKeyName(_: void, a: Key, b: Key) bool {
     return std.mem.order(u8, @tagName(a), @tagName(b)) == .lt;
@@ -681,7 +687,12 @@ test "output-only settings stay out of the settings string" {
     const defaults = Settings.defaults();
     var changed = Settings.defaults();
     changed.set(.per_seed_saves, .{ .boolean = false });
+    changed.set(.title_subtitle, .{ .boolean = false });
     try std.testing.expectEqualStrings(try toString(a, &defaults), try toString(a, &changed));
+    // and reading a string back keeps the player's own choices for them
+    var read = try fromString(a, try toString(a, &defaults));
+    keepSettingsOutsideString(&read, &changed);
+    try std.testing.expect(!read.flag(.per_seed_saves) and !read.flag(.title_subtitle));
 }
 
 test "the presets only use options that aren't experimental" {

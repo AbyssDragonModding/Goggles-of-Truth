@@ -25,6 +25,7 @@ const teststart = @import("teststart.zig");
 const npcdialogs = @import("npcdialogs.zig");
 const door = @import("door.zig");
 const pedestal = @import("pedestal.zig");
+const titlelogo = @import("titlelogo.zig");
 const pickups = @import("pickups.zig");
 const flows = @import("flows.zig");
 const filecache = @import("filecache.zig");
@@ -301,6 +302,7 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
                     if (edit.hash != h) continue;
                     hits += 1;
                     try patchActor(s, a, world, plan, &cloner, &shop_presences, &stand_in_needs, actor, edit, quick_vanilla[edit.loc], refills, progress);
+                    if (st.flag(.chest_size_matches) and world.locations.items[edit.loc].kind == .chest) try matchChestOpeningToSize(s, actor);
                 }
             }
             try hideBoardsOfSoldShelves(s, actors, edits, world, shop_presences.items);
@@ -509,6 +511,9 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
     if (st.flag(.skip_story_scenes)) {
         // after the item edits: a skipped scene's item (read from the patched scene) is the randomized one
         try storyskip.patchStoryScenes(world, &patches, progress, &storyskip.skips, "Skip Cutscenes", false);
+        patches.endStep();
+        // after the DoorOfTime skips: the first pull no longer stops in the Chamber of Sages as child
+        try storyskip.patchFirstTripToAdult(world, &patches, progress);
         patches.endStep();
     }
     if (st.flag(.skip_story_scenes)) {
@@ -756,6 +761,11 @@ pub fn writePatches(gpa: Allocator, allocator: Allocator, inputs: Inputs, progre
         progress.log("warning: the adult Master Sword pedestal may only work after the Forest Temple in this seed", .{});
     }
     patches.endStep();
+    // Title Screen Subtitle: the randomizer's name under the title screen's logo (titlelogo.zig)
+    if (st.flag(.title_subtitle)) {
+        try titlelogo.patchTitleSubtitle(world, &patches, progress);
+        patches.endStep();
+    }
     if (!st.is(.shuffle_songs, "vanilla")) try qol.patchSongTeaching(world, &patches, progress);
     if (st.flag(.shuffle_weird_egg)) try qol.patchEggHatchGuard(&patches, progress);
     if (st.flag(.dodongo_bag_bombs) and !try qol.patchDodongoBagBombs(world, &patches, &restbl, progress)) {
@@ -960,6 +970,82 @@ fn isChestKeyItem(plan: *fill.Plan, item: ItemId) bool {
     if (fill.isReward(name)) return true;
     if (fill.dungeonItemType(name)) |kind| return kind == .small_keys or kind == .boss_keys;
     return false;
+}
+
+// ------------------------------------------------------------------------- Chest Size Matches Contents: the opening
+// A chest plays its opening from its GetEventName: the actor's default (blackboard GetEventName: Obj_TBox_A_02 and
+// the big chests built from it play Dm_SY_Treasurebox, the long opening; Obj_TBox_A_01 and Obj_TBox_A_06 play
+// Dm_SY_TreasureboxSmall, the short one), or the stage's own (Dynamic GetEventName). The stage's own events add a Navi
+// comment or a camera move and then play one of the two (dump: every EventTransition to them). Most play the long
+// opening, as the dungeon maps, compasses and boss keys were in big chests; Mido's house chests play the short one.
+// Moved into a chest of the other size, the opening didn't match it (0.8.3 test report): such a chest gets the
+// opening of its size instead, losing the Navi comment.
+const big_chest_opening = "Dm_SY_Treasurebox";
+const small_chest_opening = "Dm_SY_TreasureboxSmall";
+/// the stage's own chest events that play the short opening (Dm_SY_TreasureboxSmall:Success_MidoHouse)
+const own_events_with_small_opening = [_][]const u8{"KokiriForest_TreasureBox_NaviChatOff"};
+/// the stage's own chest events left as they are: they do more than show the opening (a story flag: the Serenade of
+/// Water's SageOfWater_GetWaterSerenade; Nabooru taken away), or belong to a minigame's chests, which keep their sizes
+const own_events_kept = [_][]const u8{ "SageOfWater_MelodyGet_Water", "SageOfSpirit_NaboorIsTakenAway" };
+const minigame_event_prefix = "MiniGame_";
+
+/// The size of the opening a chest's GetEventName (`event`, null: the actor's default) plays.
+fn openingSizeOf(event: ?[]const u8, chest_size: world_mod.ChestSize) world_mod.ChestSize {
+    const name = event orelse return chest_size;
+    if (std.mem.eql(u8, name, small_chest_opening) or flows.contains(&own_events_with_small_opening, name)) return .small;
+    return .big;
+}
+
+/// The size of chest actor `chest_actor`, the big chests built to check what the player owns included.
+fn finalChestSize(chest_actor: []const u8) world_mod.ChestSize {
+    if (std.mem.endsWith(u8, chest_actor, pickups.big_tier_chest_suffix)) {
+        return world_mod.chestSizeOf(chest_actor[0 .. chest_actor.len - pickups.big_tier_chest_suffix.len]);
+    }
+    return world_mod.chestSizeOf(chest_actor);
+}
+
+/// Chest Size Matches Contents: the chest plays the opening of its (final) size.
+fn matchChestOpeningToSize(a: Allocator, chest: *byml.Dict) PatchError!void {
+    const chest_size = finalChestSize(chest.getString("Gyaml") orelse "");
+    if (chest_size == .none) return;
+    const own_event: ?[]const u8 = if (chest.getDict("Dynamic")) |dyn| dyn.getString("GetEventName") else null;
+    if (own_event) |name| {
+        if (flows.contains(&own_events_kept, name) or std.mem.startsWith(u8, name, minigame_event_prefix)) return;
+    }
+    if (openingSizeOf(own_event, chest_size) == chest_size) return;
+    const dyn = try chest.ensureDict(a, "Dynamic");
+    try dyn.put(a, "GetEventName", .{ .string = if (chest_size == .big) big_chest_opening else small_chest_opening });
+}
+
+test "a chest plays the opening of its size" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const Case = struct { gyaml: []const u8, event: ?[]const u8, expected: ?[]const u8 };
+    const cases = [_]Case{
+        // a dungeon map chest (long opening with a Navi comment) made small
+        .{ .gyaml = "Obj_TBox_A_01", .event = "InsideTheDekuTree_GetMap", .expected = small_chest_opening },
+        // a Mido's house chest (short opening) made big, and one that checks what you own
+        .{ .gyaml = "Obj_TBox_A_02", .event = "KokiriForest_TreasureBox_NaviChatOff", .expected = big_chest_opening },
+        .{ .gyaml = "Obj_TBox_A_02_NoBake" ++ pickups.big_tier_chest_suffix, .event = "KokiriForest_TreasureBox_NaviChatOff", .expected = big_chest_opening },
+        // already matching, the actor's default, or kept for the story: unchanged
+        .{ .gyaml = "Obj_TBox_A_02", .event = "ForesetTemple_GetBossKey", .expected = "ForesetTemple_GetBossKey" },
+        .{ .gyaml = "Obj_TBox_A_06", .event = null, .expected = null },
+        .{ .gyaml = "Obj_TBox_A_01", .event = "SageOfWater_MelodyGet_Water", .expected = "SageOfWater_MelodyGet_Water" },
+        // a chest without sizes (invisible) keeps its event
+        .{ .gyaml = "Obj_TBox_GlassTruth_A_01", .event = "BottomOfTheWell_GetCompass", .expected = "BottomOfTheWell_GetCompass" },
+    };
+    for (cases) |case| {
+        const chest = try byml.Dict.create(a);
+        try chest.put(a, "Gyaml", .{ .string = case.gyaml });
+        if (case.event) |event| {
+            const dyn = try chest.ensureDict(a, "Dynamic");
+            try dyn.put(a, "GetEventName", .{ .string = event });
+        }
+        try matchChestOpeningToSize(a, chest);
+        const got: ?[]const u8 = if (chest.getDict("Dynamic")) |dyn| dyn.getString("GetEventName") else null;
+        if (case.expected) |expected| try std.testing.expectEqualStrings(expected, got.?) else try std.testing.expect(got == null);
+    }
 }
 
 /// The chest of size `size` that checks what the player owns, in place of `original_chest`, or null when there is

@@ -65,6 +65,14 @@ https://github.com/a55uka/nup — MIT License, Copyright (c) 2026 a55uka.
 - `vendor/Raven`: [Raven](https://github.com/oscar-soirey/Raven) 0.3, the GUI library, Apache License 2.0.
 - `vendor/string`: the string library used by the window, built by me since Zig doesnt have a string type.
 
+## Hylia Serif
+
+http://artsyomni.com/hyliaserif - Hylia Serif Beta, a fan-made font after the lettering of the Zelda titles, by Omni
+Jacala. Its author's terms: it is free and may not be distributed for profit.
+
+- `src/generator/title_subtitle.pgm`: the title screen's line "Goggles of Truth Randomizer", set in Hylia Serif Beta
+  and kept as a small picture (293 x 18 pixels). The font itself is not part of this program.
+
 ## MIT License (applies to the parts above from Clawshot, OotrR and nup)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated

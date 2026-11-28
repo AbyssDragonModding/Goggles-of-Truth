@@ -33,7 +33,11 @@ fn messageArchives(allocator: Allocator, world: *World) PatchError![][]const u8 
 }
 
 /// Adds `new_texts` to message file `messages` in every UTF-8 language archive. Returns how many archives changed.
+/// The texts are plain UTF-8 without a terminator; each one gets the terminator every game text ends with.
 pub fn addToArchives(world: *World, patches: *patchset.PatchSet, messages: []const u8, new_texts: []const msbt.NewText, what: []const u8, progress: *Progress) PatchError!usize {
+    // why: the game takes a text's length as its size minus the terminator. Without one, a shop shelf's name lost its
+    // last letter ("Progressive Scal", 0.8.3 test report)
+    const terminated_texts = try terminateTexts(patches.allocator, new_texts);
     var done: usize = 0;
     for (try messageArchives(patches.allocator, world)) |fname| {
         // one language at a time: an archive's original and rebuilt copy are freed before the next language
@@ -48,7 +52,7 @@ pub fn addToArchives(world: *World, patches: *patchset.PatchSet, messages: []con
             progress.log("warning: {s} {s} text is not UTF-8; skipped for it", .{ fname, what });
             continue;
         }
-        const msg = msbt.addTexts(a, entry.data, new_texts) catch |err| switch (err) {
+        const msg = msbt.addTexts(a, entry.data, terminated_texts) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.InvalidData => return progress.fail(error.NotAsExpected, "{s} in {s} is not as expected", .{ messages, fname }),
         };
@@ -60,6 +64,26 @@ pub fn addToArchives(world: *World, patches: *patchset.PatchSet, messages: []con
         done += 1;
     }
     return done;
+}
+
+/// Copies of `plain_texts` with the UTF-8 text terminator (one zero byte) added to each.
+fn terminateTexts(allocator: Allocator, plain_texts: []const msbt.NewText) PatchError![]const msbt.NewText {
+    const terminated_texts = allocator.alloc(msbt.NewText, plain_texts.len) catch return error.OutOfMemory;
+    for (plain_texts, terminated_texts) |plain, *terminated| {
+        terminated.* = .{
+            .label = plain.label,
+            .text = std.mem.concat(allocator, u8, &.{ plain.text, "\x00" }) catch return error.OutOfMemory,
+        };
+    }
+    return terminated_texts;
+}
+
+test "new texts get the terminator the game's own texts end with" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const terminated_texts = try terminateTexts(arena.allocator(), &.{.{ .label = "Item_PS1_Scale_Name", .text = "Progressive Scale" }});
+    try std.testing.expectEqualStrings("Item_PS1_Scale_Name", terminated_texts[0].label);
+    try std.testing.expectEqualStrings("Progressive Scale\x00", terminated_texts[0].text);
 }
 
 // ===================================================================================== Business Scrub sale lines

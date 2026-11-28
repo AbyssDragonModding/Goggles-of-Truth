@@ -1,0 +1,11 @@
+# 0.8.4 shop check on a normal seed (no chosen placements, normal logic, your own window settings), with every shop
+# selling 4 shuffled items. The seed's spoiler log lists which shelves sell a "Progressive ..." item.
+# Check, for each progressive shelf: the full name shows, buying it once gives the next upgrade with no "MsgNotFound"
+# and no softlock, a second purchase is refused, and the shelf is gone after leaving and coming back.
+name = "SHOPNORMAL1"
+seed = "SHOPNORM01"
+
+[settings]
+shopsanity = "4"
+shop_prices = "random"
+starting_age = "child"
