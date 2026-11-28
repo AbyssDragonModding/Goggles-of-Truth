@@ -42,8 +42,6 @@ pub const Paths = struct {
 };
 
 pub const App = struct {
-    /// the window checks GitHub for a newer release when it opens (platform/updater.zig)
-    auto_update: bool = true,
     /// the window's theme (src/ui/themes.zig names them; an unknown one is the default, and the window's log says so)
     theme: []const u8 = default_theme,
 };
@@ -177,9 +175,8 @@ pub fn load(allocator: Allocator, env: *const Env) error{OutOfMemory}!Loaded {
     }
     var app = App{};
     if (doc.table("app")) |t| {
-        if (t.get("auto_update")) |v| if (v == .bool) {
-            app.auto_update = v.bool;
-        };
+        // `auto_update` (the window's own update check, up to 0.8.1) is no longer used: updates are the launcher's
+        // job. Files that still have it load as before; it's left out the next time the file is written.
         if (t.get("theme")) |v| if (v == .string) {
             app.theme = v.string;
         };
@@ -269,9 +266,6 @@ pub fn dumps(allocator: Allocator, st: *const Settings, paths: Paths, app: App) 
     var out: std.ArrayList(u8) = .empty;
     try out.appendSlice(allocator, header);
     try out.appendSlice(allocator, "[app]\n");
-    try out.appendSlice(allocator, "# Check GitHub for a newer release when the window opens (it asks before downloading and installing it):\n");
-    try out.appendSlice(allocator, "# true or false. Default: true\n");
-    try out.print(allocator, "auto_update = {s}\n", .{if (app.auto_update) "true" else "false"});
     try out.appendSlice(allocator, "# The window's theme, chosen on the General Settings tab: \"goggles_of_truth\" or one of Raven's looks (\"raven_dark\",\n");
     try out.appendSlice(allocator, "# \"raven_light\", \"raven_glass_dark\", \"windows_light\", \"macos_dark\", \"gnome_light\", \"native_dark\"...). Default: \"goggles_of_truth\"\n");
     try out.appendSlice(allocator, "theme = ");

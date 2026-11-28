@@ -7,6 +7,30 @@ fix raises the last number (0.7.**5**).
 the same placement version put items in the same places, so you can rebuild an older seed with a newer version and
 keep your saves. When a version changes where items go, it gets a new placement version.
 
+## 0.8.2 - 2026-11-27
+
+Same placement version as 0.8.1: seeds made with 0.8.1 come out the same, and can be rebuilt with this version.
+
+### Changed
+- **Updating is now automatic, with the launcher** (in testing): start `goggles_launcher` instead of the randomizer,
+  and it keeps you on the newest version by itself. A small splash screen, in the theme you picked in the
+  randomizer, shows it checking for a new version, downloading it (with a progress bar) and putting it in place,
+  then the randomizer opens, with no questions. Your settings, presets, cache, save backups and crash logs are kept.
+  - Without an internet connection, or if the download or the update fails, it opens the version you have. If your
+    computer turns off in the middle of an update, the next start puts your old version back.
+  - If the randomizer's folder needs administrator rights (for example inside Program Files), it asks for them with
+    the system's own prompt. Saying no keeps the version you have.
+  - Every download has it. The command-line only downloads for ARM Windows and Linux have no window to open: there
+    it shows its progress as text and only updates them.
+  - Tried on Windows; the administrator prompts on Linux and macOS aren't tested yet.
+- **The Updates card is gone from the General Settings tab:** the launcher updates the randomizer now. You can still
+  open the randomizer directly, but then it doesn't update itself. Old settings files still work.
+
+### Fixed
+- **Installing an update from the window always failed on Windows** ("the files couldn't be replaced"): Windows
+  wouldn't let the randomizer move its own running files aside. The launcher's updates don't have this problem. To
+  get 0.8.2 from 0.8.1, download it by hand once; from then on, start the launcher.
+
 ## 0.8.1 - 2026-11-27
 
 New placement version (0.8.1): random shop and Business Scrub prices changed, so seeds made with 0.8.0 can't be

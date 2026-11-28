@@ -165,6 +165,7 @@ When only some choices of an option have a different status, they're named in th
 | Launch Game (starts Longshot or the emulator the output folder belongs to) | 🟡 Semi-tested (not yet tried with every emulator) |
 | File cache (always on): later seeds reuse files compressed before (the mod is byte for byte the same) | 🟢 Stable |
 | Command-line tool (`goggles_cli`) | 🟢 Stable |
+| Launcher (`goggles_launcher`): updates to the newest version by itself, then opens the randomizer | 🟡 In testing (Windows tried; Linux and macOS admin prompts not yet) |
 | Windows, Linux | 🟢 Stable |
 | macOS (Intel and Apple Silicon) | 🔴 Not tested (built, but not yet run on a Mac) |
 
@@ -302,13 +303,15 @@ different random number generator, so **a seed number makes a different seed tha
 
 1. Download the build for your system from the project's **Releases** page, or [build it yourself](#building).
 2. Extract the ZIP somewhere easy to find (not inside your romfs folder).
-3. Start it:
+3. Start the **launcher**: it updates the randomizer when a new version is out, then opens it.
 
-| System | Program |
-|---|---|
-| Windows | `goggles_of_truth_rando.exe` (keep `raven.dll` next to it) |
-| Linux | `goggles_of_truth_rando` (keep `libraven.so.0` next to it) |
-| macOS (Intel or Apple Silicon) | `Goggles of Truth Randomizer.app` |
+| System | Start this | The randomizer it opens |
+|---|---|---|
+| Windows | `goggles_launcher.exe` | `goggles_of_truth_rando.exe` (keep `raven.dll` next to it) |
+| Linux | `goggles_launcher` | `goggles_of_truth_rando` (keep `libraven.so.0` next to it) |
+| macOS (Intel or Apple Silicon) | `goggles_launcher` | `Goggles of Truth Randomizer.app` |
+
+You can still open the randomizer itself directly, but then it doesn't update: only the launcher does.
 
 If Windows shows **"Windows protected your PC"**, click **More info**, then **Run anyway**.
 
@@ -316,12 +319,27 @@ If macOS says the app **can't be opened** because it's from an unidentified deve
 **Open**, then **Open** again (once). Move it out of your Downloads folder first: macOS runs apps opened from there
 from a read-only copy, where your settings can't be saved.
 
-**Updating:** the window checks GitHub for a newer release when it opens (General Settings, **Updates** card; switch it
-off there, or press **Check for Updates** any time). When one is out it asks you first, then downloads the build for
-your system, installs it in the randomizer's folder and opens again as the new version. Your `user_settings.toml`,
-presets, cache and seeds are kept. You can still update by hand: download the new build and copy your
-`user_settings.toml` into the new folder. Builds made from source (debug builds) only say that a release is out; they
-never replace themselves.
+**Updating with the launcher:** each time you start `goggles_launcher`, a small splash screen asks GitHub whether a
+newer version is out. If one is, it downloads the build for your system (with a progress bar), puts it in place of
+the old programs and opens the new version, with no questions. Your `user_settings.toml`, presets, `cache`, `save_backups`, `crash_logs` and
+`error_log.txt` are never touched. The new files are downloaded and unpacked first, and the old ones are only swapped
+out once everything is there: if anything goes wrong (no internet, a broken download, the computer turning off in the
+middle), the version you had stays, or is put back the next time you start the launcher, and the launcher opens it
+as usual. Without an internet connection it just opens the version you have.
+
+If the randomizer's folder needs administrator rights to be changed (for example `C:\Program Files`), the launcher
+asks for them with the system's own prompt: Windows' administrator prompt, macOS' password prompt, or on Linux the
+desktop's password prompt (`pkexec`). If Linux can't show one, the launcher prints the `sudo` command to run instead.
+Saying no keeps the version you have.
+
+Launcher options: `--check-only` (only say whether a new version is out), `--no-launch` (update but don't open the
+randomizer), `--pretend-version 0.8.0` (act as if that version were installed, to try a real update),
+`--simulate` (show a whole update on the splash screen, slowly, without downloading or changing anything). Debug
+builds made from source only update with `--pretend-version`. The command-line only downloads (ARM Windows and Linux)
+have no splash screen: there the launcher prints its steps in the terminal.
+
+**Updating by hand:** download the new build and copy your `user_settings.toml` (and `custom_presets.toml`) into the
+new folder. Up to 0.8.1 the window had its own Updates card; since 0.8.2 the launcher does this instead.
 
 ### If something goes wrong
 
@@ -329,6 +347,8 @@ never replace themselves.
 |---|---|
 | "Raven could not start (a Vulkan driver is required)" | Update your graphics driver from NVIDIA, AMD or Intel. |
 | "The randomizer couldn't open" | It names an `error_log.txt` next to the program. Attach it when you [open an issue](#opening-an-issue). |
+| The launcher says GitHub couldn't be reached | No internet, or GitHub is down: it opens the version you have. Try again later. |
+| The launcher says the update couldn't be installed | Close any open randomizer window and start the launcher again. Nothing was changed. |
 | "The randomizer crashed and has to close" | A crash report was saved in the `crash_logs` folder next to the program (the message names the file). Attach it when you [open an issue](#opening-an-issue). |
 | The game line on General Settings is red | Your game version isn't supported: see [Supported game versions](#supported-game-versions). |
 
@@ -641,6 +661,8 @@ zig build                              # debug build of this system: zig-out/<sy
 zig build --release                    # release build (ReleaseFast), as the GitHub releases are built
 zig build run                          # build and open the window
 zig build cli                          # only the command-line tool
+zig build launcher                     # only the launcher (goggles_launcher)
+zig build run-launcher -- --simulate   # watch the launcher's splash screen go through an update (changes nothing)
 zig build test                         # unit tests
 ```
 
@@ -657,7 +679,8 @@ zig build -Dtarget=aarch64-macos     # zig-out/macos-aarch64
 
 Raven has no prebuilt library for Windows or Linux on ARM yet, so those two builds have the command-line tool only.
 
-Each folder holds the window, the command-line tool and the Raven library, under the name the program loads:
+Each folder holds the window, the command-line tool, the launcher (`goggles_launcher`, every system, ARM too) and the
+Raven library, under the name the program loads:
 `raven.dll`, `libraven.so.0` or `libraven.0.dylib` (the macOS library is universal: Intel and Apple Silicon). On
 macOS the window and its library are in `Goggles of Truth Randomizer.app` (`Contents/MacOS`), with the icon and
 `Info.plist` (version from `src/version.zig`); the command-line tool sits next to the app. The Windows program carries
@@ -685,9 +708,9 @@ and push.
 | `src/settings` | The setting table, presets, settings strings, `user_settings.toml` |
 | `src/logic` | Items and the access rules for every region and location |
 | `src/generator` | Item pool and fill, hints, every patch written to the mod, compressing on threads (`compressor.zig`) and the file cache (`filecache.zig`) |
-| `src/platform` | Longshot, emulator folders and per-seed saves |
+| `src/platform` | Longshot, emulator folders and per-seed saves, updates from GitHub (`updater.zig`), administrator rights for the launcher (`elevation.zig`) |
 | `src/ui` | The window: `main.xml`, `widgets.xml` and one XML file per tab in `pages` (every widget, the setting rows too: `pagecheck.zig` tests them against the setting table), and `App.zig` |
-| `src/cli.zig`, `src/main.zig` | The two programs |
+| `src/cli.zig`, `src/main.zig`, `src/launcher_window.zig` | The three programs: command-line tool, window, launcher (its splash screen is `src/ui/launcher_splash.xml`; `launcher_flow.zig` holds its steps, `launcher.zig` is the console version for the ARM command-line builds) |
 | `vendor` | Raven (GUI), the string library, zstd 1.5.7 |
 
 Coding rules for this repository are in [Agents.md](Agents.md). In short: plain, explicit code that's easy to edit by

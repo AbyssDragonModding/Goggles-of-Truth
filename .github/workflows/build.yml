@@ -55,13 +55,21 @@ jobs:
         id: version
         run: echo "version=$(sed -n 's/^pub const version = "\(.*\)";/\1/p' src/version.zig)" >> "$GITHUB_OUTPUT"
 
-      # the engine's tests run on the build machine (Linux), once is enough
+      # the engine's and the launcher's tests run on the build machine (Linux), once is enough
       - name: Test
         if: matrix.name == 'linux-x64'
         run: zig build test
 
+      # builds the window (where Raven has a library), the command-line tool and the launcher (goggles_launcher,
+      # src/launcher.zig: updates the install from the newest Release, then opens the window) into one folder
       - name: Build
         run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseFast
+
+      # every ZIP must hold the launcher: it is what players start, and how they get the next release
+      - name: Check the launcher is there
+        run: |
+          ls "zig-out/${{ matrix.folder }}"/goggles_launcher* >/dev/null || {
+            echo "goggles_launcher is missing from zig-out/${{ matrix.folder }}"; exit 1; }
 
       # zip on Linux keeps the programs' execute permission (and the macOS .app as it is)
       - name: Package

@@ -5,6 +5,8 @@
 //!   zig build --release               a release build (ReleaseFast), as the GitHub builds are made
 //!                                     (-Doptimize=ReleaseFast); no Test Seeds tab
 //!   zig build cli                     the command-line tool only (no window, no Raven needed)
+//!   zig build launcher                the launcher only (goggles_launcher: updates from GitHub, starts the window)
+//!   zig build run-launcher -- ARGS    build and start the launcher (e.g. -- --check-only --pretend-version 0.8.0)
 //!   zig build run                     build and start the window
 //!   zig build test                    unit tests of the engine (no game files needed)
 //!   zig build -Dtarget=x86_64-linux   cross-compile (x86_64/aarch64 for windows, linux and macos; the window needs a
@@ -66,6 +68,13 @@ pub fn build(b: *std.Build) void {
     const cli_step = b.step("cli", "Build only the command-line tool");
     cli_step.dependOn(&install_cli.step);
 
+    // ---- the launcher's tests (src/launcher_flow.zig, the console front-end, the updater and elevation). The
+    // launcher program itself is made with the window below (addLauncher): a splash screen where Raven has a
+    // library, the console elsewhere.
+    const launcher_test_module = launcherModule(b, target, optimize, strip, "src/launcher.zig", null);
+    // `-Dconsole=true`: on Windows, the window and the splash launcher open a console too (debug prints)
+    const console = b.option(bool, "console", "Windows: open a console window next to the randomizer window (for debugging)") orelse false;
+
     // ---- the window (needs the prebuilt Raven library for the *target*, not the host)
     const raven_lib = ravenLibraryFor(t);
     if (raven_lib) |lib| {
@@ -105,7 +114,6 @@ pub fn build(b: *std.Build) void {
         exe.root_module.addLibraryPath(b.path(lib.dir));
         // On Windows the window is a GUI program: it opens without a console window, in debug builds too.
         // -Dconsole=true gives it one (to see debug prints and stack traces while working on it).
-        const console = b.option(bool, "console", "Windows: open a console window next to the randomizer window (for debugging)") orelse false;
         if (t.os.tag == .windows) exe.subsystem = if (console) .console else .windows;
         // The .exe's own icon (Explorer, shortcuts, the task bar). Zig compiles the .rc itself, so this works when
         // cross-compiling too. Linux and macOS programs have no icon of their own: the window sets it when it opens.
@@ -153,17 +161,66 @@ pub fn build(b: *std.Build) void {
         run_cmd.addPassthruArgs();
         const run_step = b.step("run", "Build and start the randomizer window");
         run_step.dependOn(&run_cmd.step);
+
+        // the launcher with its splash screen (src/launcher_window.zig): Raven, linked like the window
+        const launcher_module = launcherModule(b, window_target, optimize, strip, "src/launcher_window.zig", raven.module("raven"));
+        launcher_module.addLibraryPath(b.path(lib.dir));
+        switch (t.os.tag) {
+            .linux => launcher_module.addRPathSpecial("$ORIGIN"),
+            // on macOS the launcher sits next to the .app; the Raven library is inside it
+            .macos => launcher_module.addRPathSpecial(b.fmt("@executable_path/{s}.app/Contents/MacOS", .{app_name})),
+            else => {},
+        }
+        addLauncher(b, launcher_module, os_dir, if (t.os.tag == .windows and !console) .windows else null);
     } else {
-        std.log.warn("no prebuilt Raven library for {s}-{s}: only the command-line tool is built", .{
+        std.log.warn("no prebuilt Raven library for {s}-{s}: only the command-line tool and the console launcher are built", .{
             @tagName(t.cpu.arch), @tagName(t.os.tag),
         });
+        // the console launcher (src/launcher.zig): the same steps as lines of text
+        addLauncher(b, launcherModule(b, target, optimize, strip, "src/launcher.zig", null), os_dir, null);
     }
 
     // ---- tests of the engine
     const tests = b.addTest(.{ .root_module = engine });
     const run_tests = b.addRunArtifact(tests);
-    const test_step = b.step("test", "Run the engine's unit tests");
+    const test_step = b.step("test", "Run the engine's and the launcher's unit tests");
     test_step.dependOn(&run_tests.step);
+    const launcher_tests = b.addTest(.{ .root_module = launcher_test_module });
+    test_step.dependOn(&b.addRunArtifact(launcher_tests).step);
+}
+
+/// The launcher's module: `root` is src/launcher_window.zig (the splash screen, with `raven`) or src/launcher.zig
+/// (the console, without). No engine: it only needs the updater and the platform modules, so it stays small.
+fn launcherModule(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, strip: bool, root: []const u8, raven: ?*std.Build.Module) *std.Build.Module {
+    const string = b.dependency("string", .{ .target = target, .optimize = optimize });
+    const module = b.createModule(.{
+        .root_source_file = b.path(root),
+        .target = target,
+        .optimize = optimize,
+        .strip = strip,
+        .imports = &.{.{ .name = "string", .module = string.module("string") }},
+    });
+    if (raven) |raven_module| module.addImport("raven", raven_module);
+    // Windows: ShellExecuteExW ("runas", the administrator prompt) is in shell32
+    if (target.result.os.tag == .windows) module.linkSystemLibrary("shell32", .{});
+    return module;
+}
+
+/// goggles_launcher next to goggles_cli (on macOS next to the .app), and the `launcher` / `run-launcher` steps.
+/// `subsystem`: .windows for the splash launcher on Windows (no console window).
+fn addLauncher(b: *std.Build, module: *std.Build.Module, os_dir: []const u8, subsystem: ?std.zig.Subsystem) void {
+    const launcher = b.addExecutable(.{ .name = "goggles_launcher", .root_module = module });
+    if (subsystem) |s| launcher.subsystem = s;
+    if (module.resolved_target.?.result.os.tag == .windows) module.addWin32ResourceFile(.{ .file = b.path("src/ui/app.rc") });
+    const install_launcher = b.addInstallArtifact(launcher, .{ .dest_dir = .{ .override = .{ .custom = os_dir } } });
+    b.getInstallStep().dependOn(&install_launcher.step);
+    const launcher_step = b.step("launcher", "Build only the launcher (updates the randomizer, then starts it)");
+    launcher_step.dependOn(&install_launcher.step);
+    const run_launcher = b.addRunArtifact(launcher);
+    run_launcher.step.dependOn(b.getInstallStep());
+    run_launcher.addPassthruArgs();
+    const run_launcher_step = b.step("run-launcher", "Build everything and start the launcher (arguments after --)");
+    run_launcher_step.dependOn(&run_launcher.step);
 }
 
 /// The engine module (src/engine.zig) for a target: zstd (C) compiled for it, and the string library.
