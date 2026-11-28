@@ -80,6 +80,20 @@ const world_physics_files = [_][]const u8{
     "Phive/ContactCollectionEntityParam/HitOnlyGroundAndObject.phive__ContactCollectionEntityParam.bgyml",
 };
 
+/// The game's own pickups whose body is a solid block instead of a rupee's. Why: the Ocarina of Time's pickup (the
+/// one Zelda throws into the Hyrule Castle moat) is a 2 x 2 x 2 m stone box (Physics/ObjectDefault -> ControllerSet
+/// Box: LayerEntity GroundObject, Mass 2000, contact HitAll), so lying at a randomized spot it was an invisible wall
+/// Link couldn't walk into to collect it (test report: the Ocarina in Kokiri Forest). It was used as it is, so the
+/// rupee physics every built pickup gets (world_physics_source) never reached it. These are built like any other world
+/// pickup (keeping their own model, name and pouch settings), which gives them the rupee's body. Dump check: no other
+/// Obj_ pickup with pouch settings has the Box / HitAll body.
+const native_pickups_with_solid_body = [_][]const u8{"Obj_Ocarina_Time"};
+
+fn isNativePickupWithSolidBody(actor: []const u8) bool {
+    for (native_pickups_with_solid_body) |name| if (std.mem.eql(u8, name, actor)) return true;
+    return false;
+}
+
 const auto_prefix = "Obj_RandoAuto_";
 const auto_source = "Obj_Rupee_Green";
 const auto_attention = "Component/AttentionSenderParam/AutoPickUpItem.game__component__AttentionSenderParam.bgyml";
@@ -374,7 +388,7 @@ pub const PickupCloner = struct {
     /// touching it.
     pub fn worldActor(self: *Self, actor: []const u8, auto: bool) PatchError![]const u8 {
         var base = actor;
-        if (!std.mem.startsWith(u8, actor, "Obj_")) {
+        if (!std.mem.startsWith(u8, actor, "Obj_") or isNativePickupWithSolidBody(actor)) {
             const k = try self.key("world", actor, null);
             if (!self.made.contains(k)) self.made.put(k, try self.build(actor, template_actor, prefix, null)) catch return error.OutOfMemory;
             base = self.made.get(k).? orelse actor;

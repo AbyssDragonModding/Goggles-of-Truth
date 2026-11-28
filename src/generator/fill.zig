@@ -687,7 +687,8 @@ pub const Plan = struct {
                     break;
                 }
             }
-            const item = if (pool_index) |chosen_index| self.pool.orderedRemove(chosen_index) else (try self.takeItemFromOutsideThePool(request.item)) orelse {
+            const ground_tier = if (pool_index == null) try self.takeTierForSpotThatCantChooseTier(request.item, location_index) else null;
+            const item = if (pool_index) |chosen_index| self.pool.orderedRemove(chosen_index) else ground_tier orelse (try self.takeItemFromOutsideThePool(request.item)) orelse {
                 // a tier of an upgrade line isn't in the pool with Progressive Items: say what to place instead
                 if (try self.progressiveLineOfName(request.item)) |chain| {
                     return std.fmt.allocPrint(allocator, "no \"{s}\" in the item pool: with Progressive Items on, place \"{s}\" (each copy gives the next tier)", .{ request.item, chain.display_name }) catch error.OutOfMemory;
@@ -732,6 +733,27 @@ pub const Plan = struct {
             if (std.mem.indexOfScalar(ItemId, self.pool.items, line_item) != null) return chain;
         }
         return null;
+    }
+
+    /// Test seeds only: a tier of an upgrade line ("Ocarina of Time") asked for at a spot that can't choose the tier
+    /// (an item lying in the world, a Gold Skulltula, a shop shelf, a big or invisible chest). One copy of the line's
+    /// progressive item leaves the pool and that exact tier is placed instead, so the pool still fits the locations and
+    /// the logic counts the tier as owned there (progressive.tiersOwned). Why: the Ocarinas are always progressive, so
+    /// no seed puts one on the ground, but how an Ocarina lies on the ground still needs checking in-game (test
+    /// report: an Ocarina in Kokiri Forest behind an invisible block, from a 0.7.x seed). Null for any other request:
+    /// a spot that can choose the tier gets the "place the progressive item" message instead.
+    fn takeTierForSpotThatCantChooseTier(self: *Self, requested_name: []const u8, location_index: usize) FillError!?ItemId {
+        if (canGiveProgressive(self.st, self.location(location_index))) return null;
+        const chain = (try self.progressiveLineOfName(requested_name)) orelse return null;
+        const line_item = self.world.items.lookup(chain.key) orelse return null;
+        const tier_item = for (0..self.world.items.count()) |i| {
+            const id: ItemId = @intCast(i);
+            const display_name = self.world.itemNameById(self.allocator, id) catch return error.OutOfMemory;
+            if (std.mem.eql(u8, self.world.items.name(id), requested_name) or std.mem.eql(u8, display_name, requested_name)) break id;
+        } else return null;
+        const line_pool_index = std.mem.indexOfScalar(ItemId, self.pool.items, line_item) orelse return null;
+        _ = self.pool.orderedRemove(line_pool_index);
+        return tier_item;
     }
 
     fn takeItemFromOutsideThePool(self: *Self, item_key: []const u8) FillError!?ItemId {

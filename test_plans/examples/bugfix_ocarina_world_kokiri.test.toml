@@ -1,0 +1,27 @@
+# Bug report: an Ocarina lying in Kokiri Forest couldn't be picked up, an invisible block around it (a 0.7.x seed).
+# Cause: the Ocarina of Time used the game's own pickup (the one in the Hyrule Castle moat), whose body is a solid
+# 2 m stone box; the 0.8.0 fix that gave world items a rupee's body only reached the pickups the randomizer builds.
+# Now the Ocarina of Time is built like every other world item. The Fairy Ocarina was always built, so it's the
+# comparison.
+# The Ocarinas are always progressive, so a normal seed never puts one on the ground: a test plan placing a tier
+# ("Fairy Ocarina", "Ocarina of Time") on a ground spot takes a Progressive Ocarina out of the pool for it.
+# Start: outside the Kokiri Shop, as child. Check:
+#   Freestanding Rupee 1 (dry ground): the Ocarina of Time. Walk into it: picked up like a rupee, nothing solid.
+#   Freestanding Rupee 8 (the pond next to Mido): the Fairy Ocarina. Swim down and pick it up, nothing to stand on.
+#   After both: the Ocarina button works (play a song), and the pause menu shows the Ocarina of Time.
+# OCARINAKF2 swaps them, so each Ocarina is checked on dry ground and under water.
+name = "OCARINAKF1"
+
+[settings]
+# No logic: the logic counts Kokiri Forest's rupee spots as needing bombs and the Song of Storms (an Ocarina), so with
+# both Ocarinas there the seed can't be made. Only these two spots matter here.
+logic_rules = "none"
+shuffle_ocarinas = true
+starting_age = "child"
+barren_dungeons = "off"
+shuffle_freestanding = true
+shuffle_rupees = true
+
+[place]
+"Kokiri Forest Freestanding Rupee 1" = "Ocarina of Time"
+"Kokiri Forest Freestanding Rupee 8" = "Fairy Ocarina"
