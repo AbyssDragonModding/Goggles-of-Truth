@@ -3,7 +3,7 @@
 //! and installs it, then opens the randomizer and closes. The command-line only releases use src/launcher.zig (the
 //! console) instead; build.zig picks one of the two.
 //!
-//! ELM architecture (Agents.md section 4):
+//! ELM architecture (AGENTS.md section 4):
 //!   Model    `SplashModel` (src/launcher_splash_model.zig): what the splash screen shows, nothing else
 //!   Message  `SplashMessage` (same file): what the flow reports from its worker thread (a phase, bytes, the end)
 //!   Update   `updateSplash` (same file): a pure function from a model and a message to the next model

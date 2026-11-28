@@ -1,6 +1,6 @@
 //! What differs between the operating systems the randomizer runs on (Windows, Linux, macOS), in one place.
 //!
-//! Agents.md: OS-specific code is kept inside the platform modules. The rest of the program asks here instead of
+//! AGENTS.md: OS-specific code is kept inside the platform modules. The rest of the program asks here instead of
 //! checking `builtin.os.tag` itself, so every difference between the systems can be found and changed in this file
 //! (and in Env.zig, longshot.zig and saves.zig, which are platform modules too).
 

@@ -2,7 +2,7 @@
 //! and running the launcher again with administrator rights when it can't (an install in C:\Program Files, /opt or
 //! /Applications owned by another user).
 //!
-//! Each system has its own way, all kept in this file (Agents.md section 3: OS-specific code in a platform module):
+//! Each system has its own way, all kept in this file (AGENTS.md section 3: OS-specific code in a platform module):
 //!   - Windows: ShellExecuteExW with the "runas" verb, which shows the system's administrator prompt (UAC), then
 //!     waits for that copy of the launcher and reads its exit code.
 //!   - macOS: osascript's `do shell script ... with administrator privileges`, the system's password prompt.

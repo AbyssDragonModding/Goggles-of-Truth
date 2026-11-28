@@ -1,5 +1,5 @@
 //! Checks the window's pages (src/ui/pages/*.xml) against the setting table (src/settings/table.zig). Why: every
-//! setting row is written out in its page's XML (Agents.md: every widget is defined in XML), while the table
+//! setting row is written out in its page's XML (AGENTS.md: every widget is defined in XML), while the table
 //! holds what the generator reads (keys, options, defaults) and the same labels and tooltips. This test fails when
 //! the two drift apart: a setting without its row, a row's control, label, tooltip, options or status badge that no
 //! longer matches its setting. Part of the engine's tests (`zig build test`), so it needs no window.

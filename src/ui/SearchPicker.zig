@@ -9,7 +9,7 @@
 //! editable picker also takes a typed text that is no row (Enter), for names the list doesn't know.
 //!
 //! The popup's list is virtual (Raven asks for the rows it shows), so lists of thousands of rows stay fast. The
-//! popup is made once from widgets.xml's SearchPopup (a widget made while the window runs, as Agents.md allows).
+//! popup is made once from widgets.xml's SearchPopup (a widget made while the window runs, as AGENTS.md allows).
 
 const std = @import("std");
 const r = @import("raven");

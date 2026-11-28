@@ -713,7 +713,7 @@ and push.
 | `src/cli.zig`, `src/main.zig`, `src/launcher_window.zig` | The three programs: command-line tool, window, launcher (its splash screen is `src/ui/launcher_splash.xml`; `launcher_flow.zig` holds its steps, `launcher.zig` is the console version for the ARM command-line builds) |
 | `vendor` | Raven (GUI), the string library, zstd 1.5.7 |
 
-Coding rules for this repository are in [Agents.md](Agents.md). In short: plain, explicit code that's easy to edit by
+Coding rules for this repository are in [AGENTS.md](AGENTS.md). In short: plain, explicit code that's easy to edit by
 hand; allocators passed explicitly (an arena per generation); concrete error sets; and a random number generator
 seeded only from the version, seed and settings string, so every system makes identical seeds.
 

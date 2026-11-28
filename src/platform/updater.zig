@@ -22,7 +22,7 @@
 //! What the player made (user_settings.toml, custom_presets.toml, cache, save_backups, crash_logs, error_log.txt,
 //! seeds) is never in a release; a release entry with one of those names is skipped anyway (`kept_user_files`).
 //!
-//! Agents.md: OS-specific choices (which ZIP, which files are programs) are kept here, in a platform module.
+//! AGENTS.md: OS-specific choices (which ZIP, which files are programs) are kept here, in a platform module.
 
 const std = @import("std");
 const builtin = @import("builtin");

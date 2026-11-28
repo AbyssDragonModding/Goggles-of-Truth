@@ -36,7 +36,7 @@ pub const Compressor = struct {
     const Self = @This();
 
     /// Compresses every job (through the cache when there is one). Uses about 75% of the CPU cores
-    /// (threads.targetThreadCount, Agents.md), never more threads than jobs; with one thread, or if no thread can be
+    /// (threads.targetThreadCount, AGENTS.md), never more threads than jobs; with one thread, or if no thread can be
     /// started, all of it runs on this one. Each working thread holds a level-16 zstd context (a few dozen MB).
     pub fn run(gpa: Allocator, zs: *zstd.Context, cache: ?*filecache.FileCache, jobs: []Job) zstd.ZstdError!void {
         // why: a compression dictionary is built on first use, which two threads must not do at the same time

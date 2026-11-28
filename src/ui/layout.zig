@@ -1,5 +1,5 @@
 //! The window's XML layout: src/ui/main.xml with every page of its TabView put in from its own file in
-//! src/ui/pages (Agents.md: one XML file per page, every widget defined in XML). Every setting row is written out in
+//! src/ui/pages (AGENTS.md: one XML file per page, every widget defined in XML). Every setting row is written out in
 //! its page; src/ui/pagecheck.zig checks the rows against the setting table. Only the preset drop-down's items and
 //! tooltip are filled in here (the presets are data of the setting table). The XML files are built into the
 //! program.
