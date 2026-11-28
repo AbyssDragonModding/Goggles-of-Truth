@@ -1,0 +1,31 @@
+# Door of Time: Open, after meeting Zelda (0.8.3 report: seed 8GPACV7JSU, child start; after Zelda and Impa's
+# send-off to Hyrule Field, the Master Sword couldn't be pulled). This seed starts there: child Link in the Temple of
+# Time hall facing the pedestal room, with Zelda met (Goto_HyruleCastle done, the Door of Time quest at Step02, as
+# Impa's send-off leaves it, and her send-off scene seen). Skip Cutscenes is on.
+# Check:
+# - walk to the pedestal: is there a prompt to pull the sword? Does pulling it work?
+# - if it works: the first trip to adult fades to black at the pedestal and goes straight to Rauru as adult (0.8.4:
+#   no more child Link standing alone in the Chamber of Sages). Rauru's item is handed over, then Link is in the
+#   Temple of Time as adult.
+name = "BUGDOOR1"
+seed = "8GPACV7JSU"
+
+[settings]
+random_start_items = "off"
+open_door = "open"
+starting_age = "child"
+skip_child_zelda = false
+skip_story_scenes = true
+
+[start]
+age = "child"
+scene = "Market"
+position = [84.751, 104.232, -34.0]
+facing = 90
+
+[quests]
+Goto_HyruleCastle = "Complete"
+DoorOfTime = "Step02"
+
+[cutscenes]
+seen = ["Dm_HrlField_0020"]

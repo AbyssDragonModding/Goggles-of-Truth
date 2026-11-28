@@ -33,6 +33,12 @@ pub const zora_open_quest_step = "Step07";
 /// so the door stayed shut for a player who went straight to the Temple of Time (0.5.0 test seed 5).
 pub const door_quest_enum = "Step_DoorOfTime";
 pub const door_quest_step = "Ready";
+/// The door's own saved flag, set when the Song of Time opens it (DoorOfTime Event53); the door's logic module opens it
+/// for this flag OR the quest step (Logic/Market_Common_f252: OperateORFixInputTrue). The quest step alone didn't do:
+/// the DoorOfTime quest only runs once Goto_HyruleCastle is complete (RSDB Challenge DependFlagName), so with Zelda not
+/// met yet the door stayed shut (0.8.3 test report: "check Zelda, this will allow the door to open"). The adult start
+/// already set it.
+pub const door_opened_flag = "Market_Child_TimeTempleDoor_Opened";
 /// The Kakariko gate soldier sets this when shown Zelda's Letter.
 pub const dmt_gate_open = "Npc_Hylia_Soldier_003_GateOpen";
 /// Skip Epona Race: a horse is yours when its actor is in OwnedHorseList.ActorName (entry 0, as Ingo's race leaves
@@ -801,6 +807,8 @@ pub fn plannedChanges(allocator: Allocator, st: *const Settings, ocarina_bridge_
     // Door of Time quest starts at the step the open door follows
     if (st.is(.open_door, "open") and !st.flag(.skip_child_zelda))
         try addChange(&out, allocator, .{ .kind = .enum_value, .flag = door_quest_enum, .text = door_quest_step });
+    // and the door's own opened flag, so it is open before Zelda is met too
+    if (st.is(.open_door, "open")) try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = door_opened_flag });
     // Kakariko's Death Mountain gate starts open
     if (st.is(.open_dmt, "open")) try addChange(&out, allocator, .{ .kind = .bool_flag, .flag = dmt_gate_open });
     // a new save owns Epona (the horse list the race fills); Epona's Song calls her

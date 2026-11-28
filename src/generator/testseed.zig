@@ -46,7 +46,7 @@ pub fn prepare(allocator: Allocator, fs: fsmod.Fs, plan_text: []const u8, base: 
     var st = base;
     if (plan.settings_string.len > 0) {
         st = settings_mod.fromString(allocator, plan.settings_string) catch return refuse(problem, "settings_string can't be read by this version");
-        st.set(.per_seed_saves, base.get(.per_seed_saves));
+        settings_mod.keepSettingsOutsideString(&st, &base);
     }
     if (plan.preset.len > 0) {
         const preset = settings_mod.findPreset(plan.preset) orelse

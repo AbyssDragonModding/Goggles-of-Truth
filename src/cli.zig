@@ -201,7 +201,7 @@ fn cmdGenerate(gpa: Allocator, env: *const engine.Env, args: []const [:0]const u
         // the settings string leaves out where and how things are written: keep the file's choices
         if (from_user) {
             const file = (try engine.usersettings.load(a, env)).settings;
-            st.set(.per_seed_saves, file.get(.per_seed_saves));
+            engine.settings.keepSettingsOutsideString(&st, &file);
         }
     } else if (from_user) {
         const loaded = try engine.usersettings.load(a, env);

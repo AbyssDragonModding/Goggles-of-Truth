@@ -84,6 +84,10 @@
 					<Checkbox Name="set_per_seed_saves" Style="Switch" Text="Per-Seed Saves" OnChanged="set.per_seed_saves" Slot.Fill="1" Tooltip="Each seed keeps its own save slots, in Longshot and in Switch emulators (Eden, Citron, Lichii and&#10;other yuzu-family emulators: set the output folder to the emulator's load/0400486024DEC000 folder).&#10;Generating a seed, or Play This Seed on the General Settings tab, stores the slots you have now with their&#10;seed and brings in the new seed's (empty slots for a new one). Slots no seed owns are copied to&#10;save_backups first. The game's options are shared. Close the game before switching."/>
 					<StableBadge Name="badge_per_seed_saves" LabelName="badgelab_per_seed_saves"/>
 				</HBox>
+				<HBox Spacing="12">
+					<Checkbox Name="set_title_subtitle" Style="Switch" Text="Title Screen Subtitle" OnChanged="set.title_subtitle" Slot.Fill="1" Tooltip="Adds &quot;Goggles of Truth Randomizer&quot; in purple under the title screen's logo (English title screen only),&#10;so you can tell a seed is loaded. Off: the title screen stays as in the game, and each seed is about&#10;67 MB smaller."/>
+					<StableBadge Name="badge_title_subtitle" LabelName="badgelab_title_subtitle"/>
+				</HBox>
 			</VBox>
 		</Border>
 		<Border CornerRadius="16" Padding="18,14,18,16" Shadow="18,0,4" Slot.Auto="true" Slot.Padding="6,0,6,10">

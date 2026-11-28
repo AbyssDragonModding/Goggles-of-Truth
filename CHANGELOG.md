@@ -7,6 +7,35 @@ fix raises the last number (0.7.**5**).
 the same placement version put items in the same places, so you can rebuild an older seed with a newer version and
 keep your saves. When a version changes where items go, it gets a new placement version.
 
+## 0.8.4 - 2026-11-28
+
+Same placement version as 0.8.3: seeds made with 0.8.3 can be rebuilt with this version.
+
+### New
+- **Title screen**: "Goggles of Truth Randomizer" now shows in purple under the game's logo, in a Zelda-style font
+  (Hylia Serif), so you can tell at a glance that a seed is loaded. Only on the English title screen. It's on by
+  default; switch "Title Screen Subtitle" off on the General Settings tab to keep the normal title screen (each seed
+  is then about 67 MB smaller). It doesn't change where items are.
+
+### Changed
+- **Warning about other Longshot mods**: when you make a seed, the window now warns you if another mod you have
+  switched on replaces some of the seed's game files. A mod that changes the game's texts makes new item names show
+  as "MsgNotFound" and can softlock the game when you get one of those items, so switch such mods off while playing
+  a seed.
+
+### Fixed
+- **Door of Time: Open** kept the door shut until you had met Zelda, and after meeting Zelda the Master Sword could
+  sometimes not be pulled. The door is now open from the start, and the sword can be pulled. A save that had this
+  problem works again once the seed is rebuilt with this version.
+- **Progressive items on shop shelves could be bought again and again.** Each one can now be bought only once.
+- **Shop shelf names lost their last letter** ("Progressive Scal"). Names now show in full. Key rings, boss keys,
+  maps and compasses on shelves had the same problem.
+- **Chest Size Matches Contents:** some chests played the wrong opening, like a small chest playing the long
+  big-chest opening. Big chests now always play the long opening and small chests the quick one. Dungeon map and
+  compass chests that become small chests lose Navi's comment.
+- **Skip Cutscenes:** the first time you pull the Master Sword, child Link no longer stands alone in the Chamber of
+  Sages before turning into an adult. The screen fades out at the pedestal and you meet Rauru as an adult.
+
 ## 0.8.3 - 2026-11-27
 
 New placement version (0.8.3): progressive items can now be in more places, so seeds made with 0.8.2 or 0.8.1

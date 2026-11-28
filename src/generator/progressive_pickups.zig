@@ -24,7 +24,8 @@
 //!
 //!       IsGet.<item>?                  (GameDataActor.EventQueryIsGameDataBool, case 0: true)
 //!         yes -> ground: IsGet.<item> = false | shelf: RandoProgApplied.<item>? yes -> next item; no -> set it
-//!             -> own <item>? (pouch query) -> yes: remove it (Num -1, as the game removes the Weird Egg)
+//!             -> ground only: own <item>? (pouch query) -> yes: remove it (Num -1, as the game removes the Weird Egg);
+//!                a shelf's item stays, so the shop doesn't sell it again
 //!             -> the same pouch queries as the event flows (progressive_flows.zig), highest tier down:
 //!                own tier n-1? -> give tier n ... else give tier 1
 //!             -> give = PouchSystemActor.EventTriggerAddOrRemovePouchContent {Actor=<tier>, Num=1} and
@@ -334,14 +335,19 @@ fn addCheck(allocator: Allocator, fc: *evfl.Flowchart, calls: HookCalls, s: Stan
         tier_choice = try pouchSwitch(allocator, fc, calls.owns, try fmt(allocator, "{s}Owns_{s}{d}{s}", .{ added_prefix, stem, t, suffix }), tiers[t - 1].pouch_actor, gives[t], tier_choice);
     }
 
-    // the stand-in item out of the pouch when it is there (so a later copy is added again, and the menu doesn't list
-    // it); asked first, as the game only removes what Link has
-    const remove = try fc.addEvent(allocator, evfl.makeAction(try fmt(allocator, "{s}Remove_{s}{s}", .{ added_prefix, stem, suffix }), calls.add_or_remove, tier_choice, try Container.from(allocator, &.{
-        .{ .name = "Num", .value = .{ .int = -1 } },
-        .{ .name = "IsSetMessageTargetActorName", .value = .{ .bool = true } },
-        .{ .name = "Actor", .value = .{ .string = s.item } },
-    })));
-    const held = try pouchSwitch(allocator, fc, calls.owns, try fmt(allocator, "{s}Held_{s}{s}", .{ added_prefix, stem, suffix }), s.item, remove, tier_choice);
+    // a ground item: the stand-in item out of the pouch when it is there (so a later copy is added again, and the
+    // menu doesn't list it); asked first, as the game only removes what Link has.
+    // A shelf's item stays in the pouch, as a key ring does: the shop sells nothing Link already has
+    // (DisplayShop Event77, PouchSystemActor.EventQueryCanAddToPorchByGameData), and with its item taken out the
+    // shelf could be bought again and again until the area was left (0.8.3 test report)
+    const held = if (s.once) tier_choice else blk: {
+        const remove = try fc.addEvent(allocator, evfl.makeAction(try fmt(allocator, "{s}Remove_{s}{s}", .{ added_prefix, stem, suffix }), calls.add_or_remove, tier_choice, try Container.from(allocator, &.{
+            .{ .name = "Num", .value = .{ .int = -1 } },
+            .{ .name = "IsSetMessageTargetActorName", .value = .{ .bool = true } },
+            .{ .name = "Actor", .value = .{ .string = s.item } },
+        })));
+        break :blk try pouchSwitch(allocator, fc, calls.owns, try fmt(allocator, "{s}Held_{s}{s}", .{ added_prefix, stem, suffix }), s.item, remove, tier_choice);
+    };
 
     const got_flag = try isGetFlagOf(allocator, s.item);
     // a ground item: its IsGet cleared for the next copy. A shelf's: marked applied (its IsGet hides the shelf)
@@ -505,8 +511,10 @@ test "a shelf's item is applied once, by its own flag, and keeps its IsGet" {
     const mark = events[applied.kind.switch_.cases.items[1].event];
     try std.testing.expectEqualStrings("RandoProgApplied.Item_PS1_Hookshot", mark.params().?.getString("GameDataName").?);
     try std.testing.expect(mark.params().?.get("Value").?.bool);
-    const held = events[mark.kind.action.next];
-    try std.testing.expectEqualStrings("Item_PS1_Hookshot", held.params().?.getString("Actor").?);
+    // the shelf's item stays in the pouch (the shop doesn't sell it again): straight on to the tier checks
+    const owns_hookshot = events[mark.kind.action.next];
+    try std.testing.expectEqualStrings("Item_Hookshot", owns_hookshot.params().?.getString("Actor").?);
+    for (events) |e| try std.testing.expect(std.mem.indexOf(u8, e.name, "Remove_PS1_Hookshot") == null);
 }
 
 test "shelf item names stay short enough for the game" {

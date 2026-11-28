@@ -1802,7 +1802,7 @@ fn onRebuildSelected(self: *App, _: ?r.Widget, _: [:0]const u8) void {
         self.messageBox("Rebuild Seed", "That seed's settings string can't be read by this version.");
         return;
     };
-    st.set(.per_seed_saves, self.st.get(.per_seed_saves));
+    engine.settings.keepSettingsOutsideString(&st, &self.st);
     const test_placements = engine.seedinfo.parseTestPlacements(a, info.test_placements) catch {
         self.messageBox("Rebuild Seed", "That seed's test placements can't be read.");
         return;

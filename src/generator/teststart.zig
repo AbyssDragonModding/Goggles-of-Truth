@@ -166,7 +166,7 @@ pub fn firstAreaAdult(allocator: Allocator, data: []const u8, progress: *Progres
 pub const adult_start_changes = [_]gamedata.Change{
     .{ .kind = .bool_flag, .flag = "HavePlayedEvent.Dm_TimeTemple_0040" },
     .{ .kind = .bool_flag, .flag = gamedata.forest_exit, .bool_value = false },
-    .{ .kind = .bool_flag, .flag = "Market_Child_TimeTempleDoor_Opened" },
+    .{ .kind = .bool_flag, .flag = gamedata.door_opened_flag },
 };
 
 /// A test start ready to patch: everything in it exists in this game.

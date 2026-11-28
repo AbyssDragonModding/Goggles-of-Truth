@@ -311,6 +311,95 @@ pub fn activeSeeds(allocator: Allocator, env: *const Env, mods_dir: []const u8, 
     return out.items;
 }
 
+/// Another mod switched on in the mods folder that replaces some of a seed's game files (a texture, model or text
+/// mod). Longshot loads both, and for a file in both only one copy is used, so the seed may not work as made.
+pub const ModClash = struct {
+    /// the mod's folder name
+    mod: []const u8,
+    /// how many of the seed's files the mod has too
+    shared_files: usize,
+    /// one of them is a message archive (romfs/Mals): the seed's new texts (item names, hints) can go missing, and the
+    /// game shows "MsgNotFound" and softlocks in an item window without text (test report, 0.8.4: LinkleConversion)
+    replaces_texts: bool,
+};
+
+const romfs_folder = "romfs";
+const message_folder = "Mals/";
+
+/// Every file under `root`/`rel` (paths relative to `root`, with "/" between folders) added to `out`.
+fn collectFiles(allocator: Allocator, env: *const Env, root: []const u8, rel: []const u8, out: *std.ArrayList([]const u8)) error{OutOfMemory}!void {
+    const folder = if (rel.len == 0) root else try fsmod.join(allocator, &.{ root, rel });
+    const names = env.fs.listDir(allocator, folder) catch return;
+    for (names) |n| {
+        const child_rel = if (rel.len == 0) try allocator.dupe(u8, n) else try std.fmt.allocPrint(allocator, "{s}/{s}", .{ rel, n });
+        if (env.fs.isDir(try fsmod.join(allocator, &.{ root, child_rel }))) {
+            try collectFiles(allocator, env, root, child_rel, out);
+        } else {
+            try out.append(allocator, child_rel);
+        }
+    }
+}
+
+/// The other mods switched on in `mods_dir` (not randomizer seeds) that replace some of seed `seed`'s romfs files, in
+/// name order. Nothing is changed: they are the player's own mods.
+pub fn modsReplacingSeedFiles(allocator: Allocator, env: *const Env, mods_dir: []const u8, seed: []const u8) error{OutOfMemory}![]ModClash {
+    var clashes: std.ArrayList(ModClash) = .empty;
+    var seed_files: std.ArrayList([]const u8) = .empty;
+    try collectFiles(allocator, env, try fsmod.join(allocator, &.{ mods_dir, seed, romfs_folder }), "", &seed_files);
+    if (seed_files.items.len == 0) return clashes.items;
+    var seed_file_set: std.StringHashMapUnmanaged(void) = .empty;
+    for (seed_files.items) |f| try seed_file_set.put(allocator, f, {});
+
+    const names = env.fs.listDirSorted(allocator, mods_dir) catch return clashes.items;
+    for (names) |n| {
+        if (std.mem.eql(u8, n, seed) or isSeedName(n) or isSwitchedOff(n)) continue;
+        const mod_romfs = try fsmod.join(allocator, &.{ mods_dir, n, romfs_folder });
+        if (!env.fs.isDir(mod_romfs)) continue;
+        var mod_files: std.ArrayList([]const u8) = .empty;
+        try collectFiles(allocator, env, mod_romfs, "", &mod_files);
+        var clash = ModClash{ .mod = n, .shared_files = 0, .replaces_texts = false };
+        for (mod_files.items) |f| {
+            if (!seed_file_set.contains(f)) continue;
+            clash.shared_files += 1;
+            if (std.mem.startsWith(u8, f, message_folder)) clash.replaces_texts = true;
+        }
+        if (clash.shared_files > 0) try clashes.append(allocator, clash);
+    }
+    return clashes.items;
+}
+
+test "other mods that replace a seed's files are found" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const mods = try std.fs.path.resolve(a, &.{ ".zig-cache", "tmp", &tmp.sub_path });
+    var environ = std.process.Environ.Map.init(a);
+    const env = Env{ .environ = &environ, .fs = fsmod.Fs.init(std.testing.io), .app_dir = mods };
+    const files = [_][2][]const u8{
+        .{ "GogglesOfTruth_NEW", "romfs/Mals/USen.Product.110.sarc.zs" },
+        .{ "GogglesOfTruth_NEW", "romfs/Pack/Actor/Item_PS1_Scale.pack.zs" },
+        // a text mod (as LinkleConversion): its texts replace the seed's
+        .{ "LinkleConversion", "romfs/Mals/USen.Product.110.sarc.zs" },
+        .{ "LinkleConversion", "romfs/Model/Link.bfres.zs" },
+        // a mod with nothing in common, a switched-off one and another seed: not reported
+        .{ "Textures", "romfs/Model/Tree.bfres.zs" },
+        .{ "_OffMod", "romfs/Mals/USen.Product.110.sarc.zs" },
+        .{ "_GogglesOfTruth_OLD", "romfs/Mals/USen.Product.110.sarc.zs" },
+    };
+    for (files) |f| {
+        const path = try fsmod.join(a, &.{ mods, f[0], f[1] });
+        try env.fs.makePath(std.fs.path.dirname(path).?);
+        try env.fs.writeAll(path, "x");
+    }
+    const clashes = try modsReplacingSeedFiles(a, &env, mods, "GogglesOfTruth_NEW");
+    try std.testing.expectEqual(@as(usize, 1), clashes.len);
+    try std.testing.expectEqualStrings("LinkleConversion", clashes[0].mod);
+    try std.testing.expectEqual(@as(usize, 1), clashes[0].shared_files);
+    try std.testing.expect(clashes[0].replaces_texts);
+}
+
 test "version keys" {
     const a = versionKey("v3.0.0-rc.4").?;
     const b = versionKey("v3.0.0").?;

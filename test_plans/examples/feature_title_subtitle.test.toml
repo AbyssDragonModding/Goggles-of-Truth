@@ -1,0 +1,5 @@
+# 0.8.4: "Goggles of Truth Randomizer" in purple under the title screen's logo (every seed has it).
+# Check on the title screen (game language English): the purple line sits under the logo (below the sword tip, under "Ocarina of Time"), centred, fully
+# readable, with no stray blocks or broken pixels in the logo around it. Your own window settings are used.
+name = "TITLE1"
+seed = "TITLE00001"

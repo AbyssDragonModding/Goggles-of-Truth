@@ -1,0 +1,33 @@
+# 0.8.4 fixes for progressive items on shop shelves, in the Kokiri Shop, as child. You start with the Giant Wallet
+# and 500 rupees.
+#   Kokiri Shop shelf 3:  Progressive Scale
+#   Kokiri Shop shelf 4:  Progressive Deku Seed Bag
+#   Kokiri Shop shelf 5:  Progressive Strength Upgrade (the longest name)
+# Check:
+# - each shelf's name shows in full ("Progressive Scale", not "Progressive Scal"), and its description ends with
+#   its full stop;
+# - buying a shelf once gives the next upgrade; trying to buy the same shelf again right away is refused (the shop
+#   says you already have it) and costs nothing;
+# - after leaving the shop and coming back, the bought shelves (and their signs) are gone.
+name = "BUGSHOP1"
+seed = "BUGSHOP001"
+
+[settings]
+random_start_items = "off"
+logic_rules = "none"
+shopsanity = "4"
+shop_prices = "random"
+starting_age = "child"
+barren_dungeons = "off"
+
+[place]
+"Kokiri Shop Item 3" = "Progressive Scale"
+"Kokiri Shop Item 4" = "Progressive Deku Seed Bag"
+"Kokiri Shop Item 5" = "Progressive Strength Upgrade"
+
+[start]
+# the Giant Wallet: a progressive item listed twice gives its second tier
+items = ["Progressive Wallet", "Progressive Wallet"]
+
+[flags]
+"PlayerStatus.CurrentRupee" = 500
